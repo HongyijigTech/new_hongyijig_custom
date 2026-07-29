@@ -8,7 +8,7 @@ _logger = logging.getLogger(__name__)
 
 class RiskCalculatorController(http.Controller):
 
-    @http.route('/api/risk-calculator/submit', type='json',
+    @http.route('/api/risk/submit', type='json',
                 auth='public', methods=['POST'], csrf=False, cors='*')
     def submit_risk_calculator(self, **kwargs):
         try:
