@@ -11,7 +11,7 @@ Hongyijig Tech
     """,
     'category': 'Hongyijig Custom New',
     'website': 'https://www.hongyijig.com/',
-    'depends': ['base', 'crm', 'contacts'],
+    'depends': ['base', 'crm', 'contacts','sale_crm'],
     'data': ['views/crm_lead.xml'],
     'installable': True,
     'application': True,

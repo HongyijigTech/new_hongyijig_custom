@@ -6,6 +6,9 @@ class CrmLeadRiskFields(models.Model):
 
     # ─── Business stake ───────────────────────────────────────────────
     mobile = fields.Char(string='Mobile')
+    brief_project_context = fields.Char(string='Brief Project Context')
+    biggest_current_risk = fields.Char(string='Biggest Current Risk')
+    preferred_contact_method = fields.Selection([('email', 'Email'), ('phone', 'Phone Call'), ('whatsapp', 'WhatsApp'), ], string='Preferred Contact Method')
     x_price_per_unit    = fields.Float(  string='Price Per Unit (Risk Calc)')
     x_year1_units       = fields.Integer(string='Year 1 Units (Risk Calc)')
     x_year2_units       = fields.Integer(string='Year 2 Units (Risk Calc)')

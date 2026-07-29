@@ -29,6 +29,17 @@
             <field name="inherit_id" ref="crm.crm_lead_view_form"/>
             <field name="priority">16</field>
             <field name="arch" type="xml">
+               <xpath expr="//field[@name='tag_ids']" position="after">
+                    <field name="preferred_contact_method" readonly="1"/>
+                    <field name="phone" string="Phone Number" readonly="1"
+                           invisible="preferred_contact_method != 'phone'"/>
+                    <field name="mobile" string="Whatsapp Number" readonly="1"
+                           invisible="preferred_contact_method !='whatsapp'"/>
+                    <field name="function" readonly="1"/>
+                    <field name="brief_project_context" readonly="1"/>
+                    <field name="biggest_current_risk" readonly="1"/>
+                    <field name="tag_ids" widget="many2many_tags" readonly="1"/>
+                </xpath>
                 <xpath expr="//notebook/page[1]" position="before">
                     <page string="Risk Calculator" name="risk_calculator">
                         <!-- ═══════════════════════════════════════════ -->
