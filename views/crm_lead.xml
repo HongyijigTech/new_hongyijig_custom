@@ -1,0 +1,131 @@
+<odoo>
+    <data>
+        <!--
+
+            ═══════════════════════════════════════════════════════════════
+            HJIG Risk Calculator - CRM Lead Form View Extension
+            Version: 4.0 — FINAL
+            Exact match: crm_lead_risk_fields_v3.py + controller_v2.py
+            ═══════════════════════════════════════════════════════════════
+            Standard Odoo fields used (no custom def needed):
+              contact_name, partner_name, email_from, mobile
+
+            Custom x_ fields — all defined in crm_lead_risk_fields_v3.py:
+              x_project_type, x_industry, x_visitor_role
+              x_price_per_unit, x_year1/2/3_units
+              x_market_life, x_business_at_stake
+              x_risk_design/cost/supplier/quality/delivery
+              x_high_risk_zones, x_wants_discussion
+              x_design_team, x_design_check, x_toolmaker_selection
+              x_quality_ownership, x_programme_owner
+              x_launch_deadline, x_delay_impact, x_mould_count
+              x_trial_budget, x_quality_standard
+            ═══════════════════════════════════════════════════════════════
+
+        -->
+        <record id="crm_lead_form_hjig_risk_calculator_v4" model="ir.ui.view">
+            <field name="name">crm.lead.form.hjig.risk.calculator.v4</field>
+            <field name="model">crm.lead</field>
+            <field name="inherit_id" ref="crm.crm_lead_view_form"/>
+            <field name="priority">16</field>
+            <field name="arch" type="xml">
+                <xpath expr="//notebook/page[1]" position="before">
+                    <page string="Risk Calculator" name="risk_calculator">
+                        <!-- ═══════════════════════════════════════════ -->
+                        <!-- SECTION 1: Visitor Identification          -->
+                        <!-- ═══════════════════════════════════════════ -->
+                        <group string="Visitor Identification" col="2">
+                            <group>
+                                <field name="contact_name" string="Visitor Name" readonly="1"/>
+                                <field name="partner_name" string="Company" readonly="1"/>
+                                <field name="email_from" string="Email" readonly="1"/>
+                                <field name="mobile" string="WhatsApp" readonly="1"/>
+                            </group>
+                            <group>
+                                <field name="x_project_type" string="Project Type (Q1)"/>
+                                <field name="x_industry" string="Industry (Q2)"/>
+                                <field name="x_visitor_role" string="Role (Q3)"/>
+                                <field name="x_wants_discussion" string="Requested 20-min Discussion?"/>
+                            </group>
+                        </group>
+                        <!-- ═══════════════════════════════════════════ -->
+                        <!-- SECTION 2: Business at Stake               -->
+                        <!-- ═══════════════════════════════════════════ -->
+                        <group string="Business at Stake" col="2">
+                            <group>
+                                <field name="x_price_per_unit" string="Selling Price Per Unit (Rs.)" widget="float"
+                                       digits="[16, 0]"/>
+                                <field name="x_year1_units" string="Year 1 Volume (units)"/>
+                                <field name="x_year2_units" string="Year 2 Volume (units)"/>
+                                <field name="x_year3_units" string="Year 3 Volume (units)"/>
+                            </group>
+                            <group>
+                                <field name="x_market_life" string="Programme Duration" readonly="1"/>
+                                <field name="x_business_at_stake" string="Total Business at Stake" readonly="1"/>
+                            </group>
+                        </group>
+                        <!-- ═══════════════════════════════════════════ -->
+                        <!-- SECTION 3: Risk Zone Assessment            -->
+                        <!-- Selection: low/medium/high                 -->
+                        <!-- ═══════════════════════════════════════════ -->
+                        <group string="Risk Zone Assessment" col="2">
+                            <group string="Zone Scores">
+                                <field name="x_risk_design" string="Design Risk" widget="badge"
+                                       decoration-danger="x_risk_design == 'high'"
+                                       decoration-warning="x_risk_design == 'medium'"
+                                       decoration-success="x_risk_design == 'low'"/>
+                                <field name="x_risk_cost" string="Cost Risk" widget="badge"
+                                       decoration-danger="x_risk_cost == 'high'"
+                                       decoration-warning="x_risk_cost == 'medium'"
+                                       decoration-success="x_risk_cost == 'low'"/>
+                                <field name="x_risk_supplier" string="Supplier Risk" widget="badge"
+                                       decoration-danger="x_risk_supplier == 'high'"
+                                       decoration-warning="x_risk_supplier == 'medium'"
+                                       decoration-success="x_risk_supplier == 'low'"/>
+                                <field name="x_risk_quality" string="Quality Risk" widget="badge"
+                                       decoration-danger="x_risk_quality == 'high'"
+                                       decoration-warning="x_risk_quality == 'medium'"
+                                       decoration-success="x_risk_quality == 'low'"/>
+                                <field name="x_risk_delivery" string="Delivery Risk" widget="badge"
+                                       decoration-danger="x_risk_delivery == 'high'"
+                                       decoration-warning="x_risk_delivery == 'medium'"
+                                       decoration-success="x_risk_delivery == 'low'"/>
+                            </group>
+                            <group string="Summary">
+                                <field name="x_high_risk_zones" string="HIGH Risk Zones (out of 5)" readonly="1"/>
+                            </group>
+                        </group>
+                        <!-- ═══════════════════════════════════════════ -->
+                        <!-- SECTION 4: Governance Readiness Q7-Q11    -->
+                        <!-- ═══════════════════════════════════════════ -->
+                        <group string="Governance Readiness" col="2">
+                            <group>
+                                <field name="x_design_team" string="Q7 - Who is designing?"/>
+                                <field name="x_design_check" string="Q8 - Independent design check?"/>
+                                <field name="x_toolmaker_selection" string="Q9 - Toolmaker selection basis"/>
+                            </group>
+                            <group>
+                                <field name="x_quality_ownership" string="Q10 - Quality responsibility"/>
+                                <field name="x_programme_owner" string="Q11 - Single programme owner?"/>
+                            </group>
+                        </group>
+                        <!-- ═══════════════════════════════════════════ -->
+                        <!-- SECTION 5: Delivery and Quality Q12-Q16   -->
+                        <!-- ═══════════════════════════════════════════ -->
+                        <group string="Delivery and Quality" col="2">
+                            <group>
+                                <field name="x_launch_deadline" string="Q12 - Launch deadline"/>
+                                <field name="x_delay_impact" string="Q13 - Impact if delayed?"/>
+                                <field name="x_mould_count" string="Q14 - Number of moulds"/>
+                            </group>
+                            <group>
+                                <field name="x_trial_budget" string="Q15 - Trial and rework budget?"/>
+                                <field name="x_quality_standard" string="Q16 - Quality standard required?"/>
+                            </group>
+                        </group>
+                    </page>
+                </xpath>
+            </field>
+        </record>
+    </data>
+</odoo>
