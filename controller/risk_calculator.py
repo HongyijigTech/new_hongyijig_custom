@@ -141,7 +141,7 @@ class RiskCalculatorController(http.Controller):
 
             mail_values = {
                 'subject': 'Your Risk Exposure Report - %s' % (lead.partner_name or lead.name),
-                'email_from': request.env.company.email or 'noreply@hongyijig.com',
+                'email_from': request.env.user.email or 'noreply@hongyijig.com',
                 'email_to': lead.email_from,
                 'email_cc': 'intake@hongyijig.com',
                 'body_html': """
