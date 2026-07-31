@@ -154,7 +154,7 @@ class RiskCalculatorController(http.Controller):
                 'auto_delete': False,
             }
             mail = request.env['mail.mail'].sudo().create(mail_values)
-            mail.send()
+            mail.sudo().send(auto_commit=True)
             _logger.info(
                 'Risk report email sent to %s (cc intake@hongyijig.com) for lead %s',
                 lead.email_from, lead.id)
