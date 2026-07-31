@@ -147,7 +147,7 @@ class RiskCalculatorController(http.Controller):
             rendered_subject = template._render_field(
                 'subject', [lead.id])[lead.id]
             rendered_body = template._render_field(
-                'body_html', [lead.id], post_process=True)[lead.id]
+                'body_html', [lead.id])[lead.id]
 
             # ── 1. Log note in chatter (always visible) ────────────────
             lead.sudo().message_post(
