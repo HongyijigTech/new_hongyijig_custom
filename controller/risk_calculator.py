@@ -127,38 +127,247 @@ class RiskCalculatorController(http.Controller):
                 lead.id, str(e))
             return False
 
+    # def _send_risk_report_email(self, lead, attachment):
+    #     """Email the Risk Exposure report to the lead's email_from, CC intake@hongyijig.com."""
+    #     try:
+    #         if not attachment:
+    #             _logger.warning(
+    #                 'No attachment available, skipping email for lead %s', lead.id)
+    #             return
+    #         if not lead.email_from:
+    #             _logger.warning(
+    #                 'No email_from set, skipping email for lead %s', lead.id)
+    #             return
+    #
+    #         mail_values = {
+    #             'subject': 'Your Risk Exposure Report - %s' % (lead.partner_name or lead.name),
+    #             'email_from': 'jagdipkhattar@hongyijig.com',
+    #             'email_to': lead.email_from,
+    #             'email_cc': 'intake@hongyijig.com',
+    #             'body_html': """
+    #                 <p>Dear %s,</p>
+    #                 <p>Thank you for using our Risk Calculator. Please find your
+    #                 Risk Exposure Report attached.</p>
+    #                 <p>Our team will be in touch shortly to discuss the results.</p>
+    #             """ % (lead.contact_name or 'Sir/Madam'),
+    #             'attachment_ids': [(4, attachment.id)],
+    #             'auto_delete': False,
+    #         }
+    #         mail = request.env['mail.mail'].sudo().create(mail_values)
+    #         mail.sudo().send(auto_commit=True)
+    #         _logger.info(
+    #             'Risk report email sent to %s (cc intake@hongyijig.com) for lead %s',
+    #             lead.email_from, lead.id)
+    #     except Exception as e:
+    #         _logger.error(
+    #             'Failed to send risk report email for lead %s: %s',
+    #             lead.id, str(e))
+
     def _send_risk_report_email(self, lead, attachment):
-        """Email the Risk Exposure report to the lead's email_from, CC intake@hongyijig.com."""
+        """Email the Risk Exposure report to the lead."""
+
         try:
             if not attachment:
                 _logger.warning(
-                    'No attachment available, skipping email for lead %s', lead.id)
+                    "No attachment available, skipping email for lead %s", lead.id
+                )
                 return
+
             if not lead.email_from:
                 _logger.warning(
-                    'No email_from set, skipping email for lead %s', lead.id)
+                    "No recipient email available for lead %s", lead.id
+                )
                 return
+
+            # ----------------------------------------------------------
+            # Dynamic Observation
+            # ----------------------------------------------------------
+
+            if lead.x_high_risk_zones >= 3:
+                observation = f"""
+                <p style="font-size:14px;color:#1A1A1A;line-height:1.8;margin:0 0 16px 0;">
+                    I have looked at your inputs.
+                    <strong>{lead.x_high_risk_zones} of your 5 governance zones are rated HIGH</strong>
+                    - with
+                    <strong>{lead.x_business_at_stake or 'significant business value'}</strong>
+                    depending on this programme going right.
+                </p>
+                """
+
+            elif lead.x_high_risk_zones == 2:
+                observation = f"""
+                <p style="font-size:14px;color:#1A1A1A;line-height:1.8;margin:0 0 16px 0;">
+                    I have looked at your inputs.
+                    <strong>2 of your 5 governance zones are rated HIGH</strong>
+                    - with
+                    <strong>{lead.x_business_at_stake or 'significant business value'}</strong>
+                    depending on this programme going right.
+                </p>
+                """
+
+            elif lead.x_high_risk_zones == 1:
+                observation = """
+                <p style="font-size:14px;color:#1A1A1A;line-height:1.8;margin:0 0 16px 0;">
+                    I have looked at your inputs.
+                    <strong>1 of your 5 governance zones is rated HIGH.</strong>
+                    The report details what this means before execution begins.
+                </p>
+                """
+
+            else:
+                observation = """
+                <p style="font-size:14px;color:#1A1A1A;line-height:1.8;margin:0 0 16px 0;">
+                    I have looked at your inputs.
+                    Your programme is in a strong governance position across all 5
+                    governance zones. The report details how to protect this as
+                    execution begins.
+                </p>
+                """
+
+            # ----------------------------------------------------------
+            # Consequence
+            # ----------------------------------------------------------
+
+            consequence = ""
+
+            if lead.x_high_risk_zones >= 1:
+                consequence = """
+                <p style="font-size:14px;color:#1A1A1A;line-height:1.8;margin:0 0 16px 0;">
+                    The gaps are still closable. But not after tooling begins.
+                </p>
+                """
+
+            # ----------------------------------------------------------
+            # HTML Body
+            # ----------------------------------------------------------
+
+            body_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta charset="utf-8">
+    </head>
+
+    <body style="margin:0;padding:0;background:#ffffff;font-family:Arial,Helvetica,sans-serif;color:#1A1A1A;">
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="padding:36px 0;background:#ffffff;">
+    <tr>
+    <td align="center">
+
+    <table width="520" cellpadding="0" cellspacing="0" style="width:100%;max-width:520px;">
+
+    <tr>
+    <td>
+
+    <p style="font-size:14px;line-height:1.7;">
+    Dear {lead.contact_name or lead.partner_name or 'there'} Ji,
+    </p>
+
+    <p style="font-size:14px;line-height:1.8;">
+    Your report is attached.
+    </p>
+
+    {observation}
+
+    {consequence}
+
+    <p style="font-size:14px;line-height:1.8;">
+    If you want to talk through what this means specifically for your programme –
+    20 minutes, no pitch – reach me directly.
+    </p>
+
+    <p style="font-size:15px;font-weight:bold;">
+    +91 88839 12346
+    </p>
+
+    <hr style="border:none;border-top:1px solid #EBEBEB;">
+
+    <table cellpadding="0" cellspacing="0">
+    <tr>
+
+    <td style="padding-right:15px;">
+    <img src="https://www.hongyijig.com/media/8dfc8d2b-jagdip-khattar.jpg"
+    width="52"
+    height="52"
+    style="border-radius:50%;display:block;">
+    </td>
+
+    <td>
+
+    <p style="margin:0;font-size:14px;font-weight:bold;">
+    Jagdip Khattar
+    </p>
+
+    <p style="margin:2px 0;font-size:12px;">
+    Founder, Hongyi JIG Rapid Technologies
+    </p>
+
+    <p style="margin:2px 0;font-size:12px;">
+    <a href="https://www.hongyijig.com">
+    www.hongyijig.com
+    </a>
+    </p>
+
+    </td>
+
+    </tr>
+    </table>
+
+    <p style="font-size:10px;color:#999999;margin-top:25px;">
+    If the PDF report is not in your inbox, please check your spam folder.<br/>
+    Subject line: <strong>Your Risk Report - Hongyi JIG</strong>
+    </p>
+
+    </td>
+    </tr>
+    </table>
+
+    </td>
+    </tr>
+    </table>
+
+    </body>
+    </html>
+    """
+
+            # ----------------------------------------------------------
+            # Plain Text Body (for chatter)
+            # ----------------------------------------------------------
+
+            body = (
+                "Your Risk Exposure Report is attached.\n\n"
+                "If you have any questions, please contact us.\n\n"
+                "Hongyi JIG Rapid Technologies"
+            )
+
+            sender = (
+                    request.env.user.email
+                    or request.env.company.email
+                    or "noreply@hongyijig.com"
+            )
 
             mail_values = {
                 'subject': 'Your Risk Exposure Report - %s' % (lead.partner_name or lead.name),
-                'email_from': request.env.user.email or 'noreply@hongyijig.com',
+                'email_from': 'Jagdip Khattar <jagdipkhattar@hongyijig.com>',
                 'email_to': lead.email_from,
                 'email_cc': 'intake@hongyijig.com',
-                'body_html': """
-                    <p>Dear %s,</p>
-                    <p>Thank you for using our Risk Calculator. Please find your
-                    Risk Exposure Report attached.</p>
-                    <p>Our team will be in touch shortly to discuss the results.</p>
-                """ % (lead.contact_name or 'Sir/Madam'),
+                'body': body,
+                'body_html': body_html,
                 'attachment_ids': [(4, attachment.id)],
                 'auto_delete': False,
             }
-            mail = request.env['mail.mail'].sudo().create(mail_values)
+
+            mail = request.env["mail.mail"].sudo().create(mail_values)
             mail.sudo().send(auto_commit=True)
+
             _logger.info(
-                'Risk report email sent to %s (cc intake@hongyijig.com) for lead %s',
-                lead.email_from, lead.id)
-        except Exception as e:
-            _logger.error(
-                'Failed to send risk report email for lead %s: %s',
-                lead.id, str(e))
+                "Risk report email sent to %s for lead %s",
+                lead.email_from,
+                lead.id,
+            )
+
+        except Exception:
+            _logger.exception(
+                "Failed to send risk report email for lead %s",
+                lead.id,
+            )
