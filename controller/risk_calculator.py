@@ -127,18 +127,58 @@ class RiskCalculatorController(http.Controller):
                 lead.id, str(e))
             return False
 
-    def _send_risk_report_email(self, lead):
+    def _send_risk_report_email(self, lead, attachment):
+        """Render the mail template, log it in the chatter, and send the
+        email with the risk report attached. Never break lead creation."""
         try:
-            if not lead.email_from:
-                _logger.warning('No recipient email for lead %s', lead.id)
+            if not attachment:
+                _logger.warning(
+                    'No attachment available, skipping email for lead %s', lead.id)
                 return
+            if not lead.email_from:
+                _logger.warning(
+                    'No recipient email for lead %s', lead.id)
+                return
+
             template = request.env.ref(
-                'new_hongyijig_custom.mail_template_risk_exposure_report')
-            lead.sudo().message_post_with_template(
-                template.id,
-                composition_mode='comment',
+                'new_hongyijig_custom.mail_template_risk_exposure_report').sudo()
+
+            # ── Render subject & body from the XML template ────────────
+            rendered_subject = template._render_field(
+                'subject', [lead.id])[lead.id]
+            rendered_body = template._render_field(
+                'body_html', [lead.id], post_process=True)[lead.id]
+
+            # ── 1. Log note in chatter (always visible) ────────────────
+            lead.sudo().message_post(
+                body='Risk report emailed to %s (cc: intake@hongyijig.com)' % lead.email_from,
+                subject=rendered_subject,
+                attachment_ids=[attachment.id],
             )
-            _logger.info('Risk report email sent to %s for lead %s',
-                         lead.email_from, lead.id)
+
+            # ── 2. Actually send the email ──────────────────────────────
+            mail_values = {
+                'subject': rendered_subject,
+                'email_from': 'jagdipkhattar@hongyijig.com',
+                'email_to': lead.email_from,
+                'email_cc': 'intake@hongyijig.com',
+                'body_html': rendered_body,
+                'attachment_ids': [(4, attachment.id)],
+                'auto_delete': False,
+                'model': 'crm.lead',
+                'res_id': lead.id,
+            }
+            mail = request.env['mail.mail'].sudo().create(mail_values)
+            mail.sudo().send(auto_commit=True)
+
+            if mail.state == 'exception':
+                _logger.error(
+                    'Mail send failed for lead %s: %s', lead.id, mail.failure_reason)
+            else:
+                _logger.info(
+                    'Risk report email sent to %s for lead %s (state=%s)',
+                    lead.email_from, lead.id, mail.state)
+
         except Exception:
-            _logger.exception('Failed to send risk report email for lead %s', lead.id)
+            _logger.exception(
+                'Failed to send risk report email for lead %s', lead.id)
