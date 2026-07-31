@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 from odoo import http
@@ -36,56 +37,57 @@ class RiskCalculatorController(http.Controller):
                 # Basic fields
                 'name': '[Risk Calculator] {}'.format(
                     data.get('company', 'Unknown')),
-                'partner_name':  data.get('company', ''),
-                'contact_name':  data.get('name', ''),
-                'email_from':    data.get('email', ''),
-                'mobile':        data.get('whatsapp', ''),
-                'stage_id':      pre_fd.id,
-                'tag_ids':       [(4, tag.id)],
-                'priority':      '1',
+                'partner_name': data.get('company', ''),
+                'contact_name': data.get('name', ''),
+                'email_from': data.get('email', ''),
+                'mobile': data.get('whatsapp', ''),
+                'stage_id': pre_fd.id,
+                'tag_ids': [(4, tag.id)],
+                'priority': '1',
 
                 # Business stake
-                'x_price_per_unit':    float(data.get('price_per_unit', 0) or 0),
-                'x_year1_units':       int(data.get('year1_units', 0) or 0),
-                'x_year2_units':       int(data.get('year2_units', 0) or 0),
-                'x_year3_units':       int(data.get('year3_units', 0) or 0),
-                'x_market_life':       data.get('market_life', ''),
+                'x_price_per_unit': float(data.get('price_per_unit', 0) or 0),
+                'x_year1_units': int(data.get('year1_units', 0) or 0),
+                'x_year2_units': int(data.get('year2_units', 0) or 0),
+                'x_year3_units': int(data.get('year3_units', 0) or 0),
+                'x_market_life': data.get('market_life', ''),
                 'x_business_at_stake': data.get('business_at_stake', ''),
 
                 # Project context
-                'x_project_type':  data.get('q1', ''),
-                'x_industry':      data.get('q2', ''),
-                'x_visitor_role':  data.get('visitor_role', '') or data.get('q3', ''),
-                'description':     'Role: {}'.format(data.get('role', '')),
+                'x_project_type': data.get('q1', ''),
+                'x_industry': data.get('q2', ''),
+                'x_visitor_role': data.get('visitor_role', '') or data.get('q3', ''),
+                'description': 'Role: {}'.format(data.get('role', '')),
 
                 # Governance questions
-                'x_design_team':         data.get('q7', ''),
-                'x_design_check':        data.get('q8', ''),
+                'x_design_team': data.get('q7', ''),
+                'x_design_check': data.get('q8', ''),
                 'x_toolmaker_selection': data.get('q9', ''),
-                'x_quality_ownership':   data.get('q10', ''),
-                'x_programme_owner':     data.get('q11', ''),
+                'x_quality_ownership': data.get('q10', ''),
+                'x_programme_owner': data.get('q11', ''),
 
                 # Delivery risk
-                'x_launch_deadline':  data.get('q12', ''),
-                'x_delay_impact':     data.get('q13', ''),
-                'x_mould_count':      data.get('q14', ''),
-                'x_trial_budget':     data.get('q15', ''),
+                'x_launch_deadline': data.get('q12', ''),
+                'x_delay_impact': data.get('q13', ''),
+                'x_mould_count': data.get('q14', ''),
+                'x_trial_budget': data.get('q15', ''),
                 'x_quality_standard': data.get('q16', ''),
 
                 # Risk zones — lowercase to match Selection field values
-                'x_risk_design':   rl(data.get('design_risk')),
-                'x_risk_cost':     rl(data.get('cost_risk')),
+                'x_risk_design': rl(data.get('design_risk')),
+                'x_risk_cost': rl(data.get('cost_risk')),
                 'x_risk_supplier': rl(data.get('supplier_risk')),
-                'x_risk_quality':  rl(data.get('quality_risk')),
+                'x_risk_quality': rl(data.get('quality_risk')),
                 'x_risk_delivery': rl(data.get('delivery_risk')),
 
                 # Summary
-                'x_high_risk_zones':  int(data.get('high_risk_zones', 0) or 0),
+                'x_high_risk_zones': int(data.get('high_risk_zones', 0) or 0),
                 'x_wants_discussion': data.get('wants_discussion', '') == 'Yes',
             })
 
             _logger.info('Risk Calculator lead created: %s', lead.id)
-            self._attach_risk_report(lead)
+            attachment = self._attach_risk_report(lead)
+            self._send_risk_report_email(lead, attachment)
             return {
                 'success': True,
                 'lead_id': lead.id,
@@ -108,7 +110,7 @@ class RiskCalculatorController(http.Controller):
             pdf_content, _report_type = report.sudo()._render_qweb_pdf(
                 report.id, [lead.id])
 
-            request.env['ir.attachment'].sudo().create({
+            attachment = request.env['ir.attachment'].sudo().create({
                 'name': 'Risk Exposure Report - %s.pdf' % (lead.name or lead.id),
                 'type': 'binary',
                 'datas': base64.b64encode(pdf_content),
@@ -118,8 +120,45 @@ class RiskCalculatorController(http.Controller):
             })
             _logger.info(
                 'Risk Exposure report attached to lead %s', lead.id)
+            return attachment
         except Exception as e:
-            # Don't let a report-rendering failure kill lead creation
             _logger.error(
                 'Failed to attach Risk Exposure report to lead %s: %s',
+                lead.id, str(e))
+            return False
+
+    def _send_risk_report_email(self, lead, attachment):
+        """Email the Risk Exposure report to the lead's email_from, CC intake@hongyijig.com."""
+        try:
+            if not attachment:
+                _logger.warning(
+                    'No attachment available, skipping email for lead %s', lead.id)
+                return
+            if not lead.email_from:
+                _logger.warning(
+                    'No email_from set, skipping email for lead %s', lead.id)
+                return
+
+            mail_values = {
+                'subject': 'Your Risk Exposure Report - %s' % (lead.partner_name or lead.name),
+                'email_from': request.env.company.email or 'noreply@hongyijig.com',
+                'email_to': lead.email_from,
+                'email_cc': 'intake@hongyijig.com',
+                'body_html': """
+                    <p>Dear %s,</p>
+                    <p>Thank you for using our Risk Calculator. Please find your
+                    Risk Exposure Report attached.</p>
+                    <p>Our team will be in touch shortly to discuss the results.</p>
+                """ % (lead.contact_name or 'Sir/Madam'),
+                'attachment_ids': [(4, attachment.id)],
+                'auto_delete': False,
+            }
+            mail = request.env['mail.mail'].sudo().create(mail_values)
+            mail.send()
+            _logger.info(
+                'Risk report email sent to %s (cc intake@hongyijig.com) for lead %s',
+                lead.email_from, lead.id)
+        except Exception as e:
+            _logger.error(
+                'Failed to send risk report email for lead %s: %s',
                 lead.id, str(e))
