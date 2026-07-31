@@ -330,44 +330,26 @@ class RiskCalculatorController(http.Controller):
     </html>
     """
 
-            # ----------------------------------------------------------
-            # Plain Text Body (for chatter)
-            # ----------------------------------------------------------
-
             body = (
                 "Your Risk Exposure Report is attached.\n\n"
                 "If you have any questions, please contact us.\n\n"
-                "Hongyi JIG Rapid Technologies"
-            )
-
-            sender = (
-                    request.env.user.email
-                    or request.env.company.email
-                    or "noreply@hongyijig.com"
-            )
-
+                "Hongyi JIG Rapid Technologies")
             mail_values = {
                 'subject': 'Your Risk Exposure Report - %s' % (lead.partner_name or lead.name),
-                'email_from': 'Jagdip Khattar <jagdipkhattar@hongyijig.com>',
+                'email_from': 'jagdipkhattar@hongyijig.com',
                 'email_to': lead.email_from,
                 'email_cc': 'intake@hongyijig.com',
                 'body': body,
                 'body_html': body_html,
                 'attachment_ids': [(4, attachment.id)],
-                'auto_delete': False,
-            }
+                'auto_delete': False}
 
             mail = request.env["mail.mail"].sudo().create(mail_values)
             mail.sudo().send(auto_commit=True)
-
             _logger.info(
                 "Risk report email sent to %s for lead %s",
-                lead.email_from,
-                lead.id,
-            )
-
+                lead.email_from, lead.id, )
         except Exception:
             _logger.exception(
                 "Failed to send risk report email for lead %s",
-                lead.id,
-            )
+                lead.id, )
