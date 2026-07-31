@@ -85,7 +85,7 @@ class RiskCalculatorController(http.Controller):
             })
 
             _logger.info('Risk Calculator lead created: %s', lead.id)
-
+            self._attach_risk_report(lead)
             return {
                 'success': True,
                 'lead_id': lead.id,
@@ -98,3 +98,28 @@ class RiskCalculatorController(http.Controller):
                 'success': False,
                 'error': str(e),
             }
+
+    def _attach_risk_report(self, lead):
+        """Render the Risk Exposure qweb report and attach it as a PDF
+        on the crm.lead record. Failure here must never break lead creation."""
+        try:
+            report = request.env.ref(
+                'new_hongyijig_custom.report_risk_exposure')
+            pdf_content, _report_type = report.sudo()._render_qweb_pdf(
+                report.id, [lead.id])
+
+            request.env['ir.attachment'].sudo().create({
+                'name': 'Risk Exposure Report - %s.pdf' % (lead.name or lead.id),
+                'type': 'binary',
+                'datas': base64.b64encode(pdf_content),
+                'res_model': 'crm.lead',
+                'res_id': lead.id,
+                'mimetype': 'application/pdf',
+            })
+            _logger.info(
+                'Risk Exposure report attached to lead %s', lead.id)
+        except Exception as e:
+            # Don't let a report-rendering failure kill lead creation
+            _logger.error(
+                'Failed to attach Risk Exposure report to lead %s: %s',
+                lead.id, str(e))
