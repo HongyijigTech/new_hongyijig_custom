@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <record id="mail_template_risk_exposure_report" model="mail.template">
+    <field name="name">Risk Exposure Report - Customer Email</field>
+    <field name="model_id" ref="crm.model_crm_lead"/>
+    <field name="subject">Your Risk Report - Hongyi JIG</field>
+    <field name="email_from">jagdipkhattar@hongyijig.com</field>
+    <field name="email_to">{{ object.email_from or '' }}</field>
+    <field name="email_cc">intake@hongyijig.com</field>
+    <field name="body_html">
+<![CDATA[
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+</head>
+<body style="margin:0;padding:0;background:#ffffff;font-family:Arial,Helvetica,sans-serif;color:#1A1A1A;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;padding:36px 0;">
+<tr><td align="center">
+<table width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;">
+
+<tr>
+<td style="padding:0 0 20px 0;">
+<p style="font-size:14px;color:#1A1A1A;margin:0;line-height:1.7;">
+Dear {{ object.contact_name or object.partner_name or 'there' }} Ji,
+</p>
+</td>
+</tr>
+
+<tr>
+<td style="padding:0 0 16px 0;">
+<p style="font-size:14px;color:#1A1A1A;margin:0;line-height:1.8;">
+Your report is attached.
+</p>
+</td>
+</tr>
+
+<tr>
+<td style="padding:0 0 16px 0;">
+{% if object.x_high_risk_zones >= 3 %}
+<p style="font-size:14px;color:#1A1A1A;margin:0;line-height:1.8;">
+I have looked at your inputs.
+<strong>{{ object.x_high_risk_zones }} of your 5 governance zones are rated HIGH</strong>
+- with <strong>{{ object.x_business_at_stake or 'significant business value' }}</strong>
+depending on this programme going right.
+</p>
+{% elif object.x_high_risk_zones == 2 %}
+<p style="font-size:14px;color:#1A1A1A;margin:0;line-height:1.8;">
+I have looked at your inputs.
+<strong>2 of your 5 governance zones are rated HIGH</strong>
+- with <strong>{{ object.x_business_at_stake or 'significant business value' }}</strong>
+depending on this programme going right.
+</p>
+{% elif object.x_high_risk_zones == 1 %}
+<p style="font-size:14px;color:#1A1A1A;margin:0;line-height:1.8;">
+I have looked at your inputs.
+<strong>1 of your 5 governance zones is rated HIGH.</strong>
+The report details what this means before execution begins.
+</p>
+{% else %}
+<p style="font-size:14px;color:#1A1A1A;margin:0;line-height:1.8;">
+I have looked at your inputs.
+Your programme is in a strong governance position across all 5
+governance zones. The report details how to protect this as
+execution begins.
+</p>
+{% endif %}
+</td>
+</tr>
+
+{% if object.x_high_risk_zones >= 1 %}
+<tr>
+<td style="padding:0 0 16px 0;">
+<p style="font-size:14px;color:#1A1A1A;margin:0;line-height:1.8;">
+The gaps are still closable. But not after tooling begins.
+</p>
+</td>
+</tr>
+{% endif %}
+
+<tr>
+<td style="padding:0 0 32px 0;">
+<p style="font-size:14px;color:#1A1A1A;margin:0;line-height:1.8;">
+If you want to talk through what this means specifically for your
+programme - 20 minutes, no pitch - reach me directly.
+</p>
+</td>
+</tr>
+
+<tr>
+<td style="padding:0 0 32px 0;">
+<p style="font-size:15px;font-weight:700;color:#1A1A1A;margin:0;">+91 88839 12346</p>
+</td>
+</tr>
+
+<tr>
+<td style="padding:0 0 20px 0;">
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="border-top:1px solid #EBEBEB;height:1px;">&nbsp;</td></tr>
+</table>
+</td>
+</tr>
+
+<tr>
+<td style="padding:0 0 6px 0;">
+<table cellpadding="0" cellspacing="0">
+<tr>
+<td style="vertical-align:middle;padding-right:14px;">
+<img src="https://www.hongyijig.com/media/8dfc8d2b-jagdip-khattar.jpg"
+width="52" height="52"
+style="width:52px;height:52px;border-radius:50%;border:2px solid #FF8C42;object-fit:cover;display:block;"
+alt="Jagdip Khattar"/>
+</td>
+<td style="vertical-align:middle;">
+<p style="font-size:14px;font-weight:700;color:#0A0A0A;margin:0 0 2px 0;">Jagdip Khattar</p>
+<p style="font-size:12px;color:#555555;margin:0 0 1px 0;">Founder, Hongyi JIG Rapid Technologies</p>
+<p style="font-size:12px;color:#999999;margin:0;">
+<a href="https://www.hongyijig.com" style="color:#999999;text-decoration:none;">www.hongyijig.com</a>
+</p>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+
+<tr>
+<td style="padding:24px 0 0 0;">
+<p style="font-size:10px;color:#CCCCCC;margin:0;line-height:1.6;">
+If the PDF report is not in your inbox, please check your spam folder.
+Subject line: Your Risk Report - Hongyi JIG
+</p>
+</td>
+</tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>
+]]>
+    </field>
+    <field name="report_template_ids" eval="[(6, 0, [ref('new_hongyijig_custom.report_risk_exposure')])]"/>
+<!--    <field name="report_name">Risk Exposure Report - {{ object.partner_name or object.name }}</field>-->
+    <field name="auto_delete" eval="True"/>
+</record>
+</odoo>
