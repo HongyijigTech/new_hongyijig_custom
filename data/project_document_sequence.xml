@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data noupdate="1">
+        <record id="seq_hjig_project_document" model="ir.sequence">
+            <field name="name">HJIG Controlled Project Document</field>
+            <field name="code">hjig.project.document</field>
+            <field name="prefix">HJ-DOC/%(year)s/</field>
+            <field name="padding">4</field>
+            <field name="company_id" eval="False"/>
+        </record>
+    </data>
+</odoo>

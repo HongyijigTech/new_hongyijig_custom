@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_hjig_project_document_list" model="ir.ui.view">
+        <field name="name">hjig.project.document.list</field>
+        <field name="model">hjig.project.document</field>
+        <field name="arch" type="xml">
+            <list string="Controlled Documents" default_order="project_id, register_id desc"
+                  decoration-success="status == 'approved'"
+                  decoration-muted="status == 'superseded'">
+                <field name="register_id"/>
+                <field name="project_id"/>
+                <field name="project_code"/>
+                <field name="register_type"/>
+                <field name="document_class"/>
+                <field name="title"/>
+                <field name="revision"/>
+                <field name="status"/>
+                <field name="owner_id"/>
+                <field name="effective_date" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_project_document_form" model="ir.ui.view">
+        <field name="name">hjig.project.document.form</field>
+        <field name="model">hjig.project.document</field>
+        <field name="arch" type="xml">
+            <form string="Controlled Project Document">
+                <header>
+                    <button name="action_submit_review" string="Submit for Review" type="object"
+                            class="btn-primary" invisible="status != 'draft'"/>
+                    <button name="action_approve" string="Approve" type="object"
+                            class="btn-primary" invisible="status != 'review'"
+                            groups="new_hongyijig_custom.group_hjig_document_controller"/>
+                    <field name="status" widget="statusbar" statusbar_visible="draft,review,approved,superseded"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <label for="register_id"/>
+                        <h1><field name="register_id"/></h1>
+                        <h2><field name="title" placeholder="Document title"/></h2>
+                    </div>
+                    <group>
+                        <group string="Identity">
+                            <field name="project_id" readonly="status in ['approved', 'superseded']"/>
+                            <field name="project_code"/>
+                            <field name="register_type" readonly="status in ['approved', 'superseded']"/>
+                            <field name="document_class" readonly="status in ['approved', 'superseded']"/>
+                            <field name="document_type" readonly="status in ['approved', 'superseded']"/>
+                            <field name="external_document_number" readonly="status in ['approved', 'superseded']"/>
+                            <field name="revision" readonly="status in ['approved', 'superseded']"/>
+                        </group>
+                        <group string="Control">
+                            <field name="owner_id" readonly="status in ['approved', 'superseded']"/>
+                            <field name="approver_id" readonly="status in ['approved', 'superseded']"/>
+                            <field name="effective_date" readonly="status in ['approved', 'superseded']"/>
+                            <field name="supersedes_id" domain="[('project_id', '=', project_id), ('status', '=', 'approved')]"
+                                   readonly="status in ['approved', 'superseded']"/>
+                            <field name="superseded_by_id" invisible="not superseded_by_id"/>
+                            <field name="ecn_reference" readonly="status in ['approved', 'superseded']"/>
+                        </group>
+                    </group>
+                    <group string="Traceability">
+                        <field name="drive_url" widget="url" readonly="status in ['approved', 'superseded']"/>
+                        <field name="sor_reference" readonly="status in ['approved', 'superseded']"/>
+                        <field name="gate_reference" readonly="status in ['approved', 'superseded']"/>
+                    </group>
+                    <group string="Notes">
+                        <field name="notes" nolabel="1" readonly="status in ['approved', 'superseded']"/>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hjig_project_document_search" model="ir.ui.view">
+        <field name="name">hjig.project.document.search</field>
+        <field name="model">hjig.project.document</field>
+        <field name="arch" type="xml">
+            <search string="Controlled Documents">
+                <field name="register_id"/>
+                <field name="project_id"/>
+                <field name="project_code"/>
+                <field name="title"/>
+                <field name="external_document_number"/>
+                <filter name="approved" string="Approved" domain="[('status', '=', 'approved')]"/>
+                <filter name="superseded" string="Superseded" domain="[('status', '=', 'superseded')]"/>
+                <group>
+                    <filter name="group_project" string="Project" context="{'group_by': 'project_id'}"/>
+                    <filter name="group_register" string="Register" context="{'group_by': 'register_type'}"/>
+                    <filter name="group_classification" string="Classification" context="{'group_by': 'document_class'}"/>
+                    <filter name="group_status" string="Status" context="{'group_by': 'status'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_hjig_project_document_all" model="ir.actions.act_window">
+        <field name="name">Controlled Documents</field>
+        <field name="res_model">hjig.project.document</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_hjig_project_document_search"/>
+    </record>
+
+    <record id="action_hjig_customer_documents" model="ir.actions.act_window">
+        <field name="name">Customer Documents</field>
+        <field name="res_model">hjig.project.document</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('register_type', '=', 'customer')]</field>
+        <field name="context">{'default_register_type': 'customer'}</field>
+    </record>
+
+    <record id="action_hjig_programme_documents" model="ir.actions.act_window">
+        <field name="name">Programme / Internal Documents</field>
+        <field name="res_model">hjig.project.document</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('register_type', '=', 'programme_internal')]</field>
+        <field name="context">{'default_register_type': 'programme_internal'}</field>
+    </record>
+
+    <menuitem id="menu_hjig_document_control" name="Document Control"
+              parent="project.menu_main_pm" sequence="85"
+              groups="project.group_project_user"/>
+    <menuitem id="menu_hjig_customer_documents" name="Customer Documents"
+              parent="menu_hjig_document_control" action="action_hjig_customer_documents" sequence="10"/>
+    <menuitem id="menu_hjig_programme_documents" name="Programme / Internal Documents"
+              parent="menu_hjig_document_control" action="action_hjig_programme_documents" sequence="20"/>
+
+    <record id="view_project_form_hjig_document_control" model="ir.ui.view">
+        <field name="name">project.project.form.hjig.document.control</field>
+        <field name="model">project.project</field>
+        <field name="inherit_id" ref="project.edit_project"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_open_customer_documents" type="object" class="oe_stat_button" icon="fa-folder-open">
+                    <div class="o_stat_info">
+                        <span class="o_stat_text">Customer Docs</span>
+                    </div>
+                </button>
+                <button name="action_open_programme_documents" type="object" class="oe_stat_button" icon="fa-folder-open">
+                    <div class="o_stat_info">
+                        <span class="o_stat_text">Programme Docs</span>
+                    </div>
+                </button>
+            </xpath>
+            <xpath expr="//sheet/notebook" position="inside">
+                <page string="Document Control" name="hjig_document_control">
+                    <group>
+                        <group string="Project Governance">
+                            <field name="hjig_project_record_type"/>
+                            <field name="x_project_code"
+                                   placeholder="HJ-LGC-2026-0001"
+                                   readonly="hjig_document_count &gt; 0"/>
+                        </group>
+                        <group string="Register Summary">
+                            <field name="hjig_document_count" readonly="1"/>
+                        </group>
+                    </group>
+                    <field name="hjig_document_ids" context="{'default_project_id': id}">
+                        <list editable="bottom" create="false" delete="false">
+                            <field name="register_id"/>
+                            <field name="register_type"/>
+                            <field name="document_class"/>
+                            <field name="title"/>
+                            <field name="revision"/>
+                            <field name="status"/>
+                            <field name="owner_id"/>
+                        </list>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

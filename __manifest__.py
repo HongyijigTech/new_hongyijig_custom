@@ -2,7 +2,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 {
     'name': 'HongyiJigTechNew',
-    'version': '1.4',
+    'version': '1.5',
     'summary': 'Hongyijig Tech New',
     'sequence': 10,
     'description': """
@@ -11,10 +11,14 @@ Hongyijig Tech
     """,
     'category': 'Hongyijig Custom New',
     'website': 'https://www.hongyijig.com/',
-    'depends': ['base', 'crm', 'contacts','sale_crm'],
-    'data': ['views/crm_lead.xml',
+    'depends': ['base', 'crm', 'contacts', 'sale_crm', 'project'],
+    'data': ['security/security.xml',
+             'security/ir.model.access.csv',
+             'data/project_document_sequence.xml',
+             'views/crm_lead.xml',
              'views/risk_Report_temp.xml',
-             'views/email_template.xml'],
+             'views/email_template.xml',
+             'views/project_document_views.xml'],
     'installable': True,
     'application': True,
     'assets': {},

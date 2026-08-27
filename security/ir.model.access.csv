@@ -1,0 +1,4 @@
+"id","name","model_id:id","group_id:id","perm_read","perm_write","perm_create","perm_unlink"
+"access_hjig_project_document_user","hjig.project.document user","model_hjig_project_document","project.group_project_user",1,1,1,0
+"access_hjig_project_document_manager","hjig.project.document manager","model_hjig_project_document","project.group_project_manager",1,1,1,1
+"access_hjig_project_document_controller","hjig.project.document controller","model_hjig_project_document","new_hongyijig_custom.group_hjig_document_controller",1,1,1,1

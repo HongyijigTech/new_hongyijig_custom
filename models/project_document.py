@@ -1,0 +1,321 @@
+# -*- coding: utf-8 -*-
+import re
+
+from odoo import _, api, fields, models
+from odoo.exceptions import UserError, ValidationError
+
+
+PROJECT_CODE_PATTERN = re.compile(r"^HJ-[A-Z0-9]{2,6}-\d{4}-\d{4}$")
+
+
+class ProjectProject(models.Model):
+    _inherit = "project.project"
+
+    # This field already exists as a manual field in production. Defining it in the
+    # governed module makes the rule portable to staging and future databases while
+    # retaining the existing production column and technical name.
+    x_project_code = fields.Char(
+        string="Project Code",
+        copy=False,
+        index=True,
+        tracking=True,
+        help="Stable customer-project identifier. Format: HJ-PROGRAMME-YYYY-NNNN.",
+    )
+    hjig_project_record_type = fields.Selection(
+        [
+            ("unclassified", "Unclassified / Legacy"),
+            ("programme_template", "Programme Template"),
+            ("test", "Test / Validation"),
+            ("customer", "Customer Project"),
+        ],
+        string="Project Record Type",
+        default="unclassified",
+        required=True,
+        tracking=True,
+        copy=False,
+    )
+    hjig_document_ids = fields.One2many(
+        "hjig.project.document",
+        "project_id",
+        string="Controlled Documents",
+    )
+    hjig_document_count = fields.Integer(
+        compute="_compute_hjig_document_count",
+        string="Controlled Documents",
+    )
+
+    _x_project_code_unique = models.Constraint(
+        "UNIQUE(x_project_code)",
+        "Project Code must be unique.",
+    )
+
+    @api.depends("hjig_document_ids")
+    def _compute_hjig_document_count(self):
+        for project in self:
+            project.hjig_document_count = self.env["hjig.project.document"].search_count([
+                ("project_id", "=", project.id),
+            ])
+
+    @api.constrains("x_project_code", "hjig_project_record_type")
+    def _check_project_code_governance(self):
+        for project in self:
+            code = (project.x_project_code or "").strip().upper()
+            if project.hjig_project_record_type == "customer" and not code:
+                raise ValidationError(_("A Customer Project must have a Project Code."))
+            if code and not PROJECT_CODE_PATTERN.fullmatch(code):
+                raise ValidationError(
+                    _("Project Code must use the format HJ-PROGRAMME-YYYY-NNNN, for example HJ-LGC-2026-0001.")
+                )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if vals.get("x_project_code"):
+                vals["x_project_code"] = vals["x_project_code"].strip().upper()
+        return super().create(vals_list)
+
+    def write(self, vals):
+        if vals.get("x_project_code"):
+            vals["x_project_code"] = vals["x_project_code"].strip().upper()
+        if "x_project_code" in vals:
+            new_code = vals.get("x_project_code") or False
+            for project in self:
+                if project.x_project_code != new_code and project.hjig_document_ids:
+                    raise ValidationError(
+                        _("Project Code cannot be changed after controlled documents exist. Create an approved correction instead.")
+                    )
+        return super().write(vals)
+
+    def action_open_customer_documents(self):
+        self.ensure_one()
+        return self._hjig_document_action("customer")
+
+    def action_open_programme_documents(self):
+        self.ensure_one()
+        return self._hjig_document_action("programme_internal")
+
+    def _hjig_document_action(self, register_type):
+        action = self.env["ir.actions.actions"]._for_xml_id(
+            "new_hongyijig_custom.action_hjig_project_document_all"
+        )
+        action.update({
+            "domain": [("project_id", "=", self.id), ("register_type", "=", register_type)],
+            "context": {
+                "default_project_id": self.id,
+                "default_register_type": register_type,
+            },
+        })
+        return action
+
+
+class HjigProjectDocument(models.Model):
+    _name = "hjig.project.document"
+    _description = "Controlled Project Document Register"
+    _inherit = ["mail.thread", "mail.activity.mixin"]
+    _order = "project_id, register_id desc"
+    _rec_name = "register_id"
+
+    register_id = fields.Char(
+        string="Register ID",
+        required=True,
+        readonly=True,
+        copy=False,
+        default=lambda self: _("New"),
+        index=True,
+        tracking=True,
+    )
+    project_id = fields.Many2one(
+        "project.project",
+        string="Project",
+        required=True,
+        ondelete="restrict",
+        index=True,
+        tracking=True,
+    )
+    project_code = fields.Char(
+        related="project_id.x_project_code",
+        string="Project Code",
+        store=True,
+        readonly=True,
+        index=True,
+    )
+    register_type = fields.Selection(
+        [
+            ("customer", "Customer Documents"),
+            ("programme_internal", "Programme / Internal Documents"),
+        ],
+        required=True,
+        index=True,
+        tracking=True,
+    )
+    document_class = fields.Selection(
+        [
+            ("master_reference", "Master / Reference"),
+            ("customer_controlled", "Customer-Controlled"),
+            ("project_working", "Project Working Document"),
+            ("evidence", "Evidence"),
+            ("approved_deliverable", "Approved Deliverable"),
+        ],
+        string="Document Classification",
+        required=True,
+        index=True,
+        tracking=True,
+    )
+    title = fields.Char(required=True, tracking=True)
+    document_type = fields.Char(required=True, tracking=True)
+    external_document_number = fields.Char(string="Customer / External Document No.", tracking=True)
+    revision = fields.Char(required=True, tracking=True)
+    status = fields.Selection(
+        [
+            ("draft", "Draft"),
+            ("review", "Under Review"),
+            ("approved", "Approved"),
+            ("superseded", "Superseded"),
+        ],
+        default="draft",
+        required=True,
+        copy=False,
+        index=True,
+        tracking=True,
+    )
+    owner_id = fields.Many2one(
+        "res.users",
+        required=True,
+        default=lambda self: self.env.user,
+        tracking=True,
+    )
+    approver_id = fields.Many2one("res.users", tracking=True)
+    effective_date = fields.Date(tracking=True)
+    drive_url = fields.Char(string="Controlled Drive Link", required=True, tracking=True)
+    sor_reference = fields.Char(string="SOR Reference", tracking=True)
+    gate_reference = fields.Char(string="Gate Reference", tracking=True)
+    ecn_reference = fields.Char(string="ECN / Change Reference", tracking=True)
+    supersedes_id = fields.Many2one(
+        "hjig.project.document",
+        string="Supersedes",
+        ondelete="restrict",
+        tracking=True,
+    )
+    superseded_by_id = fields.Many2one(
+        "hjig.project.document",
+        string="Superseded By",
+        readonly=True,
+        copy=False,
+        ondelete="restrict",
+    )
+    notes = fields.Text()
+
+    _register_id_unique = models.Constraint(
+        "UNIQUE(register_id)",
+        "Register ID must be unique.",
+    )
+    _project_revision_unique = models.Constraint(
+        "UNIQUE(project_id, register_type, title, revision)",
+        "The same document title and revision already exists in this project register.",
+    )
+
+    _CONTROLLED_FIELDS = {
+        "register_id", "project_id", "register_type", "document_class", "title", "document_type",
+        "external_document_number", "revision", "owner_id", "approver_id",
+        "effective_date", "drive_url", "sor_reference", "gate_reference",
+        "ecn_reference", "supersedes_id", "superseded_by_id", "notes", "status",
+    }
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        sequence = self.env["ir.sequence"]
+        for vals in vals_list:
+            project = self.env["project.project"].browse(vals.get("project_id")).exists()
+            if not project or not project.x_project_code:
+                raise ValidationError(_("A controlled document requires a Project with a valid Project Code."))
+            if vals.get("register_id", _("New")) == _("New"):
+                vals["register_id"] = sequence.next_by_code("hjig.project.document") or _("New")
+        return super().create(vals_list)
+
+    @api.constrains("register_type", "document_class")
+    def _check_register_classification(self):
+        for document in self:
+            if document.register_type == "customer" and document.document_class in (
+                "master_reference", "project_working"
+            ):
+                raise ValidationError(
+                    _("Master/reference and project-working files cannot be placed in the Customer Document Register.")
+                )
+            if document.register_type == "programme_internal" and document.document_class == "customer_controlled":
+                raise ValidationError(
+                    _("Customer-controlled files must be placed in the Customer Document Register.")
+                )
+
+    @api.constrains("drive_url")
+    def _check_drive_url(self):
+        allowed_prefixes = (
+            "https://drive.google.com/",
+            "https://docs.google.com/",
+        )
+        for document in self:
+            if not (document.drive_url or "").strip().startswith(allowed_prefixes):
+                raise ValidationError(
+                    _("Controlled Drive Link must be a secure Google Drive or Google Docs URL.")
+                )
+
+    @api.constrains("supersedes_id", "project_id")
+    def _check_supersedes_same_project(self):
+        for document in self:
+            if document.supersedes_id and document.supersedes_id.project_id != document.project_id:
+                raise ValidationError(_("A document can only supersede another document in the same project."))
+            if document.supersedes_id == document:
+                raise ValidationError(_("A document cannot supersede itself."))
+            if document.supersedes_id and (
+                document.supersedes_id.register_type != document.register_type
+                or document.supersedes_id.title != document.title
+                or document.supersedes_id.document_type != document.document_type
+            ):
+                raise ValidationError(
+                    _("A new revision must keep the same register, title, and document type as the document it supersedes.")
+                )
+
+    def write(self, vals):
+        if not self.env.context.get("allow_document_supersede"):
+            changed = self._CONTROLLED_FIELDS.intersection(vals)
+            locked = self.filtered(lambda document: document.status in ("approved", "superseded"))
+            if changed and locked:
+                raise ValidationError(
+                    _("Approved or superseded documents are read-only. Create a new revision and use an ECN/change reference.")
+                )
+        return super().write(vals)
+
+    def unlink(self):
+        if any(document.status != "draft" for document in self):
+            raise UserError(_("Only Draft document-register entries may be deleted."))
+        return super().unlink()
+
+    def action_submit_review(self):
+        for document in self:
+            if document.status != "draft":
+                raise UserError(_("Only Draft documents can be submitted for review."))
+            document.status = "review"
+
+    def action_approve(self):
+        if not self.env.user.has_group("new_hongyijig_custom.group_hjig_document_controller"):
+            raise UserError(_("Only Founder/PMO Document Control approvers may approve controlled documents."))
+        for document in self:
+            if document.status != "review":
+                raise UserError(_("Only documents Under Review can be approved."))
+            if not document.approver_id:
+                raise ValidationError(_("Approver is required before approval."))
+            if document.approver_id == document.owner_id:
+                raise ValidationError(_("Document owner and approver must be different users."))
+            if document.approver_id != self.env.user:
+                raise ValidationError(_("Only the named Approver may approve this document."))
+            if not document.effective_date:
+                raise ValidationError(_("Effective Date is required before approval."))
+            if document.supersedes_id:
+                if document.supersedes_id.status != "approved":
+                    raise ValidationError(_("The superseded document must currently be Approved."))
+                if not document.ecn_reference:
+                    raise ValidationError(_("An ECN / Change Reference is required when superseding an approved document."))
+                document.supersedes_id.with_context(allow_document_supersede=True).write({
+                    "status": "superseded",
+                    "superseded_by_id": document.id,
+                })
+            document.status = "approved"
