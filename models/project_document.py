@@ -148,6 +148,22 @@ class HjigProjectDocument(models.Model):
         index=True,
         tracking=True,
     )
+    artifact_master_id = fields.Many2one(
+        "hjig.governance.artifact.master",
+        string="SOP / Form Master",
+        required=True,
+        ondelete="restrict",
+        index=True,
+        tracking=True,
+    )
+    stage_id = fields.Many2one(
+        "hjig.launchguard.stage",
+        string="LaunchGuard Stage",
+        required=True,
+        ondelete="restrict",
+        index=True,
+        tracking=True,
+    )
     document_class = fields.Selection(
         [
             ("master_reference", "Master / Reference"),
@@ -178,13 +194,36 @@ class HjigProjectDocument(models.Model):
         index=True,
         tracking=True,
     )
-    owner_id = fields.Many2one(
-        "res.users",
+    owner_designation_id = fields.Many2one(
+        "hjig.governance.designation",
+        string="Owner Designation",
         required=True,
-        default=lambda self: self.env.user,
+        ondelete="restrict",
         tracking=True,
     )
-    approver_id = fields.Many2one("res.users", tracking=True)
+    approver_designation_id = fields.Many2one(
+        "hjig.governance.designation",
+        string="Approver Designation",
+        required=True,
+        ondelete="restrict",
+        tracking=True,
+    )
+    owner_id = fields.Many2one(
+        "res.users",
+        string="Prepared / Submitted By",
+        readonly=True,
+        copy=False,
+        tracking=True,
+        help="Audit actor captured when the record is created or submitted. Governance ownership is controlled by designation.",
+    )
+    approver_id = fields.Many2one(
+        "res.users",
+        string="Approved By",
+        readonly=True,
+        copy=False,
+        tracking=True,
+        help="Audit actor captured on approval. Approval authority is controlled by designation.",
+    )
     effective_date = fields.Date(tracking=True)
     drive_url = fields.Char(string="Controlled Drive Link", required=True, tracking=True)
     sor_reference = fields.Char(string="SOR Reference", tracking=True)
@@ -215,8 +254,9 @@ class HjigProjectDocument(models.Model):
     )
 
     _CONTROLLED_FIELDS = {
-        "register_id", "project_id", "register_type", "document_class", "title", "document_type",
-        "external_document_number", "revision", "owner_id", "approver_id",
+        "register_id", "project_id", "artifact_master_id", "stage_id", "register_type",
+        "document_class", "title", "document_type", "external_document_number", "revision",
+        "owner_designation_id", "approver_designation_id", "owner_id", "approver_id",
         "effective_date", "drive_url", "sor_reference", "gate_reference",
         "ecn_reference", "supersedes_id", "superseded_by_id", "notes", "status",
     }
@@ -228,9 +268,51 @@ class HjigProjectDocument(models.Model):
             project = self.env["project.project"].browse(vals.get("project_id")).exists()
             if not project or not project.x_project_code:
                 raise ValidationError(_("A controlled document requires a Project with a valid Project Code."))
+            artifact = self.env["hjig.governance.artifact.master"].browse(
+                vals.get("artifact_master_id")
+            ).exists()
+            if not artifact:
+                raise ValidationError(_("A controlled document requires an SOP / Form Master."))
+            vals.setdefault("register_type", artifact.default_register_type)
+            vals.setdefault("document_class", artifact.default_document_class)
+            vals.setdefault("title", artifact.name)
+            artifact_labels = dict(
+                artifact._fields["artifact_type"]._description_selection(self.env)
+            )
+            vals.setdefault("document_type", artifact_labels.get(artifact.artifact_type))
+            vals.setdefault("owner_designation_id", artifact.owner_designation_id.id)
+            vals.setdefault("approver_designation_id", artifact.approver_designation_id.id)
+            vals.setdefault("owner_id", self.env.user.id)
+            vals["status"] = "draft"
             if vals.get("register_id", _("New")) == _("New"):
                 vals["register_id"] = sequence.next_by_code("hjig.project.document") or _("New")
         return super().create(vals_list)
+
+    @api.constrains(
+        "artifact_master_id",
+        "stage_id",
+        "register_type",
+        "document_class",
+        "owner_designation_id",
+        "approver_designation_id",
+    )
+    def _check_master_and_designation_governance(self):
+        for document in self:
+            artifact = document.artifact_master_id
+            if document.stage_id not in artifact.applicable_stage_ids:
+                raise ValidationError(
+                    _("The selected SOP/Form is not applicable to this LaunchGuard stage.")
+                )
+            if document.register_type != artifact.default_register_type:
+                raise ValidationError(_("Register Type must follow the selected SOP/Form Master."))
+            if document.document_class != artifact.default_document_class:
+                raise ValidationError(_("Document Classification must follow the selected SOP/Form Master."))
+            if document.owner_designation_id != artifact.owner_designation_id:
+                raise ValidationError(_("Owner Designation must follow the selected SOP/Form Master."))
+            if document.approver_designation_id != artifact.approver_designation_id:
+                raise ValidationError(_("Approver Designation must follow the selected SOP/Form Master."))
+            if document.owner_designation_id == document.approver_designation_id:
+                raise ValidationError(_("Owner and approver designations must be different."))
 
     @api.constrains("register_type", "document_class")
     def _check_register_classification(self):
@@ -275,6 +357,12 @@ class HjigProjectDocument(models.Model):
                 )
 
     def write(self, vals):
+        if "status" in vals and not self.env.context.get("allow_document_workflow"):
+            for document in self:
+                if vals["status"] != document.status:
+                    raise ValidationError(
+                        _("Document status may only change through the controlled workflow actions.")
+                    )
         if not self.env.context.get("allow_document_supersede"):
             changed = self._CONTROLLED_FIELDS.intersection(vals)
             locked = self.filtered(lambda document: document.status in ("approved", "superseded"))
@@ -293,20 +381,29 @@ class HjigProjectDocument(models.Model):
         for document in self:
             if document.status != "draft":
                 raise UserError(_("Only Draft documents can be submitted for review."))
-            document.status = "review"
+            if self.env.user not in document.owner_designation_id.holder_ids:
+                raise UserError(
+                    _("Only a current holder of the Owner Designation may submit this document.")
+                )
+            document.with_context(allow_document_workflow=True).write({
+                "owner_id": self.env.user.id,
+                "status": "review",
+            })
 
     def action_approve(self):
         if not self.env.user.has_group("new_hongyijig_custom.group_hjig_document_controller"):
-            raise UserError(_("Only Founder/PMO Document Control approvers may approve controlled documents."))
+            raise UserError(_("Only authorised Document Control users may approve controlled documents."))
         for document in self:
             if document.status != "review":
                 raise UserError(_("Only documents Under Review can be approved."))
-            if not document.approver_id:
-                raise ValidationError(_("Approver is required before approval."))
-            if document.approver_id == document.owner_id:
-                raise ValidationError(_("Document owner and approver must be different users."))
-            if document.approver_id != self.env.user:
-                raise ValidationError(_("Only the named Approver may approve this document."))
+            if self.env.user not in document.approver_designation_id.holder_ids:
+                raise ValidationError(
+                    _("Only a current holder of the Approver Designation may approve this document.")
+                )
+            if document.owner_designation_id == document.approver_designation_id:
+                raise ValidationError(_("Owner and approver designations must be different."))
+            if document.owner_id == self.env.user:
+                raise ValidationError(_("The same user cannot submit and approve a document."))
             if not document.effective_date:
                 raise ValidationError(_("Effective Date is required before approval."))
             if document.supersedes_id:
@@ -314,8 +411,14 @@ class HjigProjectDocument(models.Model):
                     raise ValidationError(_("The superseded document must currently be Approved."))
                 if not document.ecn_reference:
                     raise ValidationError(_("An ECN / Change Reference is required when superseding an approved document."))
-                document.supersedes_id.with_context(allow_document_supersede=True).write({
+                document.supersedes_id.with_context(
+                    allow_document_supersede=True,
+                    allow_document_workflow=True,
+                ).write({
                     "status": "superseded",
                     "superseded_by_id": document.id,
                 })
-            document.status = "approved"
+            document.with_context(allow_document_workflow=True).write({
+                "approver_id": self.env.user.id,
+                "status": "approved",
+            })

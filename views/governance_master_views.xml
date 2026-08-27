@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_hjig_artifact_master_list" model="ir.ui.view">
+        <field name="name">hjig.governance.artifact.master.list</field>
+        <field name="model">hjig.governance.artifact.master</field>
+        <field name="arch" type="xml">
+            <list string="SOP and Form Master Register" default_order="artifact_type desc, code">
+                <field name="code"/>
+                <field name="name"/>
+                <field name="artifact_type"/>
+                <field name="applicable_stage_ids" widget="many2many_tags"/>
+                <field name="owner_designation_id"/>
+                <field name="approver_designation_id"/>
+                <field name="revision"/>
+                <field name="mandatory"/>
+                <field name="active" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_artifact_master_form" model="ir.ui.view">
+        <field name="name">hjig.governance.artifact.master.form</field>
+        <field name="model">hjig.governance.artifact.master</field>
+        <field name="arch" type="xml">
+            <form string="SOP / Form Master">
+                <sheet>
+                    <div class="oe_title"><h1><field name="name"/></h1></div>
+                    <group>
+                        <group string="Master Identity">
+                            <field name="code"/>
+                            <field name="artifact_type"/>
+                            <field name="revision"/>
+                            <field name="mandatory"/>
+                            <field name="active"/>
+                        </group>
+                        <group string="Designation Authority">
+                            <field name="owner_designation_id"/>
+                            <field name="approver_designation_id"/>
+                            <field name="applicable_stage_ids" widget="many2many_tags"/>
+                        </group>
+                    </group>
+                    <group string="Document Control Defaults">
+                        <field name="default_register_type"/>
+                        <field name="default_document_class"/>
+                        <field name="master_reference_url" widget="url"/>
+                        <field name="master_tab_name"/>
+                    </group>
+                    <group string="Purpose"><field name="description" nolabel="1"/></group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hjig_artifact_master_search" model="ir.ui.view">
+        <field name="name">hjig.governance.artifact.master.search</field>
+        <field name="model">hjig.governance.artifact.master</field>
+        <field name="arch" type="xml">
+            <search string="SOP and Form Master Register">
+                <field name="code"/><field name="name"/><field name="applicable_stage_ids"/>
+                <filter name="sops" string="SOPs" domain="[('artifact_type','=','sop')]"/>
+                <filter name="forms" string="Forms / Records" domain="[('artifact_type','=','form')]"/>
+                <group><filter name="group_type" string="Type" context="{'group_by':'artifact_type'}"/></group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_hjig_artifact_master" model="ir.actions.act_window">
+        <field name="name">SOP &amp; Form Master</field>
+        <field name="res_model">hjig.governance.artifact.master</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_hjig_artifact_master_search"/>
+    </record>
+
+    <record id="view_hjig_launchguard_stage_list" model="ir.ui.view">
+        <field name="name">hjig.launchguard.stage.list</field>
+        <field name="model">hjig.launchguard.stage</field>
+        <field name="arch" type="xml">
+            <list string="LaunchGuard Stages" default_order="sequence, code">
+                <field name="sequence" widget="handle"/><field name="code"/><field name="name"/>
+                <field name="stage_type"/><field name="active" optional="hide"/>
+            </list>
+        </field>
+    </record>
+    <record id="view_hjig_launchguard_stage_form" model="ir.ui.view">
+        <field name="name">hjig.launchguard.stage.form</field>
+        <field name="model">hjig.launchguard.stage</field>
+        <field name="arch" type="xml">
+            <form string="LaunchGuard Stage"><sheet><group>
+                <field name="sequence"/><field name="code"/><field name="name"/>
+                <field name="stage_type"/><field name="active"/>
+            </group><group string="Purpose"><field name="description" nolabel="1"/></group></sheet><chatter/></form>
+        </field>
+    </record>
+    <record id="action_hjig_launchguard_stage" model="ir.actions.act_window">
+        <field name="name">LaunchGuard Stages</field><field name="res_model">hjig.launchguard.stage</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="view_hjig_governance_designation_list" model="ir.ui.view">
+        <field name="name">hjig.governance.designation.list</field>
+        <field name="model">hjig.governance.designation</field>
+        <field name="arch" type="xml">
+            <list string="Governance Designations" default_order="category, code">
+                <field name="code"/><field name="name"/><field name="category"/>
+                <field name="holder_ids" widget="many2many_tags"/><field name="active" optional="hide"/>
+            </list>
+        </field>
+    </record>
+    <record id="view_hjig_governance_designation_form" model="ir.ui.view">
+        <field name="name">hjig.governance.designation.form</field>
+        <field name="model">hjig.governance.designation</field>
+        <field name="arch" type="xml">
+            <form string="Governance Designation"><sheet><group>
+                <field name="code"/><field name="name"/><field name="category"/><field name="active"/>
+                <field name="holder_ids" widget="many2many_tags"/>
+            </group><group string="Authority Description"><field name="description" nolabel="1"/></group></sheet><chatter/></form>
+        </field>
+    </record>
+    <record id="action_hjig_governance_designation" model="ir.actions.act_window">
+        <field name="name">Governance Designations</field><field name="res_model">hjig.governance.designation</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem id="menu_hjig_artifact_master" name="SOP &amp; Form Master" parent="menu_hjig_document_control"
+              action="action_hjig_artifact_master" sequence="30"/>
+    <menuitem id="menu_hjig_launchguard_stage" name="LaunchGuard Stages" parent="menu_hjig_document_control"
+              action="action_hjig_launchguard_stage" sequence="40"/>
+    <menuitem id="menu_hjig_governance_designation" name="Governance Designations" parent="menu_hjig_document_control"
+              action="action_hjig_governance_designation" sequence="50"
+              groups="project.group_project_manager"/>
+</odoo>

@@ -2,3 +2,12 @@
 "access_hjig_project_document_user","hjig.project.document user","model_hjig_project_document","project.group_project_user",1,1,1,0
 "access_hjig_project_document_manager","hjig.project.document manager","model_hjig_project_document","project.group_project_manager",1,1,1,1
 "access_hjig_project_document_controller","hjig.project.document controller","model_hjig_project_document","new_hongyijig_custom.group_hjig_document_controller",1,1,1,1
+"access_hjig_governance_designation_user","hjig.governance.designation user","model_hjig_governance_designation","project.group_project_user",1,0,0,0
+"access_hjig_governance_designation_manager","hjig.governance.designation manager","model_hjig_governance_designation","project.group_project_manager",1,1,1,1
+"access_hjig_governance_designation_controller","hjig.governance.designation controller","model_hjig_governance_designation","new_hongyijig_custom.group_hjig_document_controller",1,0,0,0
+"access_hjig_launchguard_stage_user","hjig.launchguard.stage user","model_hjig_launchguard_stage","project.group_project_user",1,0,0,0
+"access_hjig_launchguard_stage_manager","hjig.launchguard.stage manager","model_hjig_launchguard_stage","project.group_project_manager",1,1,1,1
+"access_hjig_launchguard_stage_controller","hjig.launchguard.stage controller","model_hjig_launchguard_stage","new_hongyijig_custom.group_hjig_document_controller",1,0,0,0
+"access_hjig_artifact_master_user","hjig.governance.artifact.master user","model_hjig_governance_artifact_master","project.group_project_user",1,0,0,0
+"access_hjig_artifact_master_manager","hjig.governance.artifact.master manager","model_hjig_governance_artifact_master","project.group_project_manager",1,1,1,1
+"access_hjig_artifact_master_controller","hjig.governance.artifact.master controller","model_hjig_governance_artifact_master","new_hongyijig_custom.group_hjig_document_controller",1,0,0,0

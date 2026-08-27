@@ -12,6 +12,7 @@ class TestProjectDocumentGovernance(TransactionCase):
         cls.owner = cls.env["res.users"].create({
             "name": "Document Owner",
             "login": "document.owner@test.invalid",
+            "group_ids": [(6, 0, [cls.env.ref("project.group_project_user").id])],
         })
         cls.approver = cls.env["res.users"].create({
             "name": "Document Approver",
@@ -26,17 +27,48 @@ class TestProjectDocumentGovernance(TransactionCase):
             "hjig_project_record_type": "customer",
             "x_project_code": "hj-lgc-2026-0001",
         })
+        cls.owner_designation = cls.env["hjig.governance.designation"].create({
+            "code": "TEST-OWNER",
+            "name": "Test Owner Designation",
+            "category": "project",
+            "holder_ids": [(6, 0, [cls.owner.id])],
+        })
+        cls.approver_designation = cls.env["hjig.governance.designation"].create({
+            "code": "TEST-APPROVER",
+            "name": "Test Approver Designation",
+            "category": "governance",
+            "holder_ids": [(6, 0, [cls.approver.id])],
+        })
+        cls.stage = cls.env["hjig.launchguard.stage"].create({
+            "code": "TEST-GATE",
+            "name": "Test Gate",
+            "sequence": 1,
+            "stage_type": "technical_gate",
+        })
+        cls.other_stage = cls.env["hjig.launchguard.stage"].create({
+            "code": "OTHER-GATE",
+            "name": "Other Gate",
+            "sequence": 2,
+            "stage_type": "technical_gate",
+        })
+        cls.artifact = cls.env["hjig.governance.artifact.master"].create({
+            "code": "TEST-FORM",
+            "name": "Mould Plan",
+            "artifact_type": "form",
+            "applicable_stage_ids": [(6, 0, [cls.stage.id])],
+            "owner_designation_id": cls.owner_designation.id,
+            "approver_designation_id": cls.approver_designation.id,
+            "default_register_type": "programme_internal",
+            "default_document_class": "project_working",
+            "revision": "1.0",
+        })
 
     def _create_document(self, **overrides):
         values = {
             "project_id": self.project.id,
-            "register_type": "programme_internal",
-            "document_class": "project_working",
-            "title": "Mould Plan",
-            "document_type": "Engineering Plan",
+            "artifact_master_id": self.artifact.id,
+            "stage_id": self.stage.id,
             "revision": "R00",
-            "owner_id": self.owner.id,
-            "approver_id": self.approver.id,
             "drive_url": "https://drive.google.com/example",
         }
         values.update(overrides)
@@ -86,7 +118,7 @@ class TestProjectDocumentGovernance(TransactionCase):
 
     def test_approval_freezes_document(self):
         document = self._create_document(effective_date="2026-08-27")
-        document.action_submit_review()
+        document.with_user(self.owner).action_submit_review()
         document.with_user(self.approver).action_approve()
         self.assertEqual(document.status, "approved")
         with self.assertRaises(ValidationError):
@@ -96,18 +128,37 @@ class TestProjectDocumentGovernance(TransactionCase):
 
     def test_new_revision_supersedes_approved_document_with_ecn(self):
         first = self._create_document(effective_date="2026-08-27")
-        first.action_submit_review()
+        first.with_user(self.owner).action_submit_review()
         first.with_user(self.approver).action_approve()
 
         second = self._create_document(
             revision="R01",
-            status="review",
             effective_date="2026-08-28",
             supersedes_id=first.id,
             ecn_reference="ECN-2026-0001",
         )
+        second.with_user(self.owner).action_submit_review()
         second.with_user(self.approver).action_approve()
 
         self.assertEqual(first.status, "superseded")
         self.assertEqual(first.superseded_by_id, second)
         self.assertEqual(second.status, "approved")
+
+    def test_stage_must_match_master(self):
+        with self.assertRaises(ValidationError):
+            self._create_document(stage_id=self.other_stage.id)
+
+    def test_only_designation_holder_can_submit(self):
+        document = self._create_document()
+        with self.assertRaises(UserError):
+            document.action_submit_review()
+
+    def test_status_cannot_bypass_workflow(self):
+        document = self._create_document()
+        with self.assertRaises(ValidationError):
+            document.status = "review"
+
+    def test_used_master_is_immutable(self):
+        self._create_document()
+        with self.assertRaises(ValidationError):
+            self.artifact.name = "Rewritten Master"

@@ -10,12 +10,16 @@
                 <field name="register_id"/>
                 <field name="project_id"/>
                 <field name="project_code"/>
+                <field name="stage_id"/>
+                <field name="artifact_master_id"/>
                 <field name="register_type"/>
                 <field name="document_class"/>
                 <field name="title"/>
                 <field name="revision"/>
                 <field name="status"/>
-                <field name="owner_id"/>
+                <field name="owner_designation_id"/>
+                <field name="approver_designation_id" optional="show"/>
+                <field name="owner_id" string="Submitted By" optional="hide"/>
                 <field name="effective_date" optional="show"/>
             </list>
         </field>
@@ -44,15 +48,20 @@
                         <group string="Identity">
                             <field name="project_id" readonly="status in ['approved', 'superseded']"/>
                             <field name="project_code"/>
-                            <field name="register_type" readonly="status in ['approved', 'superseded']"/>
-                            <field name="document_class" readonly="status in ['approved', 'superseded']"/>
+                            <field name="stage_id" readonly="status != 'draft'"/>
+                            <field name="artifact_master_id" readonly="status != 'draft'"
+                                   domain="[('applicable_stage_ids', 'in', [stage_id])]"/>
+                            <field name="register_type" readonly="1"/>
+                            <field name="document_class" readonly="1"/>
                             <field name="document_type" readonly="status in ['approved', 'superseded']"/>
                             <field name="external_document_number" readonly="status in ['approved', 'superseded']"/>
                             <field name="revision" readonly="status in ['approved', 'superseded']"/>
                         </group>
                         <group string="Control">
-                            <field name="owner_id" readonly="status in ['approved', 'superseded']"/>
-                            <field name="approver_id" readonly="status in ['approved', 'superseded']"/>
+                            <field name="owner_designation_id" readonly="1"/>
+                            <field name="approver_designation_id" readonly="1"/>
+                            <field name="owner_id" readonly="1"/>
+                            <field name="approver_id" readonly="1"/>
                             <field name="effective_date" readonly="status in ['approved', 'superseded']"/>
                             <field name="supersedes_id" domain="[('project_id', '=', project_id), ('status', '=', 'approved')]"
                                    readonly="status in ['approved', 'superseded']"/>
@@ -82,12 +91,16 @@
                 <field name="register_id"/>
                 <field name="project_id"/>
                 <field name="project_code"/>
+                <field name="stage_id"/>
+                <field name="artifact_master_id"/>
                 <field name="title"/>
                 <field name="external_document_number"/>
                 <filter name="approved" string="Approved" domain="[('status', '=', 'approved')]"/>
                 <filter name="superseded" string="Superseded" domain="[('status', '=', 'superseded')]"/>
                 <group>
                     <filter name="group_project" string="Project" context="{'group_by': 'project_id'}"/>
+                    <filter name="group_stage" string="Stage" context="{'group_by': 'stage_id'}"/>
+                    <filter name="group_artifact" string="SOP / Form" context="{'group_by': 'artifact_master_id'}"/>
                     <filter name="group_register" string="Register" context="{'group_by': 'register_type'}"/>
                     <filter name="group_classification" string="Classification" context="{'group_by': 'document_class'}"/>
                     <filter name="group_status" string="Status" context="{'group_by': 'status'}"/>
@@ -160,12 +173,14 @@
                     <field name="hjig_document_ids" context="{'default_project_id': id}">
                         <list editable="bottom" create="false" delete="false">
                             <field name="register_id"/>
+                            <field name="stage_id"/>
+                            <field name="artifact_master_id"/>
                             <field name="register_type"/>
                             <field name="document_class"/>
                             <field name="title"/>
                             <field name="revision"/>
                             <field name="status"/>
-                            <field name="owner_id"/>
+                            <field name="owner_designation_id"/>
                         </list>
                     </field>
                 </page>
