@@ -23,3 +23,13 @@
 "access_hjig_inspection_trial_result_user","hjig.inspection.trial.result user","model_hjig_inspection_trial_result","project.group_project_user",1,1,1,1
 "access_hjig_dimensional_line_user","hjig.dimensional.line user","model_hjig_dimensional_line","project.group_project_user",1,1,1,1
 "access_hjig_dimensional_measurement_user","hjig.dimensional.measurement user","model_hjig_dimensional_measurement","project.group_project_user",1,1,1,1
+"access_hjig_plastic_material_user","hjig.plastic.material.master user","model_hjig_plastic_material_master","project.group_project_user",1,0,0,0
+"access_hjig_plastic_material_manager","hjig.plastic.material.master manager","model_hjig_plastic_material_master","project.group_project_manager",1,1,1,0
+"access_hjig_surface_finish_user","hjig.surface.finish.master user","model_hjig_surface_finish_master","project.group_project_user",1,0,0,0
+"access_hjig_surface_finish_manager","hjig.surface.finish.master manager","model_hjig_surface_finish_master","project.group_project_manager",1,1,1,0
+"access_hjig_tool_steel_user","hjig.tool.steel.master user","model_hjig_tool_steel_master","project.group_project_user",1,0,0,0
+"access_hjig_tool_steel_manager","hjig.tool.steel.master manager","model_hjig_tool_steel_master","project.group_project_manager",1,1,1,0
+"access_hjig_gate_type_user","hjig.gate.type.master user","model_hjig_gate_type_master","project.group_project_user",1,0,0,0
+"access_hjig_gate_type_manager","hjig.gate.type.master manager","model_hjig_gate_type_master","project.group_project_manager",1,1,1,0
+"access_hjig_inspection_method_user","hjig.inspection.method.master user","model_hjig_inspection_method_master","project.group_project_user",1,0,0,0
+"access_hjig_inspection_method_manager","hjig.inspection.method.master manager","model_hjig_inspection_method_master","project.group_project_manager",1,1,1,0

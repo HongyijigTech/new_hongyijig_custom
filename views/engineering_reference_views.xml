@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_hjig_plastic_material_list" model="ir.ui.view">
+        <field name="name">hjig.plastic.material.master.list</field>
+        <field name="model">hjig.plastic.material.master</field>
+        <field name="arch" type="xml"><list string="Plastic Raw Material Database" default_order="code">
+            <field name="code"/><field name="name"/><field name="shrinkage_range"/>
+            <field name="density"/><field name="melt_temperature"/><field name="state"/>
+            <field name="revision"/><field name="active" optional="hide"/>
+        </list></field>
+    </record>
+    <record id="view_hjig_plastic_material_form" model="ir.ui.view">
+        <field name="name">hjig.plastic.material.master.form</field><field name="model">hjig.plastic.material.master</field>
+        <field name="arch" type="xml"><form string="Plastic Raw Material">
+            <header><button name="action_approve" type="object" string="Approve" class="btn-primary" invisible="state != 'draft'"/>
+                <button name="action_supersede" type="object" string="Supersede" invisible="state != 'approved'"/><field name="state" widget="statusbar"/></header>
+            <sheet><div class="oe_title"><h1><field name="name"/></h1></div><group><group string="Identity">
+                <field name="code"/><field name="revision"/><field name="active"/>
+            </group><group string="Source Traceability"><field name="source_workbook"/><field name="source_tab"/><field name="source_row"/></group></group>
+            <group string="Engineering Values"><field name="recommended_tonnage"/><field name="shrinkage_range"/>
+                <field name="density"/><field name="melt_temperature"/><field name="air_vent_depth"/></group>
+            <group string="Designation Authority"><field name="owner_designation_id"/><field name="approver_designation_id"/>
+                <field name="approved_by_id"/><field name="effective_date"/></group></sheet><chatter/>
+        </form></field>
+    </record>
+    <record id="action_hjig_plastic_material" model="ir.actions.act_window"><field name="name">Plastic Materials</field>
+        <field name="res_model">hjig.plastic.material.master</field><field name="view_mode">list,form</field></record>
+
+    <record id="view_hjig_surface_finish_list" model="ir.ui.view">
+        <field name="name">hjig.surface.finish.master.list</field><field name="model">hjig.surface.finish.master</field>
+        <field name="arch" type="xml"><list string="Surface Finish and Texture Database" default_order="finish_system, code">
+            <field name="finish_system"/><field name="code"/><field name="name"/><field name="family"/>
+            <field name="recommended_draft"/><field name="manufacturing_risk"/><field name="state"/><field name="revision"/>
+        </list></field>
+    </record>
+    <record id="view_hjig_surface_finish_form" model="ir.ui.view">
+        <field name="name">hjig.surface.finish.master.form</field><field name="model">hjig.surface.finish.master</field>
+        <field name="arch" type="xml"><form string="Surface Finish / Texture">
+            <header><button name="action_approve" type="object" string="Approve" class="btn-primary" invisible="state != 'draft'"/>
+                <button name="action_supersede" type="object" string="Supersede" invisible="state != 'approved'"/><field name="state" widget="statusbar"/></header>
+            <sheet><div class="oe_title"><h1><field name="name"/></h1></div>
+            <group><group string="Identity"><field name="finish_system"/><field name="code"/><field name="name"/><field name="revision"/><field name="active"/></group>
+                <group string="Source Traceability"><field name="source_workbook"/><field name="source_tab"/><field name="source_row"/></group></group>
+            <group string="Engineering Values"><field name="family"/><field name="method"/><field name="appearance"/>
+                <field name="roughness_or_depth"/><field name="gloss_or_category"/><field name="recommended_draft"/>
+                <field name="manufacturing_risk"/><field name="typical_applications"/><field name="tooling_notes"/></group>
+            <group string="Designation Authority"><field name="owner_designation_id"/><field name="approver_designation_id"/>
+                <field name="approved_by_id"/><field name="effective_date"/></group></sheet><chatter/>
+        </form></field>
+    </record>
+    <record id="action_hjig_surface_finish" model="ir.actions.act_window"><field name="name">Surface Finishes &amp; Textures</field>
+        <field name="res_model">hjig.surface.finish.master</field><field name="view_mode">list,form</field></record>
+
+    <record id="view_hjig_tool_steel_list" model="ir.ui.view">
+        <field name="name">hjig.tool.steel.master.list</field><field name="model">hjig.tool.steel.master</field>
+        <field name="arch" type="xml"><list string="Tool Steel Database" default_order="manufacturer, grade">
+            <field name="manufacturer"/><field name="grade"/><field name="aisi_standard"/><field name="jis_standard"/>
+            <field name="wn_standard"/><field name="delivered_hardness"/><field name="state"/><field name="revision"/>
+        </list></field>
+    </record>
+    <record id="view_hjig_tool_steel_form" model="ir.ui.view">
+        <field name="name">hjig.tool.steel.master.form</field><field name="model">hjig.tool.steel.master</field>
+        <field name="arch" type="xml"><form string="Tool Steel">
+            <header><button name="action_approve" type="object" string="Approve" class="btn-primary" invisible="state != 'draft'"/>
+                <button name="action_supersede" type="object" string="Supersede" invisible="state != 'approved'"/><field name="state" widget="statusbar"/></header>
+            <sheet><div class="oe_title"><h1><field name="name" readonly="1"/></h1></div><group>
+                <group string="Identity"><field name="manufacturer"/><field name="grade"/><field name="revision"/><field name="active"/></group>
+                <group string="Source Traceability"><field name="source_workbook"/><field name="source_tab"/><field name="source_row"/></group></group>
+            <group string="Comparable Standards"><field name="aisi_standard"/><field name="jis_standard"/><field name="wn_standard"/><field name="delivered_hardness"/></group>
+            <group string="Engineering Guidance"><field name="characteristics"/><field name="typical_analysis"/><field name="applications"/></group>
+            <group string="Designation Authority"><field name="owner_designation_id"/><field name="approver_designation_id"/>
+                <field name="approved_by_id"/><field name="effective_date"/></group></sheet><chatter/>
+        </form></field>
+    </record>
+    <record id="action_hjig_tool_steel" model="ir.actions.act_window"><field name="name">Tool Steels</field>
+        <field name="res_model">hjig.tool.steel.master</field><field name="view_mode">list,form</field></record>
+
+    <record id="view_hjig_gate_type_list" model="ir.ui.view">
+        <field name="name">hjig.gate.type.master.list</field><field name="model">hjig.gate.type.master</field>
+        <field name="arch" type="xml"><list string="Runner and Gate Database"><field name="runner_type"/><field name="name"/>
+            <field name="best_part_size"/><field name="cosmetic_quality"/><field name="automation_friendly"/><field name="state"/><field name="revision"/></list></field>
+    </record>
+    <record id="view_hjig_gate_type_form" model="ir.ui.view">
+        <field name="name">hjig.gate.type.master.form</field><field name="model">hjig.gate.type.master</field>
+        <field name="arch" type="xml"><form string="Runner / Gate Type">
+            <header><button name="action_approve" type="object" string="Approve" class="btn-primary" invisible="state != 'draft'"/>
+                <button name="action_supersede" type="object" string="Supersede" invisible="state != 'approved'"/><field name="state" widget="statusbar"/></header>
+            <sheet><div class="oe_title"><h1><field name="name"/></h1></div><group><group string="Identity"><field name="runner_type"/><field name="common_name"/><field name="revision"/><field name="active"/></group>
+                <group string="Source Traceability"><field name="source_workbook"/><field name="source_tab"/><field name="source_row"/></group></group>
+            <group string="Selection Guidance"><field name="best_part_size"/><field name="typical_applications"/><field name="suitable_materials"/>
+                <field name="cosmetic_quality"/><field name="automation_friendly"/><field name="pressure_loss"/><field name="tool_cost"/>
+                <field name="advantages"/><field name="risks"/></group>
+            <group string="Designation Authority"><field name="owner_designation_id"/><field name="approver_designation_id"/><field name="approved_by_id"/><field name="effective_date"/></group>
+            </sheet><chatter/></form></field>
+    </record>
+    <record id="action_hjig_gate_type" model="ir.actions.act_window"><field name="name">Runner &amp; Gate Types</field>
+        <field name="res_model">hjig.gate.type.master</field><field name="view_mode">list,form</field></record>
+
+    <record id="view_hjig_inspection_method_list" model="ir.ui.view">
+        <field name="name">hjig.inspection.method.master.list</field><field name="model">hjig.inspection.method.master</field>
+        <field name="arch" type="xml"><list string="Inspection Method Database"><field name="name"/><field name="method_category"/>
+            <field name="state"/><field name="revision"/><field name="active" optional="hide"/></list></field>
+    </record>
+    <record id="view_hjig_inspection_method_form" model="ir.ui.view">
+        <field name="name">hjig.inspection.method.master.form</field><field name="model">hjig.inspection.method.master</field>
+        <field name="arch" type="xml"><form string="Inspection Method">
+            <header><button name="action_approve" type="object" string="Approve" class="btn-primary" invisible="state != 'draft'"/>
+                <button name="action_supersede" type="object" string="Supersede" invisible="state != 'approved'"/><field name="state" widget="statusbar"/></header>
+            <sheet><div class="oe_title"><h1><field name="name"/></h1></div><group><group><field name="method_category"/><field name="notes"/><field name="revision"/><field name="active"/></group>
+                <group string="Source Traceability"><field name="source_workbook"/><field name="source_tab"/><field name="source_row"/></group></group>
+            <group string="Designation Authority"><field name="owner_designation_id"/><field name="approver_designation_id"/><field name="approved_by_id"/><field name="effective_date"/></group>
+            </sheet><chatter/></form></field>
+    </record>
+    <record id="action_hjig_inspection_method" model="ir.actions.act_window"><field name="name">Inspection Methods</field>
+        <field name="res_model">hjig.inspection.method.master</field><field name="view_mode">list,form</field></record>
+
+    <menuitem id="menu_hjig_engineering_reference" name="Engineering Reference Databases"
+              parent="menu_hjig_native_project_forms" sequence="40" groups="project.group_project_user"/>
+    <menuitem id="menu_hjig_plastic_material" name="Plastic Materials" parent="menu_hjig_engineering_reference"
+              action="action_hjig_plastic_material" sequence="10"/>
+    <menuitem id="menu_hjig_surface_finish" name="Surface Finishes &amp; Textures" parent="menu_hjig_engineering_reference"
+              action="action_hjig_surface_finish" sequence="20"/>
+    <menuitem id="menu_hjig_tool_steel" name="Tool Steels" parent="menu_hjig_engineering_reference"
+              action="action_hjig_tool_steel" sequence="30"/>
+    <menuitem id="menu_hjig_gate_type" name="Runner &amp; Gate Types" parent="menu_hjig_engineering_reference"
+              action="action_hjig_gate_type" sequence="40"/>
+    <menuitem id="menu_hjig_inspection_method" name="Inspection Methods" parent="menu_hjig_engineering_reference"
+              action="action_hjig_inspection_method" sequence="50"/>
+</odoo>

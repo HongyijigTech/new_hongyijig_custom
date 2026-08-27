@@ -186,3 +186,50 @@ class TestNativeProjectForms(TransactionCase):
         })
         self.assertEqual(go_result.result, "go")
         self.assertEqual(ng_result.result, "ng")
+
+    def test_engineering_dropdowns_copy_controlled_snapshots(self):
+        material = self.env.ref("new_hongyijig_custom.plastic_material_001")
+        finish = self.env.ref("new_hongyijig_custom.surface_finish_spi_004")
+        steel = self.env.ref("new_hongyijig_custom.tool_steel_001")
+        gate = self.env.ref("new_hongyijig_custom.gate_type_001")
+        mould, part = self._create_mould(complete=False)
+        part.write({
+            "x_part_category": "appearance",
+            "x_surface_finish_id": finish.id,
+            "x_material_master_id": material.id,
+            "x_customer_shrinkage": 0.5,
+            "x_part_weight_grams": 125.0,
+            "x_qps": 1,
+            "x_mould_configuration": "single",
+            "x_cavitation": "1+1",
+            "x_mould_base_steel_id": steel.id,
+            "x_runner_type": "cold",
+            "x_gate_type_id": gate.id,
+        })
+        self.assertEqual(part.x_part_material, material.name)
+        self.assertEqual(part.x_standard_shrinkage, material.shrinkage_range)
+        self.assertEqual(part.x_surface_grade_code, finish.code)
+        self.assertEqual(part.x_gate_type, gate.name)
+        self.assertEqual(part.x_completion_percent, 100.0)
+        with self.assertRaises(ValidationError):
+            material.name = "Rewritten approved baseline"
+
+    def test_dimensional_method_dropdown_keeps_legacy_snapshot(self):
+        mould, part = self._create_mould()
+        report = self.env["hjig.inspection.report"].create({
+            "project_id": self.project.id,
+            "template_id": self.dimensional_template.id,
+            "mould_id": mould.id,
+            "part_id": part.id,
+            "revision": "R01",
+        })
+        method = self.env.ref("new_hongyijig_custom.inspection_method_001")
+        line = self.env["hjig.dimensional.line"].create({
+            "report_id": report.id,
+            "dimension_number": "D002",
+            "drawing_dimension_mm": 20.0,
+            "tolerance_minus_mm": 0.1,
+            "tolerance_plus_mm": 0.1,
+            "method_master_id": method.id,
+        })
+        self.assertEqual(line.method_used, "digital_calliper")

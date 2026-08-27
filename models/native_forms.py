@@ -260,9 +260,26 @@ class HjigMouldPart(models.Model):
         ],
         tracking=True,
     )
-    x_surface_finish_type = fields.Selection([("spi", "SPI Grade"), ("vdi", "VDI Code")], tracking=True)
+    x_surface_finish_type = fields.Selection(
+        [("spi", "SPI Grade"), ("vdi", "VDI Code"), ("special", "Special Texture")],
+        tracking=True,
+    )
+    x_surface_finish_id = fields.Many2one(
+        "hjig.surface.finish.master",
+        string="Surface Finish / Texture",
+        domain="[('finish_system', '=', x_surface_finish_type), ('state', '=', 'approved'), ('active', '=', True)]",
+        ondelete="restrict",
+        tracking=True,
+    )
     x_surface_grade_code = fields.Char(string="Surface Grade / Code", tracking=True)
     x_surface_details = fields.Text(string="Surface Finish Details", readonly=True)
+    x_material_master_id = fields.Many2one(
+        "hjig.plastic.material.master",
+        string="Part Material",
+        domain="[('state', '=', 'approved'), ('active', '=', True)]",
+        ondelete="restrict",
+        tracking=True,
+    )
     x_part_material = fields.Char(string="Part Material", tracking=True)
     x_standard_shrinkage = fields.Char(string="Standard Shrinkage Range", readonly=True)
     x_customer_shrinkage = fields.Float(string="Customer Shrinkage %", tracking=True)
@@ -277,13 +294,41 @@ class HjigMouldPart(models.Model):
         [(value, value) for value in ("P20", "718H", "NAK80", "S136", "H13", "8407", "Customer Specified")],
         tracking=True,
     )
+    x_mould_base_steel_id = fields.Many2one(
+        "hjig.tool.steel.master",
+        string="Mould Base Steel",
+        domain="[('state', '=', 'approved'), ('active', '=', True)]",
+        ondelete="restrict",
+        tracking=True,
+    )
+    x_core_steel_id = fields.Many2one(
+        "hjig.tool.steel.master",
+        string="Core Steel",
+        domain="[('state', '=', 'approved'), ('active', '=', True)]",
+        ondelete="restrict",
+        tracking=True,
+    )
     x_core_steel_brand = fields.Char(tracking=True)
     x_core_steel_grade = fields.Char(tracking=True)
     x_core_steel_usage = fields.Text()
     x_cavity_steel_brand = fields.Char(tracking=True)
     x_cavity_steel_grade = fields.Char(tracking=True)
     x_cavity_steel_usage = fields.Text()
+    x_cavity_steel_id = fields.Many2one(
+        "hjig.tool.steel.master",
+        string="Cavity Steel",
+        domain="[('state', '=', 'approved'), ('active', '=', True)]",
+        ondelete="restrict",
+        tracking=True,
+    )
     x_runner_type = fields.Selection([("hot", "Hot Runner"), ("cold", "Cold Runner"), ("hybrid", "Hybrid")], tracking=True)
+    x_gate_type_id = fields.Many2one(
+        "hjig.gate.type.master",
+        string="Gate Type",
+        domain="[('runner_type', '=', x_runner_type), ('state', '=', 'approved'), ('active', '=', True)]",
+        ondelete="restrict",
+        tracking=True,
+    )
     x_gate_type = fields.Char(tracking=True)
     x_gate_specifications = fields.Text(readonly=True)
     x_assumption_status = fields.Selection(
@@ -300,29 +345,156 @@ class HjigMouldPart(models.Model):
         "Part Number must be unique within a mould plan.",
     )
 
+    @api.model
+    def _reference_snapshot_values(self, vals):
+        vals = dict(vals)
+        if vals.get("x_surface_finish_id"):
+            finish = self.env["hjig.surface.finish.master"].browse(vals["x_surface_finish_id"]).exists()
+            if finish:
+                vals.update({
+                    "x_surface_finish_type": finish.finish_system,
+                    "x_surface_grade_code": finish.code,
+                    "x_surface_details": "\n".join(filter(None, [
+                        finish.name, finish.method, finish.appearance, finish.roughness_or_depth,
+                        finish.recommended_draft and _("Recommended draft: %s") % finish.recommended_draft,
+                        finish.tooling_notes,
+                    ])),
+                })
+        if vals.get("x_material_master_id"):
+            material = self.env["hjig.plastic.material.master"].browse(vals["x_material_master_id"]).exists()
+            if material:
+                vals.update({
+                    "x_part_material": material.name,
+                    "x_material_reference": material.code,
+                    "x_standard_shrinkage": material.shrinkage_range,
+                })
+        for relational, brand_field, grade_field, usage_field in (
+            ("x_core_steel_id", "x_core_steel_brand", "x_core_steel_grade", "x_core_steel_usage"),
+            ("x_cavity_steel_id", "x_cavity_steel_brand", "x_cavity_steel_grade", "x_cavity_steel_usage"),
+        ):
+            if vals.get(relational):
+                steel = self.env["hjig.tool.steel.master"].browse(vals[relational]).exists()
+                if steel:
+                    vals.update({brand_field: steel.manufacturer, grade_field: steel.grade, usage_field: steel.applications})
+        if vals.get("x_mould_base_steel_id"):
+            vals["x_mould_base_steel_grade"] = "Customer Specified"
+        if vals.get("x_gate_type_id"):
+            gate = self.env["hjig.gate.type.master"].browse(vals["x_gate_type_id"]).exists()
+            if gate:
+                vals.update({
+                    "x_runner_type": gate.runner_type,
+                    "x_gate_type": gate.name,
+                    "x_gate_specifications": "\n".join(filter(None, [
+                        gate.common_name, gate.typical_applications,
+                        gate.suitable_materials and _("Suitable materials: %s") % gate.suitable_materials,
+                        gate.advantages and _("Advantages: %s") % gate.advantages,
+                        gate.risks and _("Risks: %s") % gate.risks,
+                    ])),
+                })
+        return vals
+
     @api.depends(
         "x_name", "x_part_number", "x_part_category", "x_surface_finish_type",
-        "x_surface_grade_code", "x_part_material", "x_customer_shrinkage",
+        "x_surface_finish_id", "x_surface_grade_code", "x_material_master_id", "x_part_material", "x_customer_shrinkage",
         "x_part_weight_grams", "x_qps", "x_mould_configuration", "x_cavitation",
-        "x_mould_base_steel_grade", "x_runner_type", "x_gate_type",
+        "x_mould_base_steel_id", "x_mould_base_steel_grade", "x_runner_type", "x_gate_type_id", "x_gate_type",
     )
     def _compute_completeness(self):
         required = [
             ("x_name", _("Part Name")), ("x_part_number", _("Part Number")),
             ("x_part_category", _("Part Category")), ("x_surface_finish_type", _("Surface Finish Type")),
-            ("x_surface_grade_code", _("Surface Grade / Code")), ("x_part_material", _("Part Material")),
+            (("x_surface_finish_id", "x_surface_grade_code"), _("Surface Grade / Code")),
+            (("x_material_master_id", "x_part_material"), _("Part Material")),
             ("x_customer_shrinkage", _("Customer Shrinkage %")), ("x_part_weight_grams", _("Part Weight")),
             ("x_qps", _("QPS")), ("x_mould_configuration", _("Mould Configuration")),
-            ("x_cavitation", _("Cavitation")), ("x_mould_base_steel_grade", _("Mould Base Steel")),
-            ("x_runner_type", _("Runner Type")), ("x_gate_type", _("Gate Type")),
+            ("x_cavitation", _("Cavitation")),
+            (("x_mould_base_steel_id", "x_mould_base_steel_grade"), _("Mould Base Steel")),
+            ("x_runner_type", _("Runner Type")), (("x_gate_type_id", "x_gate_type"), _("Gate Type")),
         ]
         for part in self:
-            missing = [label for field_name, label in required if not part[field_name]]
+            missing = []
+            for field_names, label in required:
+                field_names = (field_names,) if isinstance(field_names, str) else field_names
+                if not any(part[field_name] for field_name in field_names):
+                    missing.append(label)
             part.x_missing_fields = ", ".join(missing)
             part.x_completion_percent = 100.0 * (len(required) - len(missing)) / len(required)
 
+    @api.onchange("x_surface_finish_type")
+    def _onchange_surface_finish_type(self):
+        if self.x_surface_finish_id.finish_system != self.x_surface_finish_type:
+            self.x_surface_finish_id = False
+            self.x_surface_grade_code = False
+            self.x_surface_details = False
+
+    @api.onchange("x_surface_finish_id")
+    def _onchange_surface_finish_id(self):
+        finish = self.x_surface_finish_id
+        if finish:
+            self.x_surface_finish_type = finish.finish_system
+            self.x_surface_grade_code = finish.code
+            self.x_surface_details = "\n".join(filter(None, [
+                finish.name,
+                finish.method,
+                finish.appearance,
+                finish.roughness_or_depth,
+                finish.recommended_draft and _("Recommended draft: %s") % finish.recommended_draft,
+                finish.tooling_notes,
+            ]))
+
+    @api.onchange("x_material_master_id")
+    def _onchange_material_master_id(self):
+        material = self.x_material_master_id
+        if material:
+            self.x_part_material = material.name
+            self.x_material_reference = material.code
+            self.x_standard_shrinkage = material.shrinkage_range
+
+    @api.onchange("x_mould_base_steel_id")
+    def _onchange_mould_base_steel_id(self):
+        if self.x_mould_base_steel_id:
+            self.x_mould_base_steel_grade = "Customer Specified"
+
+    @api.onchange("x_core_steel_id")
+    def _onchange_core_steel_id(self):
+        steel = self.x_core_steel_id
+        if steel:
+            self.x_core_steel_brand = steel.manufacturer
+            self.x_core_steel_grade = steel.grade
+            self.x_core_steel_usage = steel.applications
+
+    @api.onchange("x_cavity_steel_id")
+    def _onchange_cavity_steel_id(self):
+        steel = self.x_cavity_steel_id
+        if steel:
+            self.x_cavity_steel_brand = steel.manufacturer
+            self.x_cavity_steel_grade = steel.grade
+            self.x_cavity_steel_usage = steel.applications
+
+    @api.onchange("x_runner_type")
+    def _onchange_runner_type(self):
+        if self.x_gate_type_id.runner_type != self.x_runner_type:
+            self.x_gate_type_id = False
+            self.x_gate_type = False
+            self.x_gate_specifications = False
+
+    @api.onchange("x_gate_type_id")
+    def _onchange_gate_type_id(self):
+        gate = self.x_gate_type_id
+        if gate:
+            self.x_runner_type = gate.runner_type
+            self.x_gate_type = gate.name
+            self.x_gate_specifications = "\n".join(filter(None, [
+                gate.common_name,
+                gate.typical_applications,
+                gate.suitable_materials and _("Suitable materials: %s") % gate.suitable_materials,
+                gate.advantages and _("Advantages: %s") % gate.advantages,
+                gate.risks and _("Risks: %s") % gate.risks,
+            ]))
+
     @api.model_create_multi
     def create(self, vals_list):
+        vals_list = [self._reference_snapshot_values(vals) for vals in vals_list]
         for vals in vals_list:
             mould = self.env["x_mould"].browse(vals.get("x_mould_id")).exists()
             if mould and mould.x_workflow_state != "draft":
@@ -340,7 +512,7 @@ class HjigMouldPart(models.Model):
     def write(self, vals):
         if any(part.x_mould_id.x_workflow_state in ("approved", "superseded") for part in self):
             raise ValidationError(_("Components of an approved or superseded mould plan are read-only."))
-        return super().write(vals)
+        return super().write(self._reference_snapshot_values(vals))
 
     def unlink(self):
         if any(part.x_mould_id.x_workflow_state != "draft" for part in self):
@@ -613,12 +785,36 @@ class HjigDimensionalLine(models.Model):
         ],
         required=True,
     )
+    method_master_id = fields.Many2one(
+        "hjig.inspection.method.master",
+        string="Inspection Method",
+        domain="[('state', '=', 'approved'), ('active', '=', True)]",
+        ondelete="restrict",
+    )
     measurement_ids = fields.One2many("hjig.dimensional.measurement", "dimension_line_id", string="Measurements")
 
     _report_dimension_unique = models.Constraint(
         "UNIQUE(report_id, dimension_number)",
         "Dimension Number must be unique within the report.",
     )
+
+    @api.model
+    def _method_snapshot_values(self, vals):
+        vals = dict(vals)
+        if vals.get("method_master_id"):
+            method = self.env["hjig.inspection.method.master"].browse(vals["method_master_id"]).exists()
+            if method:
+                legacy_map = {
+                    "digital calliper": "digital_calliper",
+                    "micrometer": "micrometer",
+                    "height gauge": "height_gauge",
+                    "height guage": "height_gauge",
+                    "pin gauge": "pin_gauge",
+                    "pin gage": "pin_gauge",
+                    "profile projector": "profile_projector",
+                }
+                vals["method_used"] = legacy_map.get(method.name.strip().lower(), "other")
+        return vals
 
     @api.depends("drawing_dimension_mm", "tolerance_minus_mm", "tolerance_plus_mm")
     def _compute_limits(self):
@@ -628,6 +824,7 @@ class HjigDimensionalLine(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        vals_list = [self._method_snapshot_values(vals) for vals in vals_list]
         for vals in vals_list:
             report = self.env["hjig.inspection.report"].browse(vals.get("report_id")).exists()
             if report and (report.workflow_state != "draft" or report.report_type != "dimensional"):
@@ -640,10 +837,24 @@ class HjigDimensionalLine(models.Model):
             if line.tolerance_minus_mm < 0 or line.tolerance_plus_mm < 0:
                 raise ValidationError(_("Tolerance values must be entered as positive magnitudes."))
 
+    @api.onchange("method_master_id")
+    def _onchange_method_master_id(self):
+        if self.method_master_id:
+            legacy_map = {
+                "digital calliper": "digital_calliper",
+                "micrometer": "micrometer",
+                "height gauge": "height_gauge",
+                "height guage": "height_gauge",
+                "pin gauge": "pin_gauge",
+                "pin gage": "pin_gauge",
+                "profile projector": "profile_projector",
+            }
+            self.method_used = legacy_map.get(self.method_master_id.name.strip().lower(), "other")
+
     def write(self, vals):
         if any(item.report_id.workflow_state != "draft" for item in self):
             raise ValidationError(_("Dimensions are editable only while the report is Draft."))
-        return super().write(vals)
+        return super().write(self._method_snapshot_values(vals))
 
     def unlink(self):
         if any(item.report_id.workflow_state != "draft" for item in self):

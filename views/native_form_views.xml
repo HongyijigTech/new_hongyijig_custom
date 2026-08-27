@@ -59,7 +59,8 @@
                 <field name="x_part_number"/>
                 <field name="x_name"/>
                 <field name="x_part_category"/>
-                <field name="x_part_material"/>
+                <field name="x_material_master_id"/>
+                <field name="x_part_material" optional="hide"/>
                 <field name="x_part_weight_grams"/>
                 <field name="x_qps"/>
                 <field name="x_mould_configuration"/>
@@ -98,11 +99,13 @@
                             <group>
                                 <group>
                                     <field name="x_surface_finish_type"/>
-                                    <field name="x_surface_grade_code"/>
+                                    <field name="x_surface_finish_id" options="{'no_create': True, 'no_create_edit': True}"/>
+                                    <field name="x_surface_grade_code" readonly="1"/>
                                     <field name="x_surface_details"/>
                                 </group>
                                 <group>
-                                    <field name="x_part_material"/>
+                                    <field name="x_material_master_id" options="{'no_create': True, 'no_create_edit': True}"/>
+                                    <field name="x_part_material" readonly="1"/>
                                     <field name="x_material_reference"/>
                                     <field name="x_standard_shrinkage"/>
                                     <field name="x_customer_shrinkage"/>
@@ -116,11 +119,13 @@
                                 <group>
                                     <field name="x_mould_configuration"/>
                                     <field name="x_cavitation"/>
-                                    <field name="x_mould_base_steel_grade"/>
+                                    <field name="x_mould_base_steel_id" options="{'no_create': True, 'no_create_edit': True}"/>
+                                    <field name="x_mould_base_steel_grade" readonly="1"/>
                                 </group>
                                 <group>
                                     <field name="x_runner_type"/>
-                                    <field name="x_gate_type"/>
+                                    <field name="x_gate_type_id" options="{'no_create': True, 'no_create_edit': True}"/>
+                                    <field name="x_gate_type" readonly="1"/>
                                     <field name="x_gate_specifications"/>
                                 </group>
                             </group>
@@ -128,14 +133,16 @@
                         <page string="Core &amp; Cavity Steel">
                             <group>
                                 <group string="Core Steel">
-                                    <field name="x_core_steel_brand"/>
-                                    <field name="x_core_steel_grade"/>
-                                    <field name="x_core_steel_usage"/>
+                                    <field name="x_core_steel_id" options="{'no_create': True, 'no_create_edit': True}"/>
+                                    <field name="x_core_steel_brand" readonly="1"/>
+                                    <field name="x_core_steel_grade" readonly="1"/>
+                                    <field name="x_core_steel_usage" readonly="1"/>
                                 </group>
                                 <group string="Cavity Steel">
-                                    <field name="x_cavity_steel_brand"/>
-                                    <field name="x_cavity_steel_grade"/>
-                                    <field name="x_cavity_steel_usage"/>
+                                    <field name="x_cavity_steel_id" options="{'no_create': True, 'no_create_edit': True}"/>
+                                    <field name="x_cavity_steel_brand" readonly="1"/>
+                                    <field name="x_cavity_steel_grade" readonly="1"/>
+                                    <field name="x_cavity_steel_usage" readonly="1"/>
                                 </group>
                             </group>
                         </page>
@@ -262,7 +269,8 @@
                         <group>
                             <field name="min_dimension_mm" readonly="1"/>
                             <field name="max_dimension_mm" readonly="1"/>
-                            <field name="method_used"/>
+                            <field name="method_master_id"/>
+                            <field name="method_used" optional="hide"/>
                         </group>
                     </group>
                     <field name="measurement_ids">
@@ -352,7 +360,8 @@
                                     <field name="tolerance_plus_mm"/>
                                     <field name="min_dimension_mm"/>
                                     <field name="max_dimension_mm"/>
-                                    <field name="method_used"/>
+                                    <field name="method_master_id" options="{'no_create': True, 'no_create_edit': True}"/>
+                                    <field name="method_used" readonly="1"/>
                                 </list>
                             </field>
                         </page>
