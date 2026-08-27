@@ -33,3 +33,12 @@
 "access_hjig_gate_type_manager","hjig.gate.type.master manager","model_hjig_gate_type_master","project.group_project_manager",1,1,1,0
 "access_hjig_inspection_method_user","hjig.inspection.method.master user","model_hjig_inspection_method_master","project.group_project_user",1,0,0,0
 "access_hjig_inspection_method_manager","hjig.inspection.method.master manager","model_hjig_inspection_method_master","project.group_project_manager",1,1,1,0
+"access_hjig_final_mould_plan_user","hjig.final.mould.plan user","model_hjig_final_mould_plan","project.group_project_user",1,1,1,0
+"access_hjig_final_mould_plan_manager","hjig.final.mould.plan manager","model_hjig_final_mould_plan","project.group_project_manager",1,1,1,1
+"access_hjig_final_mould_plan_line_user","hjig.final.mould.plan.line user","model_hjig_final_mould_plan_line","project.group_project_user",1,1,1,1
+"access_hjig_project_risk_user","hjig.project.risk user","model_hjig_project_risk","project.group_project_user",1,1,1,0
+"access_hjig_project_risk_manager","hjig.project.risk manager","model_hjig_project_risk","project.group_project_manager",1,1,1,1
+"access_hjig_project_issue_user","hjig.project.issue user","model_hjig_project_issue","project.group_project_user",1,1,1,0
+"access_hjig_project_issue_manager","hjig.project.issue manager","model_hjig_project_issue","project.group_project_manager",1,1,1,1
+"access_hjig_project_ecn_user","hjig.project.ecn user","model_hjig_project_ecn","project.group_project_user",1,1,1,0
+"access_hjig_project_ecn_manager","hjig.project.ecn manager","model_hjig_project_ecn","project.group_project_manager",1,1,1,1

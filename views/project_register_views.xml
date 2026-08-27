@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_hjig_final_mould_plan_list" model="ir.ui.view">
+        <field name="name">hjig.final.mould.plan.list</field><field name="model">hjig.final.mould.plan</field>
+        <field name="arch" type="xml"><list string="Final Mould Plans" default_order="project_id, revision desc">
+            <field name="plan_number"/><field name="project_id"/><field name="project_code"/><field name="revision"/>
+            <field name="line_count"/><field name="effective_date"/><field name="workflow_state" widget="badge"/>
+        </list></field>
+    </record>
+    <record id="view_hjig_final_mould_plan_form" model="ir.ui.view">
+        <field name="name">hjig.final.mould.plan.form</field><field name="model">hjig.final.mould.plan</field>
+        <field name="arch" type="xml"><form string="Final Mould Plan">
+            <header>
+                <button name="action_generate_lines" type="object" string="Generate from Approved Mould Plans" class="btn-secondary" invisible="workflow_state != 'draft'"/>
+                <button name="action_submit_review" type="object" string="Submit for Review" class="btn-primary" invisible="workflow_state != 'draft'"/>
+                <button name="action_approve" type="object" string="Approve &amp; Lock" class="btn-primary" invisible="workflow_state != 'review'"/>
+                <field name="workflow_state" widget="statusbar" statusbar_visible="draft,review,approved,superseded"/>
+            </header>
+            <sheet><div class="oe_title"><h1><field name="plan_number"/></h1></div>
+                <group><group string="Plan Identity"><field name="project_id"/><field name="project_code"/><field name="revision"/>
+                    <field name="source_mould_ids" widget="many2many_tags" domain="[('x_project_id','=',project_id)]"/>
+                    <field name="effective_date"/></group>
+                <group string="Designation Authority"><field name="owner_designation_id"/><field name="approver_designation_id"/>
+                    <field name="submitted_by_id"/><field name="approved_by_id"/><field name="line_count"/></group></group>
+                <notebook><page string="Final Mould Plan Lines">
+                    <field name="line_ids" readonly="workflow_state != 'draft'">
+                        <list create="false" delete="false">
+                            <field name="mould_number"/><field name="part_name"/><field name="part_number"/>
+                            <field name="part_category"/><field name="surface_finish"/><field name="part_material"/>
+                            <field name="standard_shrinkage"/><field name="customer_shrinkage"/><field name="part_weight_grams"/>
+                            <field name="qps"/><field name="mould_configuration"/><field name="cavitation"/>
+                            <field name="mould_base_steel" optional="show"/><field name="core_steel" optional="show"/>
+                            <field name="cavity_steel" optional="show"/><field name="runner_type"/><field name="gate_type"/>
+                        </list>
+                    </field>
+                </page><page string="Notes"><field name="notes"/></page></notebook>
+            </sheet><chatter/>
+        </form></field>
+    </record>
+    <record id="action_hjig_final_mould_plan" model="ir.actions.act_window">
+        <field name="name">Final Mould Plans</field><field name="res_model">hjig.final.mould.plan</field><field name="view_mode">list,form</field>
+    </record>
+
+    <record id="view_hjig_project_risk_list" model="ir.ui.view">
+        <field name="name">hjig.project.risk.list</field><field name="model">hjig.project.risk</field>
+        <field name="arch" type="xml"><list string="Risk Register" decoration-danger="escalation_required" decoration-muted="status == 'resolved'">
+            <field name="risk_id"/><field name="project_id"/><field name="description"/><field name="category"/>
+            <field name="probability"/><field name="impact"/><field name="risk_score"/>
+            <field name="owner_designation_id"/><field name="target_date"/><field name="status" widget="badge"/>
+            <field name="escalation_required" widget="boolean_toggle" readonly="1"/>
+            <field name="next_review_date"/>
+        </list></field>
+    </record>
+    <record id="view_hjig_project_risk_form" model="ir.ui.view">
+        <field name="name">hjig.project.risk.form</field><field name="model">hjig.project.risk</field>
+        <field name="arch" type="xml"><form string="Project Risk">
+            <header><button name="action_resolve" type="object" string="Resolve Risk" class="btn-primary" invisible="status == 'resolved'"/>
+                <field name="status" widget="statusbar" statusbar_visible="open,mitigating,accepted,resolved"/></header>
+            <sheet><div class="oe_title"><h1><field name="risk_id"/></h1></div>
+                <group><group string="Risk Definition"><field name="project_id"/><field name="description"/><field name="category"/>
+                    <field name="probability"/><field name="impact"/><field name="risk_score" readonly="1"/>
+                    <field name="escalation_required" readonly="1"/></group>
+                <group string="Ownership and Review"><field name="owner_designation_id"/><field name="approver_designation_id"/>
+                    <field name="target_date"/><field name="next_review_date"/><field name="resolved_by_id"/><field name="resolved_date"/></group></group>
+                <group string="Mitigation and Resolution"><field name="mitigation_plan"/><field name="resolution_notes"/></group>
+            </sheet><chatter/></form></field>
+    </record>
+    <record id="action_hjig_project_risk" model="ir.actions.act_window">
+        <field name="name">Risk Register</field><field name="res_model">hjig.project.risk</field><field name="view_mode">list,form</field>
+    </record>
+
+    <record id="view_hjig_project_issue_list" model="ir.ui.view">
+        <field name="name">hjig.project.issue.list</field><field name="model">hjig.project.issue</field>
+        <field name="arch" type="xml"><list string="Issue Register" decoration-danger="priority == 'critical' and status != 'closed'" decoration-muted="status == 'closed'">
+            <field name="issue_id"/><field name="project_id"/><field name="description"/><field name="category"/>
+            <field name="priority" widget="badge"/><field name="owner_designation_id"/><field name="date_raised"/>
+            <field name="status" widget="badge"/><field name="aging_days"/><field name="next_review_date"/><field name="target_closure_date"/>
+        </list></field>
+    </record>
+    <record id="view_hjig_project_issue_form" model="ir.ui.view">
+        <field name="name">hjig.project.issue.form</field><field name="model">hjig.project.issue</field>
+        <field name="arch" type="xml"><form string="Project Issue">
+            <header><button name="action_close" type="object" string="Close with Evidence" class="btn-primary" invisible="status == 'closed'"/>
+                <field name="status" widget="statusbar" statusbar_visible="open,in_progress,blocked,closed"/></header>
+            <sheet><div class="oe_title"><h1><field name="issue_id"/></h1></div>
+                <group><group string="Issue Definition"><field name="project_id"/><field name="description"/><field name="category"/>
+                    <field name="priority"/><field name="date_raised"/><field name="aging_days" readonly="1"/></group>
+                <group string="Ownership and Dates"><field name="owner_designation_id"/><field name="approver_designation_id"/>
+                    <field name="next_review_date"/><field name="target_closure_date"/><field name="closed_by_id"/><field name="closed_date"/></group></group>
+                <notebook><page string="Root Cause and Closure"><group><field name="root_cause"/><field name="closure_notes"/>
+                    <field name="closure_evidence_url" widget="url"/><field name="closure_attachment_ids" widget="many2many_binary"/></group></page></notebook>
+            </sheet><chatter/></form></field>
+    </record>
+    <record id="action_hjig_project_issue" model="ir.actions.act_window">
+        <field name="name">Issue Register</field><field name="res_model">hjig.project.issue</field><field name="view_mode">list,form</field>
+    </record>
+
+    <record id="view_hjig_project_ecn_list" model="ir.ui.view">
+        <field name="name">hjig.project.ecn.list</field><field name="model">hjig.project.ecn</field>
+        <field name="arch" type="xml"><list string="ECN Register" decoration-muted="status in ('closed','rejected')">
+            <field name="ecn_id"/><field name="project_id"/><field name="description"/><field name="component_name"/>
+            <field name="raised_date"/><field name="supplier_cost" sum="Supplier Total"/><field name="supplier_lead_time_days"/>
+            <field name="customer_cost" sum="Customer Total"/><field name="owner_designation_id"/><field name="status" widget="badge"/>
+        </list></field>
+    </record>
+    <record id="view_hjig_project_ecn_form" model="ir.ui.view">
+        <field name="name">hjig.project.ecn.form</field><field name="model">hjig.project.ecn</field>
+        <field name="arch" type="xml"><form string="Engineering Change Notice">
+            <header>
+                <button name="action_submit_review" type="object" string="Submit for Review" class="btn-primary" invisible="status != 'draft'"/>
+                <button name="action_approve" type="object" string="Approve ECN" class="btn-primary" invisible="status != 'review'"/>
+                <button name="action_mark_implemented" type="object" string="Mark Implemented" class="btn-primary" invisible="status != 'approved'"/>
+                <button name="action_close" type="object" string="Close ECN" class="btn-primary" invisible="status != 'implemented'"/>
+                <field name="status" widget="statusbar" statusbar_visible="draft,review,approved,implemented,closed,rejected"/>
+            </header>
+            <sheet><div class="oe_title"><h1><field name="ecn_id"/></h1></div>
+                <group><group string="Change Definition"><field name="project_id"/><field name="description"/><field name="component_name"/>
+                    <field name="change_reason"/><field name="impacted_part_ids" widget="many2many_tags" domain="[('x_project_id','=',project_id)]"/>
+                    <field name="impacted_mould_ids" widget="many2many_tags" domain="[('x_project_id','=',project_id)]"/></group>
+                <group string="Authority and Timing"><field name="raised_by_designation_id"/><field name="raised_date"/>
+                    <field name="owner_designation_id"/><field name="approver_designation_id"/><field name="submitted_by_id"/>
+                    <field name="approved_by_id"/><field name="implementation_date"/><field name="closed_date"/></group></group>
+                <notebook><page string="Supplier Approval"><group><field name="currency_id" invisible="1"/><field name="supplier_cost"/>
+                    <field name="supplier_lead_time_days"/><field name="supplier_approval_status"/>
+                    <field name="supplier_approval_evidence_url" widget="url"/><field name="supplier_evidence_ids" widget="many2many_binary"/></group></page>
+                <page string="Customer Approval"><group><field name="customer_cost"/><field name="customer_approval_status"/>
+                    <field name="customer_approval_date"/><field name="customer_approval_evidence_url" widget="url"/>
+                    <field name="customer_evidence_ids" widget="many2many_binary"/></group></page>
+                <page string="Remarks"><field name="remarks"/></page></notebook>
+            </sheet><chatter/></form></field>
+    </record>
+    <record id="action_hjig_project_ecn" model="ir.actions.act_window">
+        <field name="name">ECN Register</field><field name="res_model">hjig.project.ecn</field><field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem id="menu_hjig_final_mould_plans" name="Final Mould Plans" parent="menu_hjig_native_project_forms"
+              action="action_hjig_final_mould_plan" sequence="31"/>
+    <menuitem id="menu_hjig_project_risks" name="Risk Register" parent="menu_hjig_native_project_forms"
+              action="action_hjig_project_risk" sequence="32"/>
+    <menuitem id="menu_hjig_project_issues" name="Issue Register" parent="menu_hjig_native_project_forms"
+              action="action_hjig_project_issue" sequence="33"/>
+    <menuitem id="menu_hjig_project_ecns" name="ECN Register" parent="menu_hjig_native_project_forms"
+              action="action_hjig_project_ecn" sequence="34"/>
+
+    <record id="view_project_form_hjig_registers" model="ir.ui.view">
+        <field name="name">project.project.form.hjig.registers</field><field name="model">project.project</field>
+        <field name="inherit_id" ref="project.edit_project"/>
+        <field name="arch" type="xml"><xpath expr="//div[@name='button_box']" position="inside">
+            <button name="action_open_hjig_final_mould_plans" type="object" class="oe_stat_button" icon="fa-table">
+                <field name="hjig_final_mould_plan_count" widget="statinfo" string="Final Plans"/></button>
+            <button name="action_open_hjig_risks" type="object" class="oe_stat_button" icon="fa-exclamation-triangle">
+                <field name="hjig_risk_count" widget="statinfo" string="Risks"/></button>
+            <button name="action_open_hjig_issues" type="object" class="oe_stat_button" icon="fa-bug">
+                <field name="hjig_issue_count" widget="statinfo" string="Issues"/></button>
+            <button name="action_open_hjig_ecns" type="object" class="oe_stat_button" icon="fa-exchange">
+                <field name="hjig_ecn_count" widget="statinfo" string="ECNs"/></button>
+        </xpath></field>
+    </record>
+</odoo>

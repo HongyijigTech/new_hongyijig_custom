@@ -5,4 +5,5 @@ from . import crm_lead
 from . import engineering_reference
 from . import governance_master
 from . import native_forms
+from . import project_registers
 from . import project_document

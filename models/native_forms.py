@@ -936,6 +936,10 @@ class ProjectProject(models.Model):
             for project in self:
                 has_native_forms = self.env["x_mould"].search_count([("x_project_id", "=", project.id)])
                 has_native_forms += self.env["hjig.inspection.report"].search_count([("project_id", "=", project.id)])
+                has_native_forms += self.env["hjig.final.mould.plan"].search_count([("project_id", "=", project.id)])
+                has_native_forms += self.env["hjig.project.risk"].search_count([("project_id", "=", project.id)])
+                has_native_forms += self.env["hjig.project.issue"].search_count([("project_id", "=", project.id)])
+                has_native_forms += self.env["hjig.project.ecn"].search_count([("project_id", "=", project.id)])
                 if project.x_project_code != new_code and has_native_forms:
                     raise ValidationError(_("Project Code cannot be changed after native project forms exist."))
         return super().write(vals)
