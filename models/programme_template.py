@@ -46,6 +46,18 @@ class HjigProgrammeTemplate(models.Model):
                 )
         return super().write(vals)
 
+    def action_open_versions(self):
+        """Open governed versions as normal records instead of nested pop-ups."""
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("%s — Governed Versions") % self.name,
+            "res_model": "hjig.programme.template.version",
+            "view_mode": "list,form",
+            "domain": [("template_id", "=", self.id)],
+            "context": {"default_template_id": self.id},
+        }
+
     @api.constrains("owner_designation_id", "approver_designation_id")
     def _check_designation_separation(self):
         for template in self:
@@ -202,6 +214,16 @@ class HjigProgrammeTemplateVersion(models.Model):
                 raise ValidationError(_("The activity dependency map must be verified before review."))
             if record.evidence_review_status != "verified":
                 raise ValidationError(_("The gate-by-gate SOP/Form map must be verified before review."))
+            pending_content = record.activity_line_ids.filtered(
+                lambda activity: "PENDING CHECKLIST CONTENT" in (activity.name or "").upper()
+            )
+            if pending_content:
+                raise ValidationError(
+                    _(
+                        "This programme contains explicitly pending checklist content and cannot "
+                        "enter governed review until that content is completed and verified."
+                    )
+                )
             sequences = record.gate_line_ids.mapped("sequence")
             if len(sequences) != len(set(sequences)):
                 raise ValidationError(_("Gate sequences must be unique within a programme version."))

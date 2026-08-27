@@ -33,7 +33,7 @@ def canonical_stage(stage_name):
     if "IG-01" in upper or "PROJECT PLANNING" in upper:
         return "PA-00"
     if "DESIGN ONLY" in upper:
-        return "TG-01"
+        return "LGD-SIGNOFF"
     raise RuntimeError("No canonical gate mapping for legacy stage: %s" % stage_name)
 
 
@@ -41,7 +41,7 @@ def designations_for(stage_code, activity_name):
     upper = (activity_name or "").upper()
     if stage_code == "PA-00":
         return "PROJECT-COORD", "PROJECT-MANAGER"
-    if stage_code == "TG-01":
+    if stage_code in ("TG-01", "LGD-SIGNOFF"):
         if any(word in upper for word in ("TOOLMAKER", "COMMERCIAL", "SUPPLIER")):
             return "PROJECT-MANAGER", "PMO-DOC"
         return "SR-PRODUCT-DESIGN", "PROJECT-MANAGER"
@@ -91,6 +91,12 @@ master_by_code = {
 
 
 def sync_artifact_rules(version):
+    valid_stage_ids = set(version.gate_line_ids.mapped("stage_id").ids)
+    stale = version.artifact_rule_ids.filtered(
+        lambda rule: rule.stage_id.id not in valid_stage_ids
+    )
+    if stale:
+        stale.unlink()
     existing = {
         (rule.stage_id.id, rule.artifact_master_id.id)
         for rule in version.artifact_rule_ids
@@ -107,6 +113,143 @@ def sync_artifact_rules(version):
                     "mandatory": True,
                 })
                 existing.add(key)
+
+
+def sync_route_gates(version, tasks):
+    """Reconcile draft gate identity to the authoritative programme route."""
+    ordered_stage_codes = []
+    for task in tasks:
+        code = canonical_stage(task["stage_name"])
+        if code not in ordered_stage_codes:
+            ordered_stage_codes.append(code)
+    existing = version.gate_line_ids.sorted("sequence")
+    if len(existing) != len(ordered_stage_codes):
+        raise RuntimeError(
+            "%s gate count does not reconcile to the authoritative route"
+            % version.template_id.code
+        )
+    gate_by_code = {}
+    for sequence, (gate, code) in enumerate(zip(existing, ordered_stage_codes), start=1):
+        stage = stage_by_code.get(code)
+        if not stage:
+            raise RuntimeError("Missing canonical staging gate %s" % code)
+        gate.write({
+            "stage_id": stage.id,
+            "sequence": sequence * 10,
+            "closure_variant": "lite" if code == "TG-10-LITE" else "standard",
+        })
+        gate_by_code[code] = gate
+    for activity in version.activity_line_ids:
+        source = next(task for task in tasks if task["id"] == activity.legacy_source_task_id)
+        gate = gate_by_code[canonical_stage(source["stage_name"])]
+        if activity.gate_line_id != gate:
+            activity.gate_line_id = gate
+    return gate_by_code
+
+
+ACTIVITY_ARTIFACTS = {
+    "A-001": ("FRM-003",),
+    "A-002": ("FRM-004",),
+    "A-004": ("FRM-005",),
+    "A-005": ("FRM-006",),
+    "A-006": ("FRM-027",), "A-007": ("FRM-027",),
+    "A-008": ("FRM-027",), "A-009": ("FRM-027",),
+    "A-010": ("FRM-027",), "A-011": ("FRM-027",),
+    "A-012": ("FRM-007",), "A-013": ("FRM-003",),
+    "A-014": ("FRM-028", "FRM-029"), "A-015": ("FRM-028", "FRM-029"),
+    "A-016": ("FRM-028", "FRM-029"), "A-017": ("FRM-028", "FRM-029"),
+    "A-019": ("FRM-030",), "A-020": ("FRM-031",),
+    "A-021": ("FRM-032",), "A-022": ("FRM-033",),
+    "A-023": ("FRM-034",), "A-024": ("FRM-034",), "A-025": ("FRM-034",),
+    "A-026": ("FRM-034",), "A-031": ("FRM-034",), "A-032": ("FRM-034",),
+    "A-034": ("FRM-034",), "A-035": ("FRM-034",), "A-036": ("FRM-034",),
+    "A-039": ("FRM-011",), "A-040": ("FRM-012",), "A-041": ("FRM-013",),
+    "A-042": ("FRM-014",), "A-043": ("FRM-035",), "A-044": ("FRM-010",),
+    "A-045": ("FRM-036",), "A-046": ("FRM-036",), "A-047": ("FRM-014",),
+    "A-050": ("FRM-011",), "A-051": ("FRM-012",), "A-052": ("FRM-013",),
+    "A-053": ("FRM-035",), "A-054": ("FRM-036",), "A-055": ("FRM-036",),
+    "A-055A": ("FRM-035",), "A-055B": ("FRM-035",), "A-056": ("FRM-014",),
+    "A-057": ("FRM-015",), "A-058": ("FRM-037",),
+    "A-061": ("FRM-011",), "A-062": ("FRM-012",), "A-063": ("FRM-013",),
+    "A-067": ("FRM-016",), "A-068": ("FRM-038",),
+    "A-069": ("FRM-017",), "A-070": ("FRM-017",),
+    "A-071": ("FRM-017",), "A-072": ("FRM-017", "FRM-039"),
+    "A-073": ("FRM-040",), "A-074": ("FRM-040",), "A-075": ("FRM-040",),
+    "A-076": ("FRM-018",), "A-077": ("FRM-018",), "A-078": ("FRM-041",),
+    "A-079": ("FRM-041",), "A-080": ("FRM-041",), "A-081": ("FRM-041",),
+    "A-082": ("FRM-019", "FRM-041"), "A-083": ("FRM-019",), "A-084": ("FRM-041",),
+    "A-085": ("FRM-020",), "A-086": ("FRM-021",), "A-087": ("FRM-042",),
+    "A-088": ("FRM-042",), "A-089": ("FRM-022",), "A-090": ("FRM-022",),
+    "B8-01": ("FRM-043",), "B8-02": ("FRM-043",), "B8-03": ("FRM-043",),
+    "B8-04": ("FRM-043",), "B8-05": ("FRM-043",), "B8-06": ("FRM-023", "FRM-043"),
+    "B8-07": ("FRM-043",), "B8-08": ("FRM-043",), "B8-09": ("FRM-043",),
+}
+
+
+def sync_activity_artifacts(version):
+    artifact_by_code = {item.code.upper(): item for item in Artifact.search([])}
+    permitted = {
+        (rule.stage_id.id, rule.artifact_master_id.id)
+        for rule in version.artifact_rule_ids
+    }
+    for activity in version.activity_line_ids:
+        codes = [code.strip().upper() for code in (activity.legacy_master_codes or "").split(",") if code.strip()]
+        required_codes = set()
+        for code in codes:
+            required_codes.update(ACTIVITY_ARTIFACTS.get(code, ()))
+        upper_name = (activity.name or "").upper()
+        if "RISK REGISTER" in upper_name:
+            required_codes.add("FRM-006")
+        if activity.gate_line_id.stage_id.code.startswith("TLL-S"):
+            required_codes.add(
+                "FRM-TLL-%03d" % int(activity.gate_line_id.stage_id.code[-2:])
+            )
+        artifacts = Artifact.browse()
+        for code in sorted(required_codes):
+            artifact = artifact_by_code.get(code)
+            if artifact and (activity.gate_line_id.stage_id.id, artifact.id) in permitted:
+                artifacts |= artifact
+        activity.required_artifact_ids = [(6, 0, artifacts.ids)]
+
+
+DOCUMENTED_DEPENDENCIES = (
+    ("A-006", "A-007"), ("A-007", "A-008"), ("A-008", "A-009"),
+    ("A-009", "A-010"), ("A-010", "A-011"),
+    ("A-014", "A-015"), ("A-015", "A-016"), ("A-016", "A-017"),
+    ("A-018", "A-019"), ("A-019", "A-020"), ("A-019", "A-021"),
+    ("A-020", "A-021"), ("A-021", "A-022"),
+    ("A-023", "A-025"), ("A-024", "A-025"), ("A-025", "A-032"),
+    ("A-032", "A-034"), ("A-032", "A-035"),
+    ("A-034", "A-036"), ("A-035", "A-036"),
+    ("A-036", "A-037"), ("A-037", "A-038"),
+    ("A-038", "A-039"), ("A-038", "A-040"), ("A-038", "A-041"),
+    ("A-039", "A-042"), ("A-040", "A-042"), ("A-041", "A-042"),
+    ("A-042", "A-043"), ("A-043", "A-044"), ("A-043", "A-045"),
+    ("A-044", "A-045"), ("A-045", "A-046"), ("A-046", "A-047"),
+    ("A-047", "A-048"), ("A-048", "A-049"),
+    ("A-049", "A-050"), ("A-049", "A-051"), ("A-049", "A-052"),
+    ("A-050", "A-053"), ("A-051", "A-053"), ("A-052", "A-053"),
+    ("A-053", "A-054"), ("A-053", "A-055A"), ("A-054", "A-055"),
+    ("A-055A", "A-055B"), ("A-055", "A-056"), ("A-055B", "A-056"),
+    ("A-056", "A-057"),
+    ("A-057", "A-058"), ("A-057", "A-059"), ("A-057", "A-060"),
+    ("A-057", "A-061"), ("A-057", "A-062"), ("A-057", "A-063"),
+    ("A-057", "A-066"),
+    ("A-058", "A-033"), ("A-059", "A-033"), ("A-060", "A-033"),
+    ("A-061", "A-033"), ("A-062", "A-033"), ("A-063", "A-033"),
+    ("A-033", "A-064"), ("A-064", "A-065"),
+    ("A-067", "A-068"), ("A-068", "A-069"), ("A-069", "A-070"),
+    ("A-068", "A-071"), ("A-070", "A-072"), ("A-071", "A-072"),
+    ("A-072", "A-073"), ("A-073", "A-074"), ("A-074", "A-075"),
+    ("A-075", "A-076"), ("A-076", "A-077"),
+    ("A-078", "A-079"), ("A-079", "A-080"),
+    ("A-082", "A-083"), ("A-082", "A-084"), ("A-082", "A-085"),
+    ("A-085", "A-086"), ("A-086", "A-087"), ("A-087", "A-088"),
+    ("A-088", "A-089"), ("A-089", "A-090"), ("A-090", "A-092"),
+    ("B8-01", "B8-09"), ("B8-02", "B8-09"), ("B8-03", "B8-09"),
+    ("B8-04", "B8-09"), ("B8-05", "B8-09"), ("B8-06", "B8-09"),
+    ("B8-07", "B8-09"), ("B8-08", "B8-09"),
+)
 
 
 def sync_dependency_rules(version, programme_code, task_payload_by_id):
@@ -175,6 +318,91 @@ def sync_dependency_rules(version, programme_code, task_payload_by_id):
             "%s dependency rules do not map to route activities: %s"
             % (programme_code, ",".join(map(str, unmapped)))
         )
+
+    documented_pairs = list(DOCUMENTED_DEPENDENCIES)
+    if programme_code == "LGC":
+        documented_pairs.extend((
+            ("A-011", "A-012"), ("A-011", "A-013"),
+            ("A-012", "A-014"), ("A-013", "A-014"),
+        ))
+    elif programme_code in ("LGV", "TLC"):
+        documented_pairs.extend((
+            ("A-012", "A-013"), ("A-012", "A-014"), ("A-013", "A-014"),
+        ))
+
+    represented_pairs = {
+        (rule.predecessor_activity_id.id, rule.successor_activity_id.id)
+        for rule in version.dependency_rule_ids.filtered(
+            lambda item: item.legacy_source_rule_id in expected_source_ids
+        )
+    }
+    documented_count = 0
+    for index, (predecessor_code, successor_code) in enumerate(documented_pairs, start=1):
+        predecessor = activity_by_master_code.get(predecessor_code)
+        successor = activity_by_master_code.get(successor_code)
+        if not predecessor or not successor:
+            continue
+        if predecessor.sequence >= successor.sequence:
+            raise RuntimeError(
+                "%s documented dependency is not forward-only: %s -> %s"
+                % (programme_code, predecessor_code, successor_code)
+            )
+        if (predecessor.id, successor.id) in represented_pairs:
+            continue
+        source_rule_id = -100000 - index
+        upsert_rule(source_rule_id, predecessor, successor, {
+            "predecessor_basis": predecessor.execution_basis,
+            "successor_basis": successor.execution_basis,
+            "rule_type": "documented_sequence",
+            "scope_matching_rule": "%s->%s (authoritative B-Series sequence)" % (
+                predecessor.execution_basis.upper(), successor.execution_basis.upper()
+            ),
+            "aggregation_requirement": "Complete the documented predecessor before starting the successor.",
+            "conditional_handling": "Conditional predecessors require an approved N/A disposition when out of scope.",
+            "source_reference": "Hongyi_BSeries_Activity_Dependencies_v1_2",
+            "source_version": "v1.2 / Drive revision AIroW34bcutBBn3i2KyIeSGTKVX3V5h3UHJ9n8i8kRG0yU98hEUj4Dt0qyUGAx6FprWFIlQQFCSsbQbauMO_KZzuIY0nHHnrn3sfEA_X1xA",
+        })
+        represented_pairs.add((predecessor.id, successor.id))
+        documented_count += 1
+
+    # CM milestones are not Activity Master records, so bind the two explicit
+    # payment blocks by their governed task labels.
+    cm05 = version.activity_line_ids.filtered(lambda item: (item.name or "").upper().startswith("CM-05:"))[:1]
+    trial_t0 = activity_by_master_code.get("A-036")
+    if cm05 and trial_t0 and (cm05.id, trial_t0.id) not in represented_pairs:
+        upsert_rule(-100500, cm05, trial_t0, {
+            "predecessor_basis": "project", "successor_basis": trial_t0.execution_basis,
+            "rule_type": "commercial_hard_block",
+            "scope_matching_rule": "PROJECT->MOULD (same programme run)",
+            "aggregation_requirement": "CM-05 must be confirmed before T0 trial.",
+            "conditional_handling": "Not conditional.",
+            "source_reference": "Hongyi_BSeries_Activity_Dependencies_v1_2 Table 10",
+            "source_version": "v1.2",
+        })
+        represented_pairs.add((cm05.id, trial_t0.id))
+        documented_count += 1
+
+    cm08 = version.activity_line_ids.filtered(lambda item: (item.name or "").upper().startswith("CM-08:"))[:1]
+    payment_verified = activity_by_master_code.get("A-081")
+    cm09 = version.activity_line_ids.filtered(lambda item: (item.name or "").upper().startswith("CM-09:"))[:1]
+    delivery = activity_by_master_code.get("A-082")
+    for source_rule_id, predecessor, successor, requirement in (
+        (-100501, cm08, payment_verified, "Customer duty demand must precede payment verification."),
+        (-100502, payment_verified, cm09, "Customer payment must be verified before HJIG pays agencies."),
+        (-100503, cm09, delivery, "Agency payment and BOE filing must precede customs clearance and delivery."),
+    ):
+        if predecessor and successor and (predecessor.id, successor.id) not in represented_pairs:
+            upsert_rule(source_rule_id, predecessor, successor, {
+                "predecessor_basis": "project", "successor_basis": successor.execution_basis,
+                "rule_type": "commercial_hard_block",
+                "scope_matching_rule": "PROJECT->PROJECT (same programme run)",
+                "aggregation_requirement": requirement,
+                "conditional_handling": "Not conditional.",
+                "source_reference": "Hongyi_BSeries_Activity_Dependencies_v1_2 Table 15",
+                "source_version": "v1.2",
+            })
+            represented_pairs.add((predecessor.id, successor.id))
+            documented_count += 1
     # Gate barriers are derived from the verified route itself. Every activity in a
     # later gate waits for every activity in the immediately preceding gate, while
     # the 34 source rules retain the component/mould aggregation semantics inside gates.
@@ -207,7 +435,7 @@ def sync_dependency_rules(version, programme_code, task_payload_by_id):
         stale.unlink()
     if len(version.dependency_rule_ids) != len(expected_source_ids):
         raise RuntimeError("%s dependency rule count does not reconcile" % programme_code)
-    return len(applicable), len(expected_source_ids) - len(applicable)
+    return len(applicable), documented_count, len(expected_source_ids) - len(applicable) - documented_count
 
 for project_id, (programme_code, expected_count) in PROGRAMMES.items():
     tasks = payload["projects"].get(str(project_id), [])
@@ -225,8 +453,10 @@ for project_id, (programme_code, expected_count) in PROGRAMMES.items():
         expected_ids = {task["id"] for task in tasks}
         if source_ids != expected_ids:
             raise RuntimeError("Existing %s v1.0 draft does not reconcile to source" % programme_code)
+        sync_route_gates(version, tasks)
         sync_artifact_rules(version)
-        dependency_count, barrier_count = sync_dependency_rules(
+        sync_activity_artifacts(version)
+        dependency_count, documented_count, barrier_count = sync_dependency_rules(
             version, programme_code, task_payload_by_id
         )
         print(
@@ -235,6 +465,7 @@ for project_id, (programme_code, expected_count) in PROGRAMMES.items():
             len(source_ids),
             len(version.artifact_rule_ids),
             dependency_count,
+            documented_count,
             barrier_count,
         )
         continue
@@ -293,7 +524,8 @@ for project_id, (programme_code, expected_count) in PROGRAMMES.items():
         })
 
     sync_artifact_rules(version)
-    dependency_count, barrier_count = sync_dependency_rules(
+    sync_activity_artifacts(version)
+    dependency_count, documented_count, barrier_count = sync_dependency_rules(
         version, programme_code, task_payload_by_id
     )
     print(
@@ -303,6 +535,7 @@ for project_id, (programme_code, expected_count) in PROGRAMMES.items():
         len(version.activity_line_ids),
         len(version.artifact_rule_ids),
         dependency_count,
+        documented_count,
         barrier_count,
         version.state,
     )

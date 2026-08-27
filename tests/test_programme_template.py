@@ -142,6 +142,40 @@ class TestProgrammeTemplateGovernance(TransactionCase):
         with self.assertRaises(ValidationError):
             self.activity_1.unlink()
 
+    def test_template_opens_versions_as_full_records(self):
+        action = self.template.action_open_versions()
+        self.assertEqual(action["res_model"], "hjig.programme.template.version")
+        self.assertEqual(action["view_mode"], "list,form")
+        self.assertEqual(action["domain"], [("template_id", "=", self.template.id)])
+
+    def test_pending_checklist_content_blocks_governed_review(self):
+        draft = self.env["hjig.programme.template.version"].create({
+            "template_id": self.template.id,
+            "version": "PENDING-CONTENT",
+            "dependency_review_status": "verified",
+            "evidence_review_status": "verified",
+        })
+        gate = self.env["hjig.programme.template.gate"].create({
+            "version_id": draft.id,
+            "stage_id": self.stage.id,
+        })
+        self.env["hjig.programme.template.activity"].create({
+            "version_id": draft.id,
+            "code": "PENDING-ACT-001",
+            "name": "Session activity — PENDING CHECKLIST CONTENT",
+            "gate_line_id": gate.id,
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+        })
+        self.env["hjig.programme.template.artifact"].create({
+            "version_id": draft.id,
+            "artifact_master_id": self.artifact.id,
+            "stage_id": self.stage.id,
+            "mandatory": True,
+        })
+        with self.assertRaises(ValidationError):
+            draft.action_submit_review()
+
     def test_approval_requires_designation_holder(self):
         version = self.env["hjig.programme.template.version"].create({
             "template_id": self.template.id,

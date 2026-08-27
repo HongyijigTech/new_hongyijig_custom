@@ -20,6 +20,10 @@
         <field name="arch" type="xml">
             <form string="Programme Template">
                 <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_open_versions" type="object" class="oe_stat_button"
+                                icon="fa-sitemap" string="Open Versions"/>
+                    </div>
                     <div class="oe_title"><h1><field name="name"/></h1></div>
                     <group>
                         <group>
@@ -33,7 +37,7 @@
                     <notebook>
                         <page string="Governed Versions">
                             <field name="version_ids" context="{'default_template_id': id}">
-                                <list>
+                                <list open_form_view="1">
                                     <field name="version"/>
                                     <field name="state"/>
                                     <field name="is_current"/>

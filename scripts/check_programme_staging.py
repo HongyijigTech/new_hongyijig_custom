@@ -3,30 +3,36 @@
 if env.cr.dbname != "HongyijigTech_10Feb":
     raise RuntimeError("This staging check is restricted to HongyijigTech_10Feb")
 
-expected = {
-    "LGC": (141, 1723, 94),
-    "LGD": (22, 123, 18),
-    "LGV": (127, 1377, 85),
-    "TLC": (106, 1133, 70),
-    "TLL": (12, 20, 12),
+expected_activity_counts = {
+    "LGC": 141,
+    "LGD": 22,
+    "LGV": 127,
+    "TLC": 106,
+    "TLL": 12,
+}
+expected_routes = {
+    "LGC": ["PA-00", "TG-01", "TG-02", "TG-03", "TG-04", "TG-05", "TG-06", "TG-07", "TG-08", "TG-09", "TG-10"],
+    "LGD": ["PA-00", "LGD-SIGNOFF"],
+    "LGV": ["PA-00", "PRE-B2", "TG-02", "TG-03", "TG-04", "TG-05", "TG-06", "TG-07", "TG-08", "TG-09", "TG-10"],
+    "TLC": ["PA-00", "PRE-B2", "TG-02", "TG-03", "TG-04", "TG-05", "TG-06", "TG-07", "TG-10-LITE"],
+    "TLL": ["TLL-S01", "TLL-S02", "TLL-S03", "TLL-S04", "TLL-S05", "TLL-S06"],
 }
 
 Version = env["hjig.programme.template.version"]
 Run = env["hjig.programme.run"]
-programmes = Version.search([("template_id.code", "in", list(expected))])
+programmes = Version.search([("template_id.code", "in", list(expected_activity_counts))])
 
 if len(programmes) != 5:
     raise RuntimeError(f"Expected exactly five staging programme versions; found {len(programmes)}")
 
 for programme in programmes.sorted(lambda item: item.template_id.code):
     code = programme.template_id.code
-    actual = (
-        len(programme.activity_line_ids),
-        len(programme.dependency_rule_ids),
-        len(programme.artifact_rule_ids),
-    )
-    if actual != expected[code]:
-        raise RuntimeError(f"{code} reconciliation mismatch: expected {expected[code]}, found {actual}")
+    actual = (len(programme.activity_line_ids), len(programme.dependency_rule_ids), len(programme.artifact_rule_ids))
+    if actual[0] != expected_activity_counts[code]:
+        raise RuntimeError(f"{code} activity count mismatch: expected {expected_activity_counts[code]}, found {actual[0]}")
+    route = programme.gate_line_ids.sorted("sequence").mapped("stage_id.code")
+    if route != expected_routes[code]:
+        raise RuntimeError(f"{code} route mismatch: expected {expected_routes[code]}, found {route}")
     if programme.state != "draft" or programme.is_current:
         raise RuntimeError(f"{code} must remain a non-current draft pending governed review")
     if programme.dependency_review_status != "unreviewed" or programme.evidence_review_status != "unreviewed":
@@ -39,7 +45,9 @@ for programme in programmes.sorted(lambda item: item.template_id.code):
     )
     if missing:
         raise RuntimeError(f"{code} has required gates without mandatory artifacts")
-    print("STAGING_PROGRAMME_PASS", code, *actual, "DRAFT_UNREVIEWED")
+    if not programme.activity_line_ids.filtered("required_artifact_ids"):
+        raise RuntimeError(f"{code} has no activity-to-evidence mapping")
+    print("STAGING_PROGRAMME_PASS", code, *actual, "DRAFT_UNREVIEWED", "ROUTE", ",".join(route))
 
 print("STAGING_PROGRAMME_RUN_COUNT", Run.search_count([]))
 print("STAGING_BSERIES_READ_ONLY_REGRESSION_PASS")
