@@ -114,16 +114,18 @@
     <record id="action_hjig_inspection_method" model="ir.actions.act_window"><field name="name">Inspection Methods</field>
         <field name="res_model">hjig.inspection.method.master</field><field name="view_mode">list,form</field></record>
 
+    <!-- Keep these actions at the same visible level as the native forms. Odoo's
+         compact Project sidebar hides a third menu level. -->
     <menuitem id="menu_hjig_engineering_reference" name="Engineering Reference Databases"
-              parent="menu_hjig_native_project_forms" sequence="40" groups="project.group_project_user"/>
-    <menuitem id="menu_hjig_plastic_material" name="Plastic Materials" parent="menu_hjig_engineering_reference"
-              action="action_hjig_plastic_material" sequence="10"/>
-    <menuitem id="menu_hjig_surface_finish" name="Surface Finishes &amp; Textures" parent="menu_hjig_engineering_reference"
-              action="action_hjig_surface_finish" sequence="20"/>
-    <menuitem id="menu_hjig_tool_steel" name="Tool Steels" parent="menu_hjig_engineering_reference"
-              action="action_hjig_tool_steel" sequence="30"/>
-    <menuitem id="menu_hjig_gate_type" name="Runner &amp; Gate Types" parent="menu_hjig_engineering_reference"
-              action="action_hjig_gate_type" sequence="40"/>
-    <menuitem id="menu_hjig_inspection_method" name="Inspection Methods" parent="menu_hjig_engineering_reference"
-              action="action_hjig_inspection_method" sequence="50"/>
+              parent="menu_hjig_native_project_forms" sequence="90" active="False"/>
+    <menuitem id="menu_hjig_plastic_material" name="Plastic Materials" parent="menu_hjig_native_project_forms"
+              action="action_hjig_plastic_material" sequence="40"/>
+    <menuitem id="menu_hjig_surface_finish" name="Surface Finishes &amp; Textures" parent="menu_hjig_native_project_forms"
+              action="action_hjig_surface_finish" sequence="50"/>
+    <menuitem id="menu_hjig_tool_steel" name="Tool Steels" parent="menu_hjig_native_project_forms"
+              action="action_hjig_tool_steel" sequence="60"/>
+    <menuitem id="menu_hjig_gate_type" name="Runner &amp; Gate Types" parent="menu_hjig_native_project_forms"
+              action="action_hjig_gate_type" sequence="70"/>
+    <menuitem id="menu_hjig_inspection_method" name="Inspection Methods" parent="menu_hjig_native_project_forms"
+              action="action_hjig_inspection_method" sequence="80"/>
 </odoo>
