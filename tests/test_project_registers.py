@@ -1,6 +1,6 @@
 import base64
 
-from odoo.exceptions import ValidationError
+from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests import TransactionCase, tagged
 
 
@@ -17,6 +17,10 @@ class TestProjectRegisters(TransactionCase):
         cls.approver = cls.env["res.users"].create({
             "name": "Register Approver", "login": "register.approver@test.invalid",
             "group_ids": [(6, 0, [cls.env.ref("project.group_project_manager").id])],
+        })
+        cls.outsider = cls.env["res.users"].create({
+            "name": "Register Outsider", "login": "register.outsider@test.invalid",
+            "group_ids": [(6, 0, [cls.env.ref("project.group_project_user").id])],
         })
         cls.owner_designation = cls.env["hjig.governance.designation"].create({
             "code": "REGISTER-TEST-OWNER", "name": "Register Test Owner", "category": "engineering",
@@ -69,6 +73,39 @@ class TestProjectRegisters(TransactionCase):
         with self.assertRaises(ValidationError):
             plan.revision = "R01"
 
+    def test_final_mould_plan_rejects_fabricated_or_incomplete_snapshot(self):
+        mould, part = self._approved_mould()
+        plan = self.env["hjig.final.mould.plan"].create({
+            "project_id": self.project.id, "revision": "R01",
+            "source_mould_ids": [(6, 0, [mould.id])],
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+            "effective_date": "2026-08-27",
+        })
+        forged = plan._snapshot_values(mould, part)
+        forged.update({"plan_id": plan.id, "part_name": "Fabricated value"})
+        with self.assertRaises(ValidationError):
+            self.env["hjig.final.mould.plan.line"].create(forged)
+        plan.action_generate_lines()
+        plan.line_ids.unlink()
+        with self.assertRaises(ValidationError):
+            plan.with_user(self.owner).action_submit_review()
+
+    def test_final_mould_plan_context_cannot_bypass_authority(self):
+        mould, _part = self._approved_mould()
+        plan = self.env["hjig.final.mould.plan"].create({
+            "project_id": self.project.id, "revision": "R02",
+            "source_mould_ids": [(6, 0, [mould.id])],
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+            "effective_date": "2026-08-27",
+        })
+        plan.action_generate_lines()
+        with self.assertRaises(UserError):
+            plan.with_user(self.outsider).with_context(allow_final_plan_workflow=True).write({
+                "workflow_state": "review", "submitted_by_id": self.outsider.id,
+            })
+
     def test_risk_score_and_resolution_lock(self):
         risk = self.env["hjig.project.risk"].create({
             "project_id": self.project.id, "description": "Trial date may slip",
@@ -84,6 +121,21 @@ class TestProjectRegisters(TransactionCase):
         risk.with_user(self.approver).action_resolve()
         with self.assertRaises(ValidationError):
             risk.description = "Rewritten"
+
+    def test_risk_intermediate_workflow_is_designation_controlled(self):
+        risk = self.env["hjig.project.risk"].create({
+            "project_id": self.project.id, "description": "Controlled workflow risk",
+            "category": "technical", "probability": "3", "impact": "3",
+            "mitigation_plan": "Execute countermeasure",
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+            "target_date": "2026-09-10", "next_review_date": "2026-08-30",
+        })
+        with self.assertRaises(UserError):
+            risk.with_user(self.outsider).action_start_mitigation()
+        risk.with_user(self.owner).action_start_mitigation()
+        risk.with_user(self.approver).action_accept()
+        self.assertEqual(risk.status, "accepted")
 
     def test_issue_needs_evidence_to_close(self):
         issue = self.env["hjig.project.issue"].create({
@@ -103,6 +155,43 @@ class TestProjectRegisters(TransactionCase):
                      "closure_attachment_ids": [(6, 0, [attachment.id])]})
         issue.with_user(self.approver).action_close()
         self.assertEqual(issue.status, "closed")
+        with self.assertRaises(ValidationError):
+            issue.with_user(self.approver).action_close()
+
+    def test_issue_rejects_unrelated_attachment_and_invalid_link(self):
+        issue = self.env["hjig.project.issue"].create({
+            "project_id": self.project.id, "description": "Unverified closure",
+            "category": "quality", "priority": "critical",
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+            "next_review_date": "2026-08-30", "target_closure_date": "2026-09-02",
+            "root_cause": "Recorded", "closure_notes": "Claimed closed",
+        })
+        unrelated = self.env["ir.attachment"].create({
+            "name": "unrelated.txt", "datas": base64.b64encode(b"unrelated"),
+            "res_model": "project.project", "res_id": self.project.id,
+        })
+        issue.write({"closure_attachment_ids": [(6, 0, [unrelated.id])]})
+        with self.assertRaises(ValidationError):
+            issue.with_user(self.approver).action_close()
+        issue.write({"closure_attachment_ids": [(5, 0, 0)], "closure_evidence_url": "not-a-valid-url"})
+        with self.assertRaises(ValidationError):
+            issue.with_user(self.approver).action_close()
+
+    def test_issue_intermediate_workflow_is_designation_controlled(self):
+        issue = self.env["hjig.project.issue"].create({
+            "project_id": self.project.id, "description": "Controlled workflow issue",
+            "category": "schedule", "priority": "high",
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+            "next_review_date": "2026-08-30", "target_closure_date": "2026-09-02",
+        })
+        with self.assertRaises(UserError):
+            issue.with_user(self.outsider).action_start_work()
+        issue.with_user(self.owner).action_start_work()
+        issue.with_user(self.owner).action_block()
+        issue.with_user(self.owner).action_resume()
+        self.assertEqual(issue.status, "in_progress")
 
     def test_ecn_approval_and_implementation_flow(self):
         _mould, part = self._approved_mould()
@@ -114,13 +203,48 @@ class TestProjectRegisters(TransactionCase):
             "owner_designation_id": self.owner_designation.id,
             "approver_designation_id": self.approver_designation.id,
             "supplier_approval_status": "not_required", "customer_approval_status": "pending",
+            "remarks": "No supplier or customer approval is required for this controlled test.",
         })
         ecn.with_user(self.owner).action_submit_review()
         with self.assertRaises(ValidationError):
             ecn.with_user(self.approver).action_approve()
         ecn.write({"customer_approval_status": "not_required"})
         ecn.with_user(self.approver).action_approve()
-        ecn.implementation_date = "2026-08-28"
+        with self.assertRaises(ValidationError):
+            ecn.with_user(self.owner).write({"description": "Changed after approval"})
+        ecn.with_user(self.owner).write({"implementation_date": "2026-08-28"})
         ecn.with_user(self.owner).action_mark_implemented()
         ecn.with_user(self.approver).action_close()
         self.assertEqual(ecn.status, "closed")
+
+    def test_ecn_context_cannot_bypass_submission_authority(self):
+        mould, _part = self._approved_mould()
+        ecn = self.env["hjig.project.ecn"].create({
+            "project_id": self.project.id, "description": "Unauthorized ECN attempt",
+            "component_name": "Housing", "change_reason": "Test",
+            "impacted_mould_ids": [(6, 0, [mould.id])],
+            "raised_by_designation_id": self.owner_designation.id,
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+        })
+        with self.assertRaises(UserError):
+            ecn.with_user(self.outsider).with_context(allow_ecn_workflow=True).write({
+                "status": "review", "submitted_by_id": self.outsider.id,
+            })
+
+    def test_private_project_registers_follow_project_visibility(self):
+        private_project = self.env["project.project"].create({
+            "name": "Private Register Project", "privacy_visibility": "invited_users",
+            "hjig_project_record_type": "customer", "x_project_code": "HJ-REG-2026-PRIVATE",
+        })
+        risk = self.env["hjig.project.risk"].create({
+            "project_id": private_project.id, "description": "Private commercial risk",
+            "category": "commercial", "probability": "3", "impact": "4",
+            "mitigation_plan": "Restricted review", "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+            "target_date": "2026-09-10", "next_review_date": "2026-08-30",
+        })
+        self.assertFalse(self.env["hjig.project.risk"].with_user(self.owner).search([("id", "=", risk.id)]))
+        with self.assertRaises(AccessError):
+            risk.with_user(self.owner).read(["description"])
+        self.assertEqual(self.env["hjig.project.risk"].with_user(self.approver).search([("id", "=", risk.id)]), risk)

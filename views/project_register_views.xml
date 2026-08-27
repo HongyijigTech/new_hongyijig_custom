@@ -14,7 +14,7 @@
                 <button name="action_generate_lines" type="object" string="Generate from Approved Mould Plans" class="btn-secondary" invisible="workflow_state != 'draft'"/>
                 <button name="action_submit_review" type="object" string="Submit for Review" class="btn-primary" invisible="workflow_state != 'draft'"/>
                 <button name="action_approve" type="object" string="Approve &amp; Lock" class="btn-primary" invisible="workflow_state != 'review'"/>
-                <field name="workflow_state" widget="statusbar" statusbar_visible="draft,review,approved,superseded"/>
+                <field name="workflow_state" widget="statusbar" statusbar_visible="draft,review,approved,superseded" readonly="1"/>
             </header>
             <sheet><div class="oe_title"><h1><field name="plan_number"/></h1></div>
                 <group><group string="Plan Identity"><field name="project_id"/><field name="project_code"/><field name="revision"/>
@@ -54,8 +54,10 @@
     <record id="view_hjig_project_risk_form" model="ir.ui.view">
         <field name="name">hjig.project.risk.form</field><field name="model">hjig.project.risk</field>
         <field name="arch" type="xml"><form string="Project Risk">
-            <header><button name="action_resolve" type="object" string="Resolve Risk" class="btn-primary" invisible="status == 'resolved'"/>
-                <field name="status" widget="statusbar" statusbar_visible="open,mitigating,accepted,resolved"/></header>
+            <header><button name="action_start_mitigation" type="object" string="Start Mitigation" class="btn-primary" invisible="status != 'open'"/>
+                <button name="action_accept" type="object" string="Accept Risk" class="btn-secondary" invisible="status not in ('open','mitigating')"/>
+                <button name="action_resolve" type="object" string="Resolve Risk" class="btn-primary" invisible="status == 'resolved'"/>
+                <field name="status" widget="statusbar" statusbar_visible="open,mitigating,accepted,resolved" readonly="1"/></header>
             <sheet><div class="oe_title"><h1><field name="risk_id"/></h1></div>
                 <group><group string="Risk Definition"><field name="project_id"/><field name="description"/><field name="category"/>
                     <field name="probability"/><field name="impact"/><field name="risk_score" readonly="1"/>
@@ -80,8 +82,11 @@
     <record id="view_hjig_project_issue_form" model="ir.ui.view">
         <field name="name">hjig.project.issue.form</field><field name="model">hjig.project.issue</field>
         <field name="arch" type="xml"><form string="Project Issue">
-            <header><button name="action_close" type="object" string="Close with Evidence" class="btn-primary" invisible="status == 'closed'"/>
-                <field name="status" widget="statusbar" statusbar_visible="open,in_progress,blocked,closed"/></header>
+            <header><button name="action_start_work" type="object" string="Start Work" class="btn-primary" invisible="status != 'open'"/>
+                <button name="action_block" type="object" string="Mark Blocked" class="btn-secondary" invisible="status not in ('open','in_progress')"/>
+                <button name="action_resume" type="object" string="Resume Work" class="btn-primary" invisible="status != 'blocked'"/>
+                <button name="action_close" type="object" string="Close with Evidence" class="btn-primary" invisible="status == 'closed'"/>
+                <field name="status" widget="statusbar" statusbar_visible="open,in_progress,blocked,closed" readonly="1"/></header>
             <sheet><div class="oe_title"><h1><field name="issue_id"/></h1></div>
                 <group><group string="Issue Definition"><field name="project_id"/><field name="description"/><field name="category"/>
                     <field name="priority"/><field name="date_raised"/><field name="aging_days" readonly="1"/></group>
@@ -111,7 +116,7 @@
                 <button name="action_approve" type="object" string="Approve ECN" class="btn-primary" invisible="status != 'review'"/>
                 <button name="action_mark_implemented" type="object" string="Mark Implemented" class="btn-primary" invisible="status != 'approved'"/>
                 <button name="action_close" type="object" string="Close ECN" class="btn-primary" invisible="status != 'implemented'"/>
-                <field name="status" widget="statusbar" statusbar_visible="draft,review,approved,implemented,closed,rejected"/>
+                <field name="status" widget="statusbar" statusbar_visible="draft,review,approved,implemented,closed,rejected" readonly="1"/>
             </header>
             <sheet><div class="oe_title"><h1><field name="ecn_id"/></h1></div>
                 <group><group string="Change Definition"><field name="project_id"/><field name="description"/><field name="component_name"/>

@@ -5,4 +5,95 @@
         <field name="implied_ids" eval="[(4, ref('project.group_project_user'))]"/>
         <field name="comment">May approve controlled project documents when the user also holds the required approver designation.</field>
     </record>
+
+    <!-- Native project registers follow the same visibility boundary as Odoo projects. -->
+    <record id="rule_hjig_final_plan_company" model="ir.rule">
+        <field name="name">Final Mould Plan: multi-company</field>
+        <field name="model_id" ref="model_hjig_final_mould_plan"/>
+        <field name="domain_force">[('project_id.company_id', 'in', company_ids + [False])]</field>
+    </record>
+    <record id="rule_hjig_final_plan_visibility" model="ir.rule">
+        <field name="name">Final Mould Plan: project visibility</field>
+        <field name="model_id" ref="model_hjig_final_mould_plan"/>
+        <field name="domain_force">['|', ('project_id.privacy_visibility', 'in', ['employees', 'portal']), ('project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+    <record id="rule_hjig_final_plan_manager" model="ir.rule">
+        <field name="name">Final Mould Plan: project manager oversight</field>
+        <field name="model_id" ref="model_hjig_final_mould_plan"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
+    </record>
+
+    <record id="rule_hjig_final_plan_line_company" model="ir.rule">
+        <field name="name">Final Mould Plan Line: multi-company</field>
+        <field name="model_id" ref="model_hjig_final_mould_plan_line"/>
+        <field name="domain_force">[('project_id.company_id', 'in', company_ids + [False])]</field>
+    </record>
+    <record id="rule_hjig_final_plan_line_visibility" model="ir.rule">
+        <field name="name">Final Mould Plan Line: project visibility</field>
+        <field name="model_id" ref="model_hjig_final_mould_plan_line"/>
+        <field name="domain_force">['|', ('project_id.privacy_visibility', 'in', ['employees', 'portal']), ('project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+    <record id="rule_hjig_final_plan_line_manager" model="ir.rule">
+        <field name="name">Final Mould Plan Line: project manager oversight</field>
+        <field name="model_id" ref="model_hjig_final_mould_plan_line"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
+    </record>
+
+    <record id="rule_hjig_risk_company" model="ir.rule">
+        <field name="name">Project Risk: multi-company</field>
+        <field name="model_id" ref="model_hjig_project_risk"/>
+        <field name="domain_force">[('project_id.company_id', 'in', company_ids + [False])]</field>
+    </record>
+    <record id="rule_hjig_risk_visibility" model="ir.rule">
+        <field name="name">Project Risk: project visibility</field>
+        <field name="model_id" ref="model_hjig_project_risk"/>
+        <field name="domain_force">['|', ('project_id.privacy_visibility', 'in', ['employees', 'portal']), ('project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+    <record id="rule_hjig_risk_manager" model="ir.rule">
+        <field name="name">Project Risk: project manager oversight</field>
+        <field name="model_id" ref="model_hjig_project_risk"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
+    </record>
+
+    <record id="rule_hjig_issue_company" model="ir.rule">
+        <field name="name">Project Issue: multi-company</field>
+        <field name="model_id" ref="model_hjig_project_issue"/>
+        <field name="domain_force">[('project_id.company_id', 'in', company_ids + [False])]</field>
+    </record>
+    <record id="rule_hjig_issue_visibility" model="ir.rule">
+        <field name="name">Project Issue: project visibility</field>
+        <field name="model_id" ref="model_hjig_project_issue"/>
+        <field name="domain_force">['|', ('project_id.privacy_visibility', 'in', ['employees', 'portal']), ('project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+    <record id="rule_hjig_issue_manager" model="ir.rule">
+        <field name="name">Project Issue: project manager oversight</field>
+        <field name="model_id" ref="model_hjig_project_issue"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
+    </record>
+
+    <record id="rule_hjig_ecn_company" model="ir.rule">
+        <field name="name">Project ECN: multi-company</field>
+        <field name="model_id" ref="model_hjig_project_ecn"/>
+        <field name="domain_force">[('project_id.company_id', 'in', company_ids + [False])]</field>
+    </record>
+    <record id="rule_hjig_ecn_visibility" model="ir.rule">
+        <field name="name">Project ECN: project visibility</field>
+        <field name="model_id" ref="model_hjig_project_ecn"/>
+        <field name="domain_force">['|', ('project_id.privacy_visibility', 'in', ['employees', 'portal']), ('project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+    <record id="rule_hjig_ecn_manager" model="ir.rule">
+        <field name="name">Project ECN: project manager oversight</field>
+        <field name="model_id" ref="model_hjig_project_ecn"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
+    </record>
 </odoo>

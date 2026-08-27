@@ -1,4 +1,4 @@
-# Native Forms 1.9 deployment control
+# Native Forms 1.10 deployment control
 
 Version 1.7 promotes the existing `x_mould` and `x_mould_part` tables into
 code-owned Odoo models. It retains the same tables, record IDs and existing SOR
@@ -30,7 +30,11 @@ Register models. Their calculations and workflow controls replace workbook
 formulas with traceable Odoo records while retaining source-tab lineage in the
 SOP/Form Master.
 
-4. Upgrade `new_hongyijig_custom` to 1.9. The pre-migration binds stable model
+Version 1.10 hardens these registers with Odoo-aligned project visibility,
+API-safe workflow validation, record-bound attachments, validated evidence URLs,
+immutable approved ECNs and source-exact Final Mould Plan snapshots.
+
+4. Upgrade `new_hongyijig_custom` to 1.10. The pre-migration binds stable model
    XML IDs before access controls are loaded.
 5. Verify legacy record IDs/values, the four native templates, the five
    engineering reference models, 164 imported baseline records, dropdown
