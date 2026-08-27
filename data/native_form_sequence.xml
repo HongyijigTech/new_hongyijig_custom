@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo noupdate="1">
+    <record id="sequence_hjig_mould" model="ir.sequence">
+        <field name="name">Mould Planning Number</field>
+        <field name="code">hjig.mould</field>
+        <field name="prefix">MPL/%(year)s/</field>
+        <field name="padding">4</field>
+        <field name="company_id" eval="False"/>
+    </record>
+    <record id="sequence_hjig_inspection_report" model="ir.sequence">
+        <field name="name">Native Inspection Report Number</field>
+        <field name="code">hjig.inspection.report</field>
+        <field name="prefix">INSP/%(year)s/</field>
+        <field name="padding">5</field>
+        <field name="company_id" eval="False"/>
+    </record>
+</odoo>

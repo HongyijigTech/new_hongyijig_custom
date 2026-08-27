@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo noupdate="1">
+    <record id="native_template_mould_plan" model="hjig.native.form.template">
+        <field name="code">NATIVE-MPL-01</field>
+        <field name="name">Mould Planning Form</field>
+        <field name="sequence">10</field>
+        <field name="form_kind">mould_plan</field>
+        <field name="artifact_master_id" ref="artifact_frm_005"/>
+        <field name="stage_id" ref="stage_tg01"/>
+        <field name="revision">1.0</field>
+        <field name="source_tab_name">Mould Planning Sheet</field>
+        <field name="description">Native Odoo form based on the approved engineering master layout. Project records are governed in Odoo; the workbook remains read-only reference evidence.</field>
+    </record>
+    <record id="native_template_visual_inspection" model="hjig.native.form.template">
+        <field name="code">NATIVE-VIR-01</field>
+        <field name="name">Part Visual Inspection Report</field>
+        <field name="sequence">20</field>
+        <field name="form_kind">visual</field>
+        <field name="artifact_master_id" ref="artifact_frm_011"/>
+        <field name="stage_id" ref="stage_tg04"/>
+        <field name="revision">1.0</field>
+        <field name="source_tab_name">Part Visual Report</field>
+        <field name="description">Native point-wise visual inspection with T0, T1, T2 and Final Trial results.</field>
+    </record>
+    <record id="native_template_assembly_inspection" model="hjig.native.form.template">
+        <field name="code">NATIVE-AIR-01</field>
+        <field name="name">Assembly Inspection Report</field>
+        <field name="sequence">30</field>
+        <field name="form_kind">assembly</field>
+        <field name="artifact_master_id" ref="artifact_frm_012"/>
+        <field name="stage_id" ref="stage_tg04"/>
+        <field name="revision">1.0</field>
+        <field name="source_tab_name">Assembly Inspection Report</field>
+        <field name="description">Native assembly inspection with involved-part traceability and T0, T1, T2 and Final Trial results.</field>
+    </record>
+    <record id="native_template_dimensional_inspection" model="hjig.native.form.template">
+        <field name="code">NATIVE-DIR-01</field>
+        <field name="name">Dimensional Inspection Report</field>
+        <field name="sequence">40</field>
+        <field name="form_kind">dimensional</field>
+        <field name="artifact_master_id" ref="artifact_frm_013"/>
+        <field name="stage_id" ref="stage_tg04"/>
+        <field name="revision">1.0</field>
+        <field name="source_tab_name">Dimensional Inspection Report</field>
+        <field name="description">Native tolerance and cavity-wise measurement report with automatic GO/NG results.</field>
+    </record>
+</odoo>

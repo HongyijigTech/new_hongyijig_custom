@@ -3,4 +3,5 @@
 
 from . import crm_lead
 from . import governance_master
+from . import native_forms
 from . import project_document

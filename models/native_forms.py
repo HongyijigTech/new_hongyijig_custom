@@ -1,0 +1,742 @@
+# -*- coding: utf-8 -*-
+from odoo import _, api, fields, models
+from odoo.exceptions import UserError, ValidationError
+
+
+TRIAL_STAGES = [
+    ("t0", "T0"),
+    ("t1", "T1"),
+    ("t2", "T2"),
+    ("final", "Final Trial"),
+]
+
+
+class HjigNativeFormTemplate(models.Model):
+    _name = "hjig.native.form.template"
+    _description = "Native Project Form Template"
+    _inherit = ["mail.thread", "mail.activity.mixin"]
+    _order = "sequence, code"
+
+    code = fields.Char(required=True, index=True, tracking=True)
+    name = fields.Char(required=True, tracking=True)
+    sequence = fields.Integer(default=10, required=True)
+    form_kind = fields.Selection(
+        [
+            ("mould_plan", "Mould Planning"),
+            ("visual", "Part Visual Inspection"),
+            ("assembly", "Assembly Inspection"),
+            ("dimensional", "Dimensional Inspection"),
+        ],
+        required=True,
+        index=True,
+        tracking=True,
+    )
+    artifact_master_id = fields.Many2one(
+        "hjig.governance.artifact.master",
+        required=True,
+        ondelete="restrict",
+        tracking=True,
+    )
+    stage_id = fields.Many2one(
+        "hjig.launchguard.stage",
+        required=True,
+        ondelete="restrict",
+        tracking=True,
+    )
+    revision = fields.Char(required=True, default="1.0", tracking=True)
+    source_tab_name = fields.Char(readonly=True)
+    description = fields.Text()
+    active = fields.Boolean(default=True, tracking=True)
+
+    _code_unique = models.Constraint(
+        "UNIQUE(code)",
+        "Native form template code must be unique.",
+    )
+    _kind_revision_unique = models.Constraint(
+        "UNIQUE(form_kind, revision)",
+        "Only one native template may exist for the same form kind and revision.",
+    )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if vals.get("code"):
+                vals["code"] = vals["code"].strip().upper()
+        return super().create(vals_list)
+
+    def write(self, vals):
+        if vals.get("code"):
+            vals["code"] = vals["code"].strip().upper()
+        governed = {"code", "name", "form_kind", "artifact_master_id", "stage_id", "revision"}
+        used = self.env["x_mould"].search_count([("x_template_id", "in", self.ids)])
+        used += self.env["hjig.inspection.report"].search_count([("template_id", "in", self.ids)])
+        if governed.intersection(vals) and used:
+            raise ValidationError(
+                _("A template already used by a project form cannot be rewritten. Archive it and create a new revision.")
+            )
+        return super().write(vals)
+
+
+class HjigMould(models.Model):
+    """Code-owned continuation of the existing production PN Mould model."""
+
+    _name = "x_mould"
+    _description = "Project Mould Planning Form"
+    _inherit = ["mail.thread", "mail.activity.mixin"]
+    _rec_name = "x_name"
+    _order = "x_project_id, x_mould_number, id"
+
+    x_name = fields.Char(string="Name", required=True, tracking=True)
+    x_active = fields.Boolean(string="Active", default=True, tracking=True)
+    x_project_id = fields.Many2one(
+        "project.project",
+        string="Project",
+        required=True,
+        ondelete="restrict",
+        index=True,
+        tracking=True,
+    )
+    x_mould_number = fields.Char(
+        string="Mould Number / Identifier",
+        required=True,
+        copy=False,
+        index=True,
+        tracking=True,
+    )
+    x_mould_description = fields.Char(string="Mould Name / Description", tracking=True)
+    x_cavitation = fields.Char(string="Cavitation", tracking=True)
+    x_mould_planning_status = fields.Selection(
+        [("tentative", "Tentative"), ("final_locked", "Final - Locked")],
+        string="Mould Planning Status",
+        required=True,
+        default="tentative",
+        tracking=True,
+    )
+    x_template_id = fields.Many2one(
+        "hjig.native.form.template",
+        string="Form Template",
+        domain="[('form_kind', '=', 'mould_plan')]",
+        ondelete="restrict",
+        tracking=True,
+    )
+    x_plan_revision = fields.Char(string="Plan Revision", default="R00", required=True, tracking=True)
+    x_workflow_state = fields.Selection(
+        [
+            ("draft", "Draft"),
+            ("review", "Under Review"),
+            ("approved", "Approved"),
+            ("superseded", "Superseded"),
+        ],
+        default="draft",
+        required=True,
+        copy=False,
+        index=True,
+        tracking=True,
+    )
+    x_owner_designation_id = fields.Many2one(
+        "hjig.governance.designation",
+        string="Owner Designation",
+        ondelete="restrict",
+        tracking=True,
+    )
+    x_approver_designation_id = fields.Many2one(
+        "hjig.governance.designation",
+        string="Approver Designation",
+        ondelete="restrict",
+        tracking=True,
+    )
+    x_submitted_by_id = fields.Many2one("res.users", readonly=True, copy=False, tracking=True)
+    x_approved_by_id = fields.Many2one("res.users", readonly=True, copy=False, tracking=True)
+    x_effective_date = fields.Date(tracking=True)
+    x_part_ids = fields.One2many("x_mould_part", "x_mould_id", string="Component / Part Planning")
+    x_part_count = fields.Integer(compute="_compute_part_summary")
+    x_completion_percent = fields.Float(compute="_compute_part_summary", store=True)
+    x_missing_fields = fields.Text(compute="_compute_part_summary", store=True)
+
+    _project_mould_revision_unique = models.Constraint(
+        "UNIQUE(x_project_id, x_mould_number, x_plan_revision)",
+        "The same mould number and plan revision already exists in this project.",
+    )
+
+    @api.depends("x_part_ids", "x_part_ids.x_completion_percent", "x_part_ids.x_missing_fields")
+    def _compute_part_summary(self):
+        for mould in self:
+            mould.x_part_count = len(mould.x_part_ids)
+            if not mould.x_part_ids:
+                mould.x_completion_percent = 0.0
+                mould.x_missing_fields = _("At least one component / part is required.")
+                continue
+            mould.x_completion_percent = sum(mould.x_part_ids.mapped("x_completion_percent")) / len(mould.x_part_ids)
+            incomplete = mould.x_part_ids.filtered(lambda part: part.x_missing_fields)
+            mould.x_missing_fields = "\n".join(
+                "%s: %s" % (part.x_part_number or part.x_name, part.x_missing_fields)
+                for part in incomplete
+            )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        template = self.env.ref("new_hongyijig_custom.native_template_mould_plan", raise_if_not_found=False)
+        for vals in vals_list:
+            vals.setdefault("x_template_id", template.id if template else False)
+            if template:
+                vals.setdefault("x_owner_designation_id", template.artifact_master_id.owner_designation_id.id)
+                vals.setdefault("x_approver_designation_id", template.artifact_master_id.approver_designation_id.id)
+            if not vals.get("x_mould_number"):
+                vals["x_mould_number"] = self.env["ir.sequence"].next_by_code("hjig.mould") or _("New")
+        return super().create(vals_list)
+
+    def write(self, vals):
+        locked_fields = set(self._fields) - {"message_follower_ids", "message_ids", "activity_ids"}
+        if locked_fields.intersection(vals) and self.filtered(lambda item: item.x_workflow_state in ("approved", "superseded")):
+            if not self.env.context.get("allow_native_form_workflow"):
+                raise ValidationError(_("Approved or superseded mould plans are read-only."))
+        if "x_workflow_state" in vals and not self.env.context.get("allow_native_form_workflow"):
+            if any(item.x_workflow_state != vals["x_workflow_state"] for item in self):
+                raise ValidationError(_("Use the controlled workflow buttons to change status."))
+        return super().write(vals)
+
+    def unlink(self):
+        if any(item.x_workflow_state != "draft" for item in self):
+            raise UserError(_("Only Draft mould plans may be deleted."))
+        return super().unlink()
+
+    def action_submit_review(self):
+        for mould in self:
+            if mould.x_workflow_state != "draft":
+                raise UserError(_("Only Draft mould plans can be submitted."))
+            if not mould.x_template_id or not mould.x_owner_designation_id or not mould.x_approver_designation_id:
+                raise ValidationError(_("Template and designation authority must be configured before submission."))
+            if self.env.user not in mould.x_owner_designation_id.holder_ids:
+                raise UserError(_("Only a current holder of the Owner Designation may submit this mould plan."))
+            if mould.x_missing_fields:
+                raise ValidationError(_("Complete the mould plan before submission:\n%s") % mould.x_missing_fields)
+            mould.with_context(allow_native_form_workflow=True).write({
+                "x_workflow_state": "review",
+                "x_submitted_by_id": self.env.user.id,
+            })
+
+    def action_approve(self):
+        for mould in self:
+            if mould.x_workflow_state != "review":
+                raise UserError(_("Only mould plans Under Review can be approved."))
+            if self.env.user not in mould.x_approver_designation_id.holder_ids:
+                raise UserError(_("Only a current holder of the Approver Designation may approve this mould plan."))
+            if mould.x_submitted_by_id == self.env.user:
+                raise ValidationError(_("The same user cannot submit and approve the mould plan."))
+            if not mould.x_effective_date:
+                raise ValidationError(_("Effective Date is required before approval."))
+            mould.with_context(allow_native_form_workflow=True).write({
+                "x_workflow_state": "approved",
+                "x_mould_planning_status": "final_locked",
+                "x_approved_by_id": self.env.user.id,
+            })
+
+
+class HjigMouldPart(models.Model):
+    """Code-owned continuation of the existing production PN Component/Part model."""
+
+    _name = "x_mould_part"
+    _description = "Mould Planning Component / Part"
+    _inherit = ["mail.thread", "mail.activity.mixin"]
+    _rec_name = "x_name"
+    _order = "x_mould_id, x_part_number, id"
+
+    x_name = fields.Char(string="Name", required=True, tracking=True)
+    x_active = fields.Boolean(string="Active", default=True)
+    x_mould_id = fields.Many2one("x_mould", string="Mould", required=True, ondelete="restrict", index=True)
+    x_project_id = fields.Many2one(related="x_mould_id.x_project_id", store=True, index=True)
+    x_part_number = fields.Char(string="Part Number / Identifier", required=True, tracking=True)
+    x_material_reference = fields.Char(string="Material Reference")
+    x_source_version = fields.Char(string="Source / Version Traceability")
+    x_part_picture = fields.Image(string="Part Picture", attachment=True)
+    x_part_category = fields.Selection(
+        [
+            ("appearance", "Appearance Part"),
+            ("structural", "Structural Part"),
+            ("assembly", "Assembly Part"),
+            ("water_contact", "Water Contact Part"),
+            ("safety", "Safety Part"),
+            ("other", "Other"),
+        ],
+        tracking=True,
+    )
+    x_surface_finish_type = fields.Selection([("spi", "SPI Grade"), ("vdi", "VDI Code")], tracking=True)
+    x_surface_grade_code = fields.Char(string="Surface Grade / Code", tracking=True)
+    x_surface_details = fields.Text(string="Surface Finish Details", readonly=True)
+    x_part_material = fields.Char(string="Part Material", tracking=True)
+    x_standard_shrinkage = fields.Char(string="Standard Shrinkage Range", readonly=True)
+    x_customer_shrinkage = fields.Float(string="Customer Shrinkage %", tracking=True)
+    x_part_weight_grams = fields.Float(string="Part Weight (grams)", tracking=True)
+    x_qps = fields.Integer(string="QPS", tracking=True)
+    x_mould_configuration = fields.Selection(
+        [("single", "Single Cavity"), ("multi", "Multi Cavity"), ("family", "Family Mould")],
+        tracking=True,
+    )
+    x_cavitation = fields.Char(string="Cavitation", tracking=True)
+    x_mould_base_steel_grade = fields.Selection(
+        [(value, value) for value in ("P20", "718H", "NAK80", "S136", "H13", "8407", "Customer Specified")],
+        tracking=True,
+    )
+    x_core_steel_brand = fields.Char(tracking=True)
+    x_core_steel_grade = fields.Char(tracking=True)
+    x_core_steel_usage = fields.Text()
+    x_cavity_steel_brand = fields.Char(tracking=True)
+    x_cavity_steel_grade = fields.Char(tracking=True)
+    x_cavity_steel_usage = fields.Text()
+    x_runner_type = fields.Selection([("hot", "Hot Runner"), ("cold", "Cold Runner"), ("hybrid", "Hybrid")], tracking=True)
+    x_gate_type = fields.Char(tracking=True)
+    x_gate_specifications = fields.Text(readonly=True)
+    x_assumption_status = fields.Selection(
+        [("assumed", "Assumed"), ("validated", "Validated"), ("tbd", "TBD / Risk")],
+        default="assumed",
+        required=True,
+        tracking=True,
+    )
+    x_completion_percent = fields.Float(compute="_compute_completeness", store=True)
+    x_missing_fields = fields.Char(compute="_compute_completeness", store=True)
+
+    _mould_part_number_unique = models.Constraint(
+        "UNIQUE(x_mould_id, x_part_number)",
+        "Part Number must be unique within a mould plan.",
+    )
+
+    @api.depends(
+        "x_name", "x_part_number", "x_part_category", "x_surface_finish_type",
+        "x_surface_grade_code", "x_part_material", "x_customer_shrinkage",
+        "x_part_weight_grams", "x_qps", "x_mould_configuration", "x_cavitation",
+        "x_mould_base_steel_grade", "x_runner_type", "x_gate_type",
+    )
+    def _compute_completeness(self):
+        required = [
+            ("x_name", _("Part Name")), ("x_part_number", _("Part Number")),
+            ("x_part_category", _("Part Category")), ("x_surface_finish_type", _("Surface Finish Type")),
+            ("x_surface_grade_code", _("Surface Grade / Code")), ("x_part_material", _("Part Material")),
+            ("x_customer_shrinkage", _("Customer Shrinkage %")), ("x_part_weight_grams", _("Part Weight")),
+            ("x_qps", _("QPS")), ("x_mould_configuration", _("Mould Configuration")),
+            ("x_cavitation", _("Cavitation")), ("x_mould_base_steel_grade", _("Mould Base Steel")),
+            ("x_runner_type", _("Runner Type")), ("x_gate_type", _("Gate Type")),
+        ]
+        for part in self:
+            missing = [label for field_name, label in required if not part[field_name]]
+            part.x_missing_fields = ", ".join(missing)
+            part.x_completion_percent = 100.0 * (len(required) - len(missing)) / len(required)
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            mould = self.env["x_mould"].browse(vals.get("x_mould_id")).exists()
+            if mould and mould.x_workflow_state != "draft":
+                raise ValidationError(_("Components may only be added while the mould plan is Draft."))
+        return super().create(vals_list)
+
+    @api.constrains("x_customer_shrinkage", "x_part_weight_grams", "x_qps")
+    def _check_positive_values(self):
+        for part in self:
+            if part.x_customer_shrinkage < 0 or part.x_customer_shrinkage > 100:
+                raise ValidationError(_("Customer Shrinkage must be between 0 and 100 percent."))
+            if part.x_part_weight_grams < 0 or part.x_qps < 0:
+                raise ValidationError(_("Part Weight and QPS cannot be negative."))
+
+    def write(self, vals):
+        if any(part.x_mould_id.x_workflow_state in ("approved", "superseded") for part in self):
+            raise ValidationError(_("Components of an approved or superseded mould plan are read-only."))
+        return super().write(vals)
+
+    def unlink(self):
+        if any(part.x_mould_id.x_workflow_state != "draft" for part in self):
+            raise UserError(_("Components may only be deleted while the mould plan is Draft."))
+        return super().unlink()
+
+
+class HjigInspectionReport(models.Model):
+    _name = "hjig.inspection.report"
+    _description = "Native Project Inspection Report"
+    _inherit = ["mail.thread", "mail.activity.mixin"]
+    _rec_name = "report_number"
+    _order = "project_id, report_number desc"
+
+    report_number = fields.Char(required=True, readonly=True, copy=False, default=lambda self: _("New"), index=True)
+    project_id = fields.Many2one("project.project", required=True, ondelete="restrict", index=True, tracking=True)
+    project_code = fields.Char(related="project_id.x_project_code", store=True, readonly=True)
+    template_id = fields.Many2one("hjig.native.form.template", required=True, ondelete="restrict", tracking=True)
+    report_type = fields.Selection(
+        [("visual", "Part Visual Inspection"), ("assembly", "Assembly Inspection"), ("dimensional", "Dimensional Inspection")],
+        required=True,
+        index=True,
+        tracking=True,
+    )
+    mould_id = fields.Many2one("x_mould", ondelete="restrict", tracking=True)
+    part_id = fields.Many2one("x_mould_part", ondelete="restrict", tracking=True)
+    assembly_name = fields.Char(tracking=True)
+    report_date = fields.Date(default=fields.Date.context_today, required=True, tracking=True)
+    revision = fields.Char(default="R00", required=True, tracking=True)
+    report_status = fields.Selection(
+        [("in_progress", "In Progress"), ("complete_submitted", "Complete & Submitted")],
+        default="in_progress",
+        required=True,
+        tracking=True,
+    )
+    workflow_state = fields.Selection(
+        [("draft", "Draft"), ("review", "Under Review"), ("approved", "Approved"), ("superseded", "Superseded")],
+        default="draft",
+        required=True,
+        copy=False,
+        tracking=True,
+    )
+    owner_designation_id = fields.Many2one("hjig.governance.designation", required=True, ondelete="restrict", tracking=True)
+    approver_designation_id = fields.Many2one("hjig.governance.designation", required=True, ondelete="restrict", tracking=True)
+    submitted_by_id = fields.Many2one("res.users", readonly=True, copy=False, tracking=True)
+    approved_by_id = fields.Many2one("res.users", readonly=True, copy=False, tracking=True)
+    effective_date = fields.Date(tracking=True)
+    point_ids = fields.One2many("hjig.inspection.point", "report_id", string="Inspection Points")
+    dimension_line_ids = fields.One2many("hjig.dimensional.line", "report_id", string="Dimensions")
+    notes = fields.Text()
+
+    _report_number_unique = models.Constraint("UNIQUE(report_number)", "Inspection Report Number must be unique.")
+    _project_report_revision_unique = models.Constraint(
+        "UNIQUE(project_id, report_type, mould_id, part_id, revision)",
+        "The same inspection report revision already exists for this project, mould and part.",
+    )
+
+    @api.onchange("template_id")
+    def _onchange_template_id(self):
+        if self.template_id and self.template_id.form_kind != "mould_plan":
+            self.report_type = self.template_id.form_kind
+            self.owner_designation_id = self.template_id.artifact_master_id.owner_designation_id
+            self.approver_designation_id = self.template_id.artifact_master_id.approver_designation_id
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            template = self.env["hjig.native.form.template"].browse(vals.get("template_id")).exists()
+            if not template:
+                raise ValidationError(_("A native Form Template is required."))
+            if template.form_kind == "mould_plan":
+                raise ValidationError(_("Mould Planning templates cannot create an Inspection Report."))
+            vals["report_type"] = template.form_kind
+            vals.setdefault("owner_designation_id", template.artifact_master_id.owner_designation_id.id)
+            vals.setdefault("approver_designation_id", template.artifact_master_id.approver_designation_id.id)
+            if vals.get("report_number", _("New")) == _("New"):
+                vals["report_number"] = self.env["ir.sequence"].next_by_code("hjig.inspection.report") or _("New")
+        return super().create(vals_list)
+
+    @api.constrains("template_id", "report_type", "mould_id", "part_id", "assembly_name")
+    def _check_report_structure(self):
+        for report in self:
+            if report.template_id.form_kind != report.report_type:
+                raise ValidationError(_("Report Type must follow the selected native Form Template."))
+            if report.mould_id and report.mould_id.x_project_id != report.project_id:
+                raise ValidationError(_("The selected mould belongs to a different project."))
+            if report.part_id and report.part_id.x_project_id != report.project_id:
+                raise ValidationError(_("The selected part belongs to a different project."))
+            if report.report_type in ("visual", "dimensional") and not report.part_id:
+                raise ValidationError(_("Part Visual and Dimensional reports require a Part."))
+            if report.report_type == "assembly" and not report.assembly_name:
+                raise ValidationError(_("Assembly Inspection reports require an Assembly Name."))
+
+    def write(self, vals):
+        if vals.get("template_id"):
+            template = self.env["hjig.native.form.template"].browse(vals["template_id"]).exists()
+            if not template or template.form_kind == "mould_plan":
+                raise ValidationError(_("Select a valid native Inspection Form Template."))
+            vals.update({
+                "report_type": template.form_kind,
+                "owner_designation_id": template.artifact_master_id.owner_designation_id.id,
+                "approver_designation_id": template.artifact_master_id.approver_designation_id.id,
+            })
+        controlled = set(vals) - {"message_follower_ids", "message_ids", "activity_ids"}
+        if controlled and self.filtered(lambda item: item.workflow_state in ("approved", "superseded")):
+            if not self.env.context.get("allow_native_form_workflow"):
+                raise ValidationError(_("Approved or superseded inspection reports are read-only."))
+        if "workflow_state" in vals and not self.env.context.get("allow_native_form_workflow"):
+            if any(item.workflow_state != vals["workflow_state"] for item in self):
+                raise ValidationError(_("Use the controlled workflow buttons to change status."))
+        return super().write(vals)
+
+    def unlink(self):
+        if any(item.workflow_state != "draft" for item in self):
+            raise UserError(_("Only Draft inspection reports may be deleted."))
+        return super().unlink()
+
+    def action_submit_review(self):
+        for report in self:
+            if report.workflow_state != "draft":
+                raise UserError(_("Only Draft reports can be submitted."))
+            if self.env.user not in report.owner_designation_id.holder_ids:
+                raise UserError(_("Only a current holder of the Owner Designation may submit this report."))
+            if report.report_type == "dimensional" and not report.dimension_line_ids:
+                raise ValidationError(_("Add at least one dimensional inspection line."))
+            if report.report_type != "dimensional" and not report.point_ids:
+                raise ValidationError(_("Add at least one inspection point."))
+            if report.report_type != "dimensional" and report.point_ids.trial_result_ids.filtered(
+                lambda result: result.status == "open"
+            ):
+                raise ValidationError(_("Close or mark N/A every trial result before submission."))
+            if report.report_type == "dimensional" and any(
+                not line.measurement_ids for line in report.dimension_line_ids
+            ):
+                raise ValidationError(_("Every dimensional line requires at least one cavity measurement."))
+            report.with_context(allow_native_form_workflow=True).write({
+                "workflow_state": "review",
+                "report_status": "complete_submitted",
+                "submitted_by_id": self.env.user.id,
+            })
+
+    def action_approve(self):
+        for report in self:
+            if report.workflow_state != "review":
+                raise UserError(_("Only reports Under Review can be approved."))
+            if self.env.user not in report.approver_designation_id.holder_ids:
+                raise UserError(_("Only a current holder of the Approver Designation may approve this report."))
+            if report.submitted_by_id == self.env.user:
+                raise ValidationError(_("The same user cannot submit and approve an inspection report."))
+            if not report.effective_date:
+                raise ValidationError(_("Effective Date is required before approval."))
+            report.with_context(allow_native_form_workflow=True).write({
+                "workflow_state": "approved",
+                "approved_by_id": self.env.user.id,
+            })
+
+
+class HjigInspectionPoint(models.Model):
+    _name = "hjig.inspection.point"
+    _description = "Visual / Assembly Inspection Point"
+    _order = "report_id, sequence, id"
+
+    report_id = fields.Many2one("hjig.inspection.report", required=True, ondelete="cascade", index=True)
+    project_id = fields.Many2one(related="report_id.project_id", store=True, index=True)
+    sequence = fields.Integer(default=10)
+    point_number = fields.Char(required=True, readonly=True, copy=False, default=lambda self: _("New"))
+    description = fields.Text(required=True)
+    picture = fields.Image(attachment=True)
+    involved_part_ids = fields.Many2many("x_mould_part", string="Parts Involved")
+    trial_result_ids = fields.One2many("hjig.inspection.trial.result", "point_id", string="Trial Results")
+
+    _point_number_unique = models.Constraint(
+        "UNIQUE(report_id, point_number)",
+        "Inspection Point Number must be unique within the report.",
+    )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        records = self.browse()
+        for vals in vals_list:
+            report = self.env["hjig.inspection.report"].browse(vals.get("report_id")).exists()
+            if report.workflow_state != "draft":
+                raise ValidationError(_("Inspection points may only be added to a Draft report."))
+            if report.report_type == "dimensional":
+                raise ValidationError(_("Inspection points cannot be added to a Dimensional report."))
+            if vals.get("point_number", _("New")) == _("New"):
+                prefix = "AP" if report.report_type == "assembly" else "VP"
+                count = self.search_count([("report_id", "=", report.id)]) + 1
+                vals["point_number"] = "%s%03d" % (prefix, count)
+            record = super().create([vals])
+            for stage, _label in TRIAL_STAGES:
+                self.env["hjig.inspection.trial.result"].create({"point_id": record.id, "trial_stage": stage})
+            records |= record
+        return records
+
+    @api.constrains("involved_part_ids", "report_id")
+    def _check_involved_parts_project(self):
+        for point in self:
+            if point.involved_part_ids.filtered(lambda part: part.x_project_id != point.project_id):
+                raise ValidationError(_("All involved parts must belong to the inspection report project."))
+
+    def write(self, vals):
+        if any(item.report_id.workflow_state != "draft" for item in self):
+            raise ValidationError(_("Inspection points are editable only while the report is Draft."))
+        return super().write(vals)
+
+    def unlink(self):
+        if any(item.report_id.workflow_state != "draft" for item in self):
+            raise UserError(_("Inspection points may only be deleted while the report is Draft."))
+        return super().unlink()
+
+
+class HjigInspectionTrialResult(models.Model):
+    _name = "hjig.inspection.trial.result"
+    _description = "Inspection Trial Result"
+    _order = "point_id, trial_stage"
+
+    point_id = fields.Many2one("hjig.inspection.point", required=True, ondelete="cascade", index=True)
+    project_id = fields.Many2one(related="point_id.project_id", store=True, index=True)
+    trial_stage = fields.Selection(TRIAL_STAGES, required=True)
+    plan_date = fields.Date()
+    actual_date = fields.Date()
+    status = fields.Selection([("open", "Open"), ("closed", "Closed"), ("na", "N/A")], default="open", required=True)
+    remarks = fields.Text()
+
+    _point_trial_unique = models.Constraint(
+        "UNIQUE(point_id, trial_stage)",
+        "Only one result per trial stage is allowed for each inspection point.",
+    )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            point = self.env["hjig.inspection.point"].browse(vals.get("point_id")).exists()
+            if point and point.report_id.workflow_state != "draft":
+                raise ValidationError(_("Trial results may only be added to a Draft report."))
+        return super().create(vals_list)
+
+    def write(self, vals):
+        if any(item.point_id.report_id.workflow_state != "draft" for item in self):
+            raise ValidationError(_("Trial results are editable only while the report is Draft."))
+        return super().write(vals)
+
+    def unlink(self):
+        if any(item.point_id.report_id.workflow_state != "draft" for item in self):
+            raise UserError(_("Trial results may only be deleted while the report is Draft."))
+        return super().unlink()
+
+
+class HjigDimensionalLine(models.Model):
+    _name = "hjig.dimensional.line"
+    _description = "Dimensional Inspection Line"
+    _order = "report_id, sequence, id"
+
+    report_id = fields.Many2one("hjig.inspection.report", required=True, ondelete="cascade", index=True)
+    project_id = fields.Many2one(related="report_id.project_id", store=True, index=True)
+    sequence = fields.Integer(default=10)
+    dimension_number = fields.Char(required=True)
+    drawing_dimension_mm = fields.Float(required=True, digits=(16, 4))
+    tolerance_minus_mm = fields.Float(required=True, digits=(16, 4))
+    tolerance_plus_mm = fields.Float(required=True, digits=(16, 4))
+    min_dimension_mm = fields.Float(compute="_compute_limits", store=True, digits=(16, 4))
+    max_dimension_mm = fields.Float(compute="_compute_limits", store=True, digits=(16, 4))
+    method_used = fields.Selection(
+        [
+            ("digital_calliper", "Digital Calliper"), ("micrometer", "Micrometer"),
+            ("height_gauge", "Height Gauge"), ("cmm", "CMM"),
+            ("pin_gauge", "Pin Gauge"), ("profile_projector", "Profile Projector"),
+            ("other", "Other"),
+        ],
+        required=True,
+    )
+    measurement_ids = fields.One2many("hjig.dimensional.measurement", "dimension_line_id", string="Measurements")
+
+    _report_dimension_unique = models.Constraint(
+        "UNIQUE(report_id, dimension_number)",
+        "Dimension Number must be unique within the report.",
+    )
+
+    @api.depends("drawing_dimension_mm", "tolerance_minus_mm", "tolerance_plus_mm")
+    def _compute_limits(self):
+        for line in self:
+            line.min_dimension_mm = line.drawing_dimension_mm - line.tolerance_minus_mm
+            line.max_dimension_mm = line.drawing_dimension_mm + line.tolerance_plus_mm
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            report = self.env["hjig.inspection.report"].browse(vals.get("report_id")).exists()
+            if report and (report.workflow_state != "draft" or report.report_type != "dimensional"):
+                raise ValidationError(_("Dimensions may only be added to a Draft Dimensional report."))
+        return super().create(vals_list)
+
+    @api.constrains("tolerance_minus_mm", "tolerance_plus_mm")
+    def _check_tolerances(self):
+        for line in self:
+            if line.tolerance_minus_mm < 0 or line.tolerance_plus_mm < 0:
+                raise ValidationError(_("Tolerance values must be entered as positive magnitudes."))
+
+    def write(self, vals):
+        if any(item.report_id.workflow_state != "draft" for item in self):
+            raise ValidationError(_("Dimensions are editable only while the report is Draft."))
+        return super().write(vals)
+
+    def unlink(self):
+        if any(item.report_id.workflow_state != "draft" for item in self):
+            raise UserError(_("Dimensions may only be deleted while the report is Draft."))
+        return super().unlink()
+
+
+class HjigDimensionalMeasurement(models.Model):
+    _name = "hjig.dimensional.measurement"
+    _description = "Cavity-wise Dimensional Measurement"
+    _order = "dimension_line_id, trial_stage, cavity_number"
+
+    dimension_line_id = fields.Many2one("hjig.dimensional.line", required=True, ondelete="cascade", index=True)
+    project_id = fields.Many2one(related="dimension_line_id.project_id", store=True, index=True)
+    trial_stage = fields.Selection(TRIAL_STAGES, required=True)
+    cavity_number = fields.Integer(required=True, default=1)
+    measurement_taken = fields.Boolean(default=True)
+    actual_dimension_mm = fields.Float(digits=(16, 4))
+    result = fields.Selection([("go", "GO"), ("ng", "NG")], compute="_compute_result", store=True)
+    remarks = fields.Char()
+
+    _dimension_trial_cavity_unique = models.Constraint(
+        "UNIQUE(dimension_line_id, trial_stage, cavity_number)",
+        "Only one measurement is allowed per dimension, trial and cavity.",
+    )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            line = self.env["hjig.dimensional.line"].browse(vals.get("dimension_line_id")).exists()
+            if line and line.report_id.workflow_state != "draft":
+                raise ValidationError(_("Measurements may only be added to a Draft report."))
+        return super().create(vals_list)
+
+    @api.depends(
+        "measurement_taken", "actual_dimension_mm",
+        "dimension_line_id.min_dimension_mm", "dimension_line_id.max_dimension_mm",
+    )
+    def _compute_result(self):
+        for measurement in self:
+            if not measurement.measurement_taken:
+                measurement.result = False
+            elif measurement.dimension_line_id.min_dimension_mm <= measurement.actual_dimension_mm <= measurement.dimension_line_id.max_dimension_mm:
+                measurement.result = "go"
+            else:
+                measurement.result = "ng"
+
+    @api.constrains("cavity_number")
+    def _check_cavity_number(self):
+        for measurement in self:
+            if measurement.cavity_number <= 0:
+                raise ValidationError(_("Cavity Number must be greater than zero."))
+
+    def write(self, vals):
+        if any(item.dimension_line_id.report_id.workflow_state != "draft" for item in self):
+            raise ValidationError(_("Measurements are editable only while the report is Draft."))
+        return super().write(vals)
+
+    def unlink(self):
+        if any(item.dimension_line_id.report_id.workflow_state != "draft" for item in self):
+            raise UserError(_("Measurements may only be deleted while the report is Draft."))
+        return super().unlink()
+
+
+class ProjectProject(models.Model):
+    _inherit = "project.project"
+
+    hjig_mould_plan_count = fields.Integer(compute="_compute_native_form_counts")
+    hjig_inspection_report_count = fields.Integer(compute="_compute_native_form_counts")
+
+    def _compute_native_form_counts(self):
+        for project in self:
+            project.hjig_mould_plan_count = self.env["x_mould"].search_count([("x_project_id", "=", project.id)])
+            project.hjig_inspection_report_count = self.env["hjig.inspection.report"].search_count([("project_id", "=", project.id)])
+
+    def write(self, vals):
+        if "x_project_code" in vals:
+            new_code = (vals.get("x_project_code") or "").strip().upper() or False
+            for project in self:
+                has_native_forms = self.env["x_mould"].search_count([("x_project_id", "=", project.id)])
+                has_native_forms += self.env["hjig.inspection.report"].search_count([("project_id", "=", project.id)])
+                if project.x_project_code != new_code and has_native_forms:
+                    raise ValidationError(_("Project Code cannot be changed after native project forms exist."))
+        return super().write(vals)
+
+    def action_open_hjig_mould_plans(self):
+        self.ensure_one()
+        action = self.env["ir.actions.actions"]._for_xml_id("new_hongyijig_custom.action_hjig_mould_plan")
+        action.update({"domain": [("x_project_id", "=", self.id)], "context": {"default_x_project_id": self.id}})
+        return action
+
+    def action_open_hjig_inspection_reports(self):
+        self.ensure_one()
+        action = self.env["ir.actions.actions"]._for_xml_id("new_hongyijig_custom.action_hjig_inspection_report")
+        action.update({"domain": [("project_id", "=", self.id)], "context": {"default_project_id": self.id}})
+        return action
