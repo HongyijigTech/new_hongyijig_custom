@@ -57,17 +57,23 @@ class HjigGovernanceDesignation(models.Model):
 
 class HjigLaunchguardStage(models.Model):
     _name = "hjig.launchguard.stage"
-    _description = "LaunchGuard Governance Stage"
+    _description = "Programme Governance Stage"
     _inherit = ["mail.thread", "mail.activity.mixin"]
     _order = "sequence, code"
 
     code = fields.Char(required=True, index=True, tracking=True)
+    legacy_code = fields.Char(
+        index=True,
+        tracking=True,
+        help="Legacy Studio/native-stage code retained for governed migration traceability.",
+    )
     name = fields.Char(required=True, tracking=True)
     sequence = fields.Integer(required=True, default=10, index=True)
     stage_type = fields.Selection(
         [
             ("activation", "Project Activation"),
             ("technical_gate", "Technical Gate"),
+            ("advisory_session", "Advisory Session"),
             ("closure", "Project Closure"),
         ],
         required=True,
@@ -92,7 +98,7 @@ class HjigLaunchguardStage(models.Model):
     def write(self, vals):
         if vals.get("code"):
             vals["code"] = vals["code"].strip().upper()
-        governed_fields = {"code", "name", "sequence", "stage_type"}
+        governed_fields = {"code", "legacy_code", "name", "sequence", "stage_type"}
         if governed_fields.intersection(vals) and self.env["hjig.project.document"].search_count([
             ("stage_id", "in", self.ids),
         ]):

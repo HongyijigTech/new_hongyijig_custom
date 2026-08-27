@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo noupdate="1">
+    <!-- Definitions are intentionally created without approved versions. The 408 legacy
+         tasks must first pass the governed migration mapping and gate reconciliation. -->
+    <record id="programme_launchguard_complete" model="hjig.programme.template">
+        <field name="code">LGC</field>
+        <field name="name">LaunchGuard Complete</field>
+        <field name="owner_designation_id" ref="designation_project_manager"/>
+        <field name="approver_designation_id" ref="designation_pmo_document_controller"/>
+        <field name="description">Complete programme definition. Legacy source: Project 1.</field>
+    </record>
+    <record id="programme_launchguard_design" model="hjig.programme.template">
+        <field name="code">LGD</field>
+        <field name="name">LaunchGuard Design</field>
+        <field name="owner_designation_id" ref="designation_product_design"/>
+        <field name="approver_designation_id" ref="designation_project_manager"/>
+        <field name="description">Design-only programme definition. Legacy source: Project 2.</field>
+    </record>
+    <record id="programme_launchguard_development" model="hjig.programme.template">
+        <field name="code">LGV</field>
+        <field name="name">LaunchGuard Development</field>
+        <field name="owner_designation_id" ref="designation_tool_development"/>
+        <field name="approver_designation_id" ref="designation_project_manager"/>
+        <field name="description">Development programme definition. Legacy source: Project 3.</field>
+    </record>
+    <record id="programme_toollock_control" model="hjig.programme.template">
+        <field name="code">TLC</field>
+        <field name="name">ToolLock Control</field>
+        <field name="owner_designation_id" ref="designation_project_manager"/>
+        <field name="approver_designation_id" ref="designation_pmo_document_controller"/>
+        <field name="description">Controlled supplier-governance programme. Legacy source: Project 4.</field>
+    </record>
+    <record id="programme_toollock_lite" model="hjig.programme.template">
+        <field name="code">TLL</field>
+        <field name="name">ToolLock Lite</field>
+        <field name="owner_designation_id" ref="designation_project_manager"/>
+        <field name="approver_designation_id" ref="designation_pmo_document_controller"/>
+        <field name="description">Lite supplier-governance programme. Legacy source: Project 5.</field>
+    </record>
+</odoo>

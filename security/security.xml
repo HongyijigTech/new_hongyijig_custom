@@ -96,4 +96,36 @@
         <field name="domain_force">[(1, '=', 1)]</field>
         <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
     </record>
+
+    <!-- B-Series execution data follows native Odoo project visibility. -->
+    <record id="rule_hjig_programme_run_visibility" model="ir.rule">
+        <field name="name">Programme Run: project visibility</field>
+        <field name="model_id" ref="model_hjig_programme_run"/>
+        <field name="domain_force">['|', ('project_id.privacy_visibility', 'in', ['employees', 'portal']), ('project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+    <record id="rule_hjig_programme_gate_visibility" model="ir.rule">
+        <field name="name">Programme Gate: project visibility</field>
+        <field name="model_id" ref="model_hjig_programme_run_gate"/>
+        <field name="domain_force">['|', ('run_id.project_id.privacy_visibility', 'in', ['employees', 'portal']), ('run_id.project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+    <record id="rule_hjig_programme_artifact_visibility" model="ir.rule">
+        <field name="name">Programme Artifact Requirement: project visibility</field>
+        <field name="model_id" ref="model_hjig_programme_run_artifact"/>
+        <field name="domain_force">['|', ('run_id.project_id.privacy_visibility', 'in', ['employees', 'portal']), ('run_id.project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+    <record id="rule_hjig_sourcebridge_visibility" model="ir.rule">
+        <field name="name">SourceBridge: project visibility</field>
+        <field name="model_id" ref="model_hjig_sourcebridge_engagement"/>
+        <field name="domain_force">['|', ('project_id.privacy_visibility', 'in', ['employees', 'portal']), ('project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+    <record id="rule_hjig_sourcebridge_component_visibility" model="ir.rule">
+        <field name="name">SourceBridge Component: project visibility</field>
+        <field name="model_id" ref="model_hjig_sourcebridge_component"/>
+        <field name="domain_force">['|', ('engagement_id.project_id.privacy_visibility', 'in', ['employees', 'portal']), ('engagement_id.project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
 </odoo>
