@@ -128,6 +128,10 @@ class HjigChecklist(models.Model):
     blocking_summary = fields.Text(compute="_compute_readiness", store=True)
 
     _code_unique = models.Constraint("UNIQUE(code)", "Checklist code must be unique.")
+    _gate_template_unique = models.Constraint(
+        "UNIQUE(gate_id, template_id)",
+        "A gate can load each checklist template only once.",
+    )
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -417,6 +421,31 @@ class HjigGate(models.Model):
             })
             gate.with_context(**workflow_context()).write({
                 "state": "pending", "approval_id": approval.id,
+            })
+
+    def action_load_stage_checklist(self):
+        for gate in self:
+            if gate.state != "draft":
+                raise UserError(_("Stage checklists can be loaded only while the gate is Draft."))
+            templates = self.env["hjig.checklist.template"].search([
+                ("stage_id", "=", gate.stage_id.id), ("active", "=", True),
+            ])
+            if not templates:
+                raise ValidationError(_("No active checklist template is configured for this stage."))
+            if len(templates) > 1:
+                raise ValidationError(_(
+                    "More than one active checklist template is configured for this stage. Archive the obsolete version before loading."
+                ))
+            template = templates.ensure_one()
+            if self.env["hjig.checklist"].search_count([
+                ("gate_id", "=", gate.id), ("template_id", "=", template.id),
+            ]):
+                raise UserError(_("The active stage checklist is already loaded for this gate."))
+            self.env["hjig.checklist"].create({
+                "project_id": gate.project_id.id,
+                "target_ref": "%s,%s" % (gate.target_ref._name, gate.target_ref.id),
+                "template_id": template.id,
+                "gate_id": gate.id,
             })
 
     def action_apply_decision(self):

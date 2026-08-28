@@ -1,5 +1,6 @@
-from odoo.exceptions import ValidationError
+from odoo.exceptions import UserError, ValidationError
 from odoo.tests import TransactionCase, tagged
+from psycopg2.errors import UniqueViolation
 
 
 @tagged("post_install", "-at_install")
@@ -59,6 +60,23 @@ class TestChecklistGate(TransactionCase):
         templates = self.env["hjig.checklist.template"].search([("code", "in", list(expected_codes))])
         self.assertEqual(set(templates.mapped("code")), expected_codes)
         self.assertTrue(all(template.item_ids for template in templates))
+
+    def test_gate_loads_the_single_active_stage_checklist(self):
+        gate = self.env["hjig.gate"].create({
+            "project_id": self.project.id, "target_ref": self._target(),
+            "stage_id": self.stage.id, "approval_authority_designation_id": self.designation.id,
+        })
+        gate.action_load_stage_checklist()
+        self.assertEqual(len(gate.checklist_ids), 1)
+        self.assertEqual(gate.checklist_ids.template_id, self.template)
+        self.assertEqual(len(gate.checklist_ids.response_ids), len(self.template.item_ids))
+        with self.assertRaises(UserError):
+            gate.action_load_stage_checklist()
+        with self.assertRaises(UniqueViolation), self.env.cr.savepoint():
+            self.env["hjig.checklist"].create({
+                "project_id": self.project.id, "target_ref": self._target(),
+                "template_id": self.template.id, "gate_id": gate.id,
+            })
 
     def test_gate_go_requires_ready_checklist_and_human_approval(self):
         evidence = self.env["hjig.evidence.link"].create({

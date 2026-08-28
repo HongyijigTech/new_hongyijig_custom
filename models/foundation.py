@@ -21,6 +21,75 @@ class ProjectProject(models.Model):
     hjig_baseline_ids = fields.One2many("hjig.baseline", "project_id", string="Controlled Baselines")
     hjig_evidence_ids = fields.One2many("hjig.evidence.link", "project_id", string="Evidence")
     hjig_approval_ids = fields.One2many("hjig.approval", "project_id", string="Approvals")
+    hjig_baseline_count = fields.Integer(compute="_compute_hjig_operating_counts")
+    hjig_sor_count = fields.Integer(compute="_compute_hjig_operating_counts")
+    hjig_gate_count = fields.Integer(compute="_compute_hjig_operating_counts")
+    hjig_tooling_execution_count = fields.Integer(compute="_compute_hjig_operating_counts")
+    hjig_inspection_count = fields.Integer(compute="_compute_hjig_operating_counts")
+    hjig_commercial_link_count = fields.Integer(
+        compute="_compute_hjig_commercial_count",
+        groups="new_hongyijig_custom.group_hjig_commercial_user",
+    )
+
+    def _compute_hjig_operating_counts(self):
+        models_by_field = {
+            "hjig_baseline_count": "hjig.baseline",
+            "hjig_sor_count": "hjig.sor",
+            "hjig_gate_count": "hjig.gate",
+            "hjig_tooling_execution_count": "hjig.tooling.execution",
+            "hjig_inspection_count": "hjig.inspection",
+        }
+        for field_name in models_by_field:
+            for project in self:
+                project[field_name] = 0
+        if not self.ids:
+            return
+        for field_name, model_name in models_by_field.items():
+            grouped = self.env[model_name]._read_group(
+                [("project_id", "in", self.ids)], ["project_id"], ["__count"],
+            )
+            counts = {project.id: count for project, count in grouped}
+            for project in self:
+                project[field_name] = counts.get(project.id, 0)
+
+    def _compute_hjig_commercial_count(self):
+        for project in self:
+            project.hjig_commercial_link_count = 0
+        if not self.ids:
+            return
+        grouped = self.env["hjig.commercial.link"]._read_group(
+            [("project_id", "in", self.ids)], ["project_id"], ["__count"],
+        )
+        counts = {project.id: count for project, count in grouped}
+        for project in self:
+            project.hjig_commercial_link_count = counts.get(project.id, 0)
+
+    def _hjig_project_record_action(self, xml_id, extra_domain=None, extra_context=None):
+        self.ensure_one()
+        action = self.env["ir.actions.actions"]._for_xml_id(xml_id)
+        action["domain"] = [("project_id", "=", self.id)] + list(extra_domain or [])
+        action["context"] = {"default_project_id": self.id, **(extra_context or {})}
+        return action
+
+    def action_open_hjig_baselines(self):
+        return self._hjig_project_record_action("new_hongyijig_custom.action_hjig_baseline")
+
+    def action_open_hjig_sor(self):
+        return self._hjig_project_record_action("new_hongyijig_custom.action_hjig_sor")
+
+    def action_open_hjig_gates(self):
+        return self._hjig_project_record_action("new_hongyijig_custom.action_hjig_gate")
+
+    def action_open_hjig_tooling(self):
+        return self._hjig_project_record_action("new_hongyijig_custom.action_hjig_tooling_execution")
+
+    def action_open_hjig_inspections(self):
+        return self._hjig_project_record_action("new_hongyijig_custom.action_hjig_inspection")
+
+    def action_open_hjig_commercial_links(self):
+        if not self.env.user.has_group("new_hongyijig_custom.group_hjig_commercial_user"):
+            raise UserError(_("Hongyi Commercial Records access is required."))
+        return self._hjig_project_record_action("new_hongyijig_custom.action_hjig_commercial_link_all")
 
     @api.model_create_multi
     def create(self, vals_list):

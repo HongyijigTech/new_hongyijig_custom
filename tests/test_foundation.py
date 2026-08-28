@@ -146,3 +146,21 @@ class TestHongyiFoundation(TransactionCase):
             transition.reason = "Changed"
         with self.assertRaises(UserError):
             transition.unlink()
+
+    def test_project_cockpit_actions_are_project_scoped(self):
+        cases = [
+            ("action_open_hjig_baselines", "hjig.baseline"),
+            ("action_open_hjig_sor", "hjig.sor"),
+            ("action_open_hjig_gates", "hjig.gate"),
+            ("action_open_hjig_tooling", "hjig.tooling.execution"),
+            ("action_open_hjig_inspections", "hjig.inspection"),
+        ]
+        for method_name, model_name in cases:
+            action = getattr(self.project, method_name)()
+            self.assertEqual(action["res_model"], model_name)
+            self.assertIn(("project_id", "=", self.project.id), action["domain"])
+            self.assertEqual(action["context"]["default_project_id"], self.project.id)
+
+    def test_project_cockpit_hides_commercial_records_without_role(self):
+        with self.assertRaises(UserError):
+            self.project.with_user(self.requester).action_open_hjig_commercial_links()

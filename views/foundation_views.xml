@@ -159,6 +159,27 @@
         <field name="model">project.project</field>
         <field name="inherit_id" ref="project.edit_project"/>
         <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_open_hjig_sor" type="object" class="oe_stat_button" icon="fa-list-alt">
+                    <field name="hjig_sor_count" widget="statinfo" string="SOR"/>
+                </button>
+                <button name="action_open_hjig_baselines" type="object" class="oe_stat_button" icon="fa-lock">
+                    <field name="hjig_baseline_count" widget="statinfo" string="Baselines"/>
+                </button>
+                <button name="action_open_hjig_gates" type="object" class="oe_stat_button" icon="fa-check-square-o">
+                    <field name="hjig_gate_count" widget="statinfo" string="Gates"/>
+                </button>
+                <button name="action_open_hjig_tooling" type="object" class="oe_stat_button" icon="fa-cogs">
+                    <field name="hjig_tooling_execution_count" widget="statinfo" string="China Tooling"/>
+                </button>
+                <button name="action_open_hjig_inspections" type="object" class="oe_stat_button" icon="fa-search">
+                    <field name="hjig_inspection_count" widget="statinfo" string="Inspections"/>
+                </button>
+                <button name="action_open_hjig_commercial_links" type="object" class="oe_stat_button" icon="fa-money"
+                        groups="new_hongyijig_custom.group_hjig_commercial_user">
+                    <field name="hjig_commercial_link_count" widget="statinfo" string="Commercial"/>
+                </button>
+            </xpath>
             <xpath expr="//sheet/notebook" position="inside">
                 <page string="Hongyi Team" name="hjig_project_team">
                     <field name="hjig_authorized_user_ids" widget="many2many_tags" groups="project.group_project_manager"/>

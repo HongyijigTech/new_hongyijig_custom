@@ -162,3 +162,20 @@ class TestProjectDocumentGovernance(TransactionCase):
         self._create_document()
         with self.assertRaises(ValidationError):
             self.artifact.name = "Rewritten Master"
+
+    def test_operating_catalogue_contains_all_sops_and_required_forms(self):
+        master = self.env["hjig.governance.artifact.master"]
+        sop_codes = set(master.search([("artifact_type", "=", "sop")]).mapped("code"))
+        form_by_name = {
+            record.name: record for record in master.search([("artifact_type", "=", "form")])
+        }
+        self.assertTrue({"SOP-%03d" % number for number in range(1, 14)}.issubset(sop_codes))
+        self.assertGreaterEqual(len(form_by_name), 42)
+        required_forms = {
+            "Project Master", "SOR Creation Record", "BOP Lock Record", "Mould Planning Sheet",
+            "Risk Register", "Issue Register", "ECN Register", "Part Visual Inspection Report",
+            "Assembly Inspection Report", "Dimensional Inspection Report", "Project Execution Sheet",
+            "Tool Manufacturing Progress Record", "Installation Checklist", "Site Trial Report",
+            "Final Customer Acceptance", "Lessons Learned Register",
+        }
+        self.assertFalse(required_forms - set(form_by_name))
