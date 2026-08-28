@@ -352,4 +352,12 @@ class HjigProgrammeTemplateVersion(models.Model):
             )
             if stale:
                 stale.unlink()
+            untyped = version.checklist_item_ids.filtered(
+                lambda item: item.evidence_required and not item.evidence_artifact_id
+            )
+            for item in untyped:
+                fallback_code = STAGE_MASTER_GATE_ARTIFACTS.get(item.gate_line_id.stage_id.code)
+                fallback = artifact_by_code.get(fallback_code) if fallback_code else False
+                if fallback and item.gate_line_id.stage_id in fallback.applicable_stage_ids:
+                    item.evidence_artifact_id = fallback.id
         return True

@@ -586,3 +586,14 @@ class TestProgrammeTemplateGovernance(TransactionCase):
 
         self.assertEqual(STAGE_MASTER_GATE_ARTIFACTS["TG-04"], "FRM-B5-G01")
         self.assertEqual(STAGE_MASTER_GATE_ARTIFACTS["PA-00"], "FRM-B1-G01")
+
+    def test_governed_drafts_have_no_untyped_evidence_after_sync(self):
+        versions = self.env["hjig.programme.template.version"].search([
+            ("state", "in", ["draft", "review"]),
+            ("execution_mode", "=", "governed_gates"),
+        ])
+        versions._sync_authoritative_gate_checklists()
+        untyped = versions.mapped("checklist_item_ids").filtered(
+            lambda item: item.evidence_required and not item.evidence_artifact_id
+        )
+        self.assertFalse(untyped)
