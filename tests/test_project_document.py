@@ -39,6 +39,15 @@ class TestProjectDocumentGovernance(TransactionCase):
             "category": "governance",
             "holder_ids": [(6, 0, [cls.approver.id])],
         })
+        for designation, holder in (
+            (cls.owner_designation, cls.owner),
+            (cls.approver_designation, cls.approver),
+        ):
+            cls.env["hjig.project.designation.assignment"].create({
+                "project_id": cls.project.id,
+                "designation_id": designation.id,
+                "holder_ids": [(6, 0, [holder.id])],
+            })
         cls.stage = cls.env["hjig.launchguard.stage"].create({
             "code": "TEST-GATE",
             "name": "Test Gate",
@@ -152,6 +161,16 @@ class TestProjectDocumentGovernance(TransactionCase):
         document = self._create_document()
         with self.assertRaises(UserError):
             document.action_submit_review()
+
+    def test_global_holder_has_no_authority_without_project_assignment(self):
+        other_project = self.env["project.project"].create({
+            "name": "Other Controlled Project",
+            "hjig_project_record_type": "customer",
+            "x_project_code": "HJ-TST-2099-9010",
+        })
+        document = self._create_document(project_id=other_project.id)
+        with self.assertRaises(UserError):
+            document.with_user(self.owner).action_submit_review()
 
     def test_status_cannot_bypass_workflow(self):
         document = self._create_document()

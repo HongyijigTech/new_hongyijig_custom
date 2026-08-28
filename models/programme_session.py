@@ -199,6 +199,7 @@ class HjigProgrammeRun(models.Model):
             if version.state != "approved":
                 raise ValidationError(_("Only an approved programme version can generate execution records."))
             version._validate_definition()
+            run._assert_project_designation_assignments()
             for template_session in version.session_line_ids.sorted("sequence"):
                 self.env["hjig.programme.run.session"].create({
                     "run_id": run.id,
@@ -301,7 +302,9 @@ class HjigProgrammeRunSession(models.Model):
         for session in self:
             if session.state != "planned":
                 raise UserError(_("Only a planned advisory session can be delivered."))
-            if self.env.user not in session.owner_designation_id.holder_ids:
+            if not session.owner_designation_id._user_holds_for_project(
+                self.env.user, session.run_id.project_id
+            ):
                 raise UserError(_("Only a current holder of the session Owner Designation may deliver it."))
             if not session.delivery_mode or not session.framework_document_id or not session.delivery_note:
                 raise ValidationError(_("Delivery mode, controlled blank framework, and delivery note are required."))
@@ -317,7 +320,9 @@ class HjigProgrammeRunSession(models.Model):
         for session in self:
             if session.state != "delivered":
                 raise UserError(_("Only a delivered advisory session can be accepted."))
-            if self.env.user not in session.approver_designation_id.holder_ids:
+            if not session.approver_designation_id._user_holds_for_project(
+                self.env.user, session.run_id.project_id
+            ):
                 raise UserError(_("Only a current holder of the session Approver Designation may accept it."))
             if not session.acceptance_note:
                 raise ValidationError(_("An acceptance note is required."))

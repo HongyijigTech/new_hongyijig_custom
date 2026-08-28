@@ -185,7 +185,7 @@ class HjigProgrammeChecklistInstance(models.Model):
 
     def _assert_owner(self):
         for item in self:
-            if self.env.user not in item.owner_designation_id.holder_ids:
+            if not item.owner_designation_id._user_holds_for_project(self.env.user, item.project_id):
                 raise UserError(_("Only a current holder of the checklist Owner Designation may record this result."))
 
     def action_mark_pass(self):
@@ -227,7 +227,7 @@ class HjigProgrammeChecklistInstance(models.Model):
         for item in self:
             if not item.conditional:
                 raise ValidationError(_("Only a conditional checklist item may be marked N/A."))
-            if self.env.user not in item.approver_designation_id.holder_ids:
+            if not item.approver_designation_id._user_holds_for_project(self.env.user, item.project_id):
                 raise UserError(_("Only a current holder of the Approver Designation may approve N/A."))
             if not (item.remarks or "").strip():
                 raise ValidationError(_("A controlled N/A disposition requires remarks."))

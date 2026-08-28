@@ -743,9 +743,10 @@ class HjigProgrammeRunScopeDecision(models.Model):
             raise ValidationError(_("Conditional scope decisions are frozen after execution generation."))
         if "decision" in vals:
             for item in self:
+                project = item.run_id.project_id
                 permitted = (
-                    item.run_id.template_version_id.template_id.owner_designation_id.holder_ids
-                    | item.run_id.template_version_id.template_id.approver_designation_id.holder_ids
+                    item.run_id.template_version_id.template_id.owner_designation_id._holders_for_project(project)
+                    | item.run_id.template_version_id.template_id.approver_designation_id._holders_for_project(project)
                 )
                 if self.env.user not in permitted:
                     raise UserError(_("Only a current programme owner or approver designation holder may decide activity scope."))
@@ -843,6 +844,32 @@ class HjigProgrammeRun(models.Model):
         ).mapped("template_activity_id")
         return self.template_version_id.activity_line_ids - excluded
 
+    def _assert_project_designation_assignments(self):
+        for run in self:
+            version = run.template_version_id
+            designations = (
+                version.template_id.owner_designation_id
+                | version.template_id.approver_designation_id
+                | version.activity_line_ids.mapped("owner_designation_id")
+                | version.activity_line_ids.mapped("approver_designation_id")
+                | version.checklist_item_ids.mapped("owner_designation_id")
+                | version.checklist_item_ids.mapped("approver_designation_id")
+                | version.artifact_rule_ids.mapped("artifact_master_id.owner_designation_id")
+                | version.artifact_rule_ids.mapped("artifact_master_id.approver_designation_id")
+            )
+            if "session_line_ids" in version._fields:
+                designations |= version.session_line_ids.mapped("owner_designation_id")
+                designations |= version.session_line_ids.mapped("approver_designation_id")
+            missing = designations.filtered(
+                lambda designation: not designation._holders_for_project(run.project_id)
+            )
+            if missing:
+                raise ValidationError(
+                    _("Assign project-specific holders before execution: %s")
+                    % ", ".join(missing.mapped("code"))
+                )
+        return True
+
     def _activity_scope_values(self, activity):
         self.ensure_one()
         if activity.execution_basis == "project":
@@ -875,7 +902,7 @@ class HjigProgrammeRun(models.Model):
                         "name": "%s%s" % (activity.name, " — %s" % scope_label if scope_label else ""),
                         "project_id": run.project_id.id,
                         "sequence": activity.sequence,
-                        "user_ids": [(6, 0, activity.owner_designation_id.holder_ids.ids)],
+                        "user_ids": [(6, 0, activity.owner_designation_id._holders_for_project(run.project_id).ids)],
                         "hjig_programme_run_id": run.id,
                         "hjig_template_activity_id": activity.id,
                         "hjig_governance_stage_id": activity.gate_line_id.stage_id.id,
@@ -924,6 +951,7 @@ class HjigProgrammeRun(models.Model):
                 continue
             if run.template_version_id.state != "approved":
                 raise ValidationError(_("Only an approved programme version can generate execution records."))
+            run._assert_project_designation_assignments()
             run._ensure_scope_decisions()
             if run.scope_decision_ids.filtered(lambda decision: decision.decision == "pending"):
                 raise ValidationError(
@@ -1179,7 +1207,9 @@ class HjigProgrammeRunGate(models.Model):
             gate.action_refresh_readiness()
             if gate.state != "ready":
                 raise ValidationError(_("Gate cannot close: %s.") % ", ".join(gate._blocking_reasons()))
-            approvers = gate.run_id.template_version_id.template_id.approver_designation_id.holder_ids
+            approvers = gate.run_id.template_version_id.template_id.approver_designation_id._holders_for_project(
+                gate.run_id.project_id
+            )
             if self.env.user not in approvers:
                 raise UserError(_("You do not hold the required programme approver designation."))
             gate.with_context(hjig_gate_workflow=True).write({
@@ -1402,7 +1432,9 @@ class HjigSourcebridgeEngagement(models.Model):
                 raise UserError(_("Only a Draft SourceBridge engagement can be activated."))
             if not engagement.component_ids:
                 raise ValidationError(_("SourceBridge requires at least one sourcing component."))
-            if self.env.user not in engagement.approver_designation_id.holder_ids:
+            if not engagement.approver_designation_id._user_holds_for_project(
+                self.env.user, engagement.project_id
+            ):
                 raise UserError(_("You do not hold the SourceBridge approver designation."))
             engagement.with_context(hjig_sourcebridge_workflow=True).write({"state": "active"})
 
@@ -1507,7 +1539,9 @@ class HjigSourcebridgeComponent(models.Model):
             engagement = component.engagement_id
             if engagement.state != "active":
                 raise ValidationError(_("The SourceBridge engagement must be Active."))
-            if self.env.user not in engagement.approver_designation_id.holder_ids:
+            if not engagement.approver_designation_id._user_holds_for_project(
+                self.env.user, engagement.project_id
+            ):
                 raise UserError(_("You do not hold the SourceBridge approver designation."))
             component.with_context(hjig_component_accept=True).write({"status": "accepted"})
         return True
@@ -1549,6 +1583,31 @@ class SaleOrder(models.Model):
                 raise ValidationError(_("Order Punch programme selection is frozen after activation."))
         return super().write(vals)
 
+    def _hjig_resolve_activation_project(self):
+        """Adopt one governed legacy project; never create a duplicate implicitly."""
+        self.ensure_one()
+        project = self.hjig_project_id
+        Project = self.env["project.project"].with_context(active_test=False)
+        if not project and "x_order_reference_id" in Project._fields:
+            linked = Project.search([("x_order_reference_id", "=", self.id)])
+            if len(linked) > 1:
+                raise ValidationError(
+                    _("More than one project is linked to this order. Resolve the duplicate linkage before activation.")
+                )
+            project = linked
+        if not project:
+            return project
+        if project.hjig_project_record_type != "customer":
+            raise ValidationError(_("The adopted project must be classified as a Customer Project."))
+        if (
+            project.partner_id
+            and project.partner_id.commercial_partner_id != self.partner_id.commercial_partner_id
+        ):
+            raise ValidationError(_("The order customer and adopted project customer do not match."))
+        if project.company_id and project.company_id != self.company_id:
+            raise ValidationError(_("The order company and adopted project company do not match."))
+        return project
+
     def action_activate_hjig_programme(self):
         self.ensure_one()
         existing = self.env["hjig.programme.run"].search([("sale_order_id", "=", self.id)], limit=1)
@@ -1559,7 +1618,8 @@ class SaleOrder(models.Model):
         version = self.hjig_programme_version_id
         if not version or version.state != "approved" or not version.is_current:
             raise ValidationError(_("Select the current approved programme version before activation."))
-        project_code = (self.hjig_project_code or "").strip().upper()
+        project = self._hjig_resolve_activation_project()
+        project_code = (self.hjig_project_code or project.x_project_code or "").strip().upper()
         if not project_code:
             raise ValidationError(_("Enter the approved governed project code before activation."))
         code_parts = project_code.split("-")
@@ -1573,7 +1633,6 @@ class SaleOrder(models.Model):
             raise ValidationError(_("Link the approved Order Punch PDF before programme activation."))
         if not drive_pdf_pattern.match((self.hjig_commercial_pdf_url or "").strip()):
             raise ValidationError(_("Link the approved Commercial PDF before programme activation."))
-        project = self.hjig_project_id
         if not project:
             project_values = {
                 "name": "%s - %s" % (self.partner_id.name, version.template_id.name),
@@ -1586,6 +1645,10 @@ class SaleOrder(models.Model):
             if "x_order_reference_id" in project_fields:
                 project_values["x_order_reference_id"] = self.id
             project = self.env["project.project"].create(project_values)
+        elif project.x_project_code != project_code:
+            raise ValidationError(
+                _("The approved Project Code does not match the existing order-linked project.")
+            )
         run = self.env["hjig.programme.run"].create({
             "name": "%s / %s" % (project.x_project_code, version.name),
             "sale_order_id": self.id,
@@ -1593,11 +1656,11 @@ class SaleOrder(models.Model):
             "template_version_id": version.id,
         })
         self.with_context(hjig_programme_activation=True).write({
-            "hjig_project_id": project.id, "hjig_programme_run_id": run.id
+            "hjig_project_code": project_code,
+            "hjig_project_id": project.id,
+            "hjig_programme_run_id": run.id,
         })
         run._ensure_scope_decisions()
-        if not run.scope_decision_ids:
-            run.action_generate_execution()
         return self._hjig_run_action(run)
 
     def _hjig_run_action(self, run):

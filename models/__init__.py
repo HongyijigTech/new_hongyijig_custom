@@ -4,6 +4,7 @@
 from . import crm_lead
 from . import engineering_reference
 from . import governance_master
+from . import project_designation
 from . import native_forms
 from . import programme_template
 from . import programme_dependency_authority

@@ -329,7 +329,9 @@ class HjigMould(models.Model):
                 raise UserError(_("Only Draft mould plans can be submitted."))
             if not mould.x_template_id or not mould.x_owner_designation_id or not mould.x_approver_designation_id:
                 raise ValidationError(_("Template and designation authority must be configured before submission."))
-            if self.env.user not in mould.x_owner_designation_id.holder_ids:
+            if not mould.x_owner_designation_id._user_holds_for_project(
+                self.env.user, mould.x_project_id
+            ):
                 raise UserError(_("Only a current holder of the Owner Designation may submit this mould plan."))
             if mould.x_missing_fields:
                 raise ValidationError(_("Complete the mould plan before submission:\n%s") % mould.x_missing_fields)
@@ -342,7 +344,9 @@ class HjigMould(models.Model):
         for mould in self:
             if mould.x_workflow_state != "review":
                 raise UserError(_("Only mould plans Under Review can be approved."))
-            if self.env.user not in mould.x_approver_designation_id.holder_ids:
+            if not mould.x_approver_designation_id._user_holds_for_project(
+                self.env.user, mould.x_project_id
+            ):
                 raise UserError(_("Only a current holder of the Approver Designation may approve this mould plan."))
             if mould.x_submitted_by_id == self.env.user:
                 raise ValidationError(_("The same user cannot submit and approve the mould plan."))
@@ -919,7 +923,9 @@ class HjigInspectionReport(models.Model):
         for report in self:
             if report.workflow_state != "draft":
                 raise UserError(_("Only Draft reports can be submitted."))
-            if self.env.user not in report.owner_designation_id.holder_ids:
+            if not report.owner_designation_id._user_holds_for_project(
+                self.env.user, report.project_id
+            ):
                 raise UserError(_("Only a current holder of the Owner Designation may submit this report."))
             if report.report_type == "dimensional" and not report.dimension_line_ids:
                 raise ValidationError(_("Add at least one dimensional inspection line."))
@@ -960,7 +966,9 @@ class HjigInspectionReport(models.Model):
         for report in self:
             if report.workflow_state != "review":
                 raise UserError(_("Only reports Under Review can be approved."))
-            if self.env.user not in report.approver_designation_id.holder_ids:
+            if not report.approver_designation_id._user_holds_for_project(
+                self.env.user, report.project_id
+            ):
                 raise UserError(_("Only a current holder of the Approver Designation may approve this report."))
             if report.submitted_by_id == self.env.user:
                 raise ValidationError(_("The same user cannot submit and approve an inspection report."))

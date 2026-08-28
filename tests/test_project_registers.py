@@ -34,6 +34,15 @@ class TestProjectRegisters(TransactionCase):
             "name": "Register Test Project", "hjig_project_record_type": "customer",
             "x_project_code": "HJ-REG-2026-0001",
         })
+        for designation, holder in (
+            (cls.owner_designation, cls.owner),
+            (cls.approver_designation, cls.approver),
+        ):
+            cls.env["hjig.project.designation.assignment"].create({
+                "project_id": cls.project.id,
+                "designation_id": designation.id,
+                "holder_ids": [(6, 0, [holder.id])],
+            })
 
     def _approved_mould(self):
         mould = self.env["x_mould"].create({

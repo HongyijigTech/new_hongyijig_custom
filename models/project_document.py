@@ -395,7 +395,9 @@ class HjigProjectDocument(models.Model):
         for document in self:
             if document.status != "draft":
                 raise UserError(_("Only Draft documents can be submitted for review."))
-            if self.env.user not in document.owner_designation_id.holder_ids:
+            if not document.owner_designation_id._user_holds_for_project(
+                self.env.user, document.project_id
+            ):
                 raise UserError(
                     _("Only a current holder of the Owner Designation may submit this document.")
                 )
@@ -410,7 +412,9 @@ class HjigProjectDocument(models.Model):
         for document in self:
             if document.status != "review":
                 raise UserError(_("Only documents Under Review can be approved."))
-            if self.env.user not in document.approver_designation_id.holder_ids:
+            if not document.approver_designation_id._user_holds_for_project(
+                self.env.user, document.project_id
+            ):
                 raise ValidationError(
                     _("Only a current holder of the Approver Designation may approve this document.")
                 )

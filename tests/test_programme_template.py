@@ -154,6 +154,27 @@ class TestProgrammeTemplateGovernance(TransactionCase):
         values.update(overrides)
         return self.env["sale.order"].create(values)
 
+    def _activate_order(self, order):
+        order.action_activate_hjig_programme()
+        run = order.hjig_programme_run_id
+        for designation, holder in (
+            (self.owner_designation, self.owner_user),
+            (self.approver_designation, self.approver_user),
+        ):
+            assignment = self.env["hjig.project.designation.assignment"].search([
+                ("project_id", "=", run.project_id.id),
+                ("designation_id", "=", designation.id),
+            ], limit=1)
+            if not assignment:
+                self.env["hjig.project.designation.assignment"].create({
+                    "project_id": run.project_id.id,
+                    "designation_id": designation.id,
+                    "holder_ids": [(6, 0, [holder.id])],
+                })
+        if run.state == "draft" and not run.scope_decision_ids:
+            run.action_generate_execution()
+        return run
+
     def test_approved_version_is_hashed_and_frozen(self):
         self.assertEqual(self.version.state, "approved")
         self.assertTrue(self.version.is_current)
@@ -247,8 +268,7 @@ class TestProgrammeTemplateGovernance(TransactionCase):
 
     def test_order_activation_is_idempotent_and_generates_snapshot(self):
         order = self._sale_order()
-        order.action_activate_hjig_programme()
-        run = order.hjig_programme_run_id
+        run = self._activate_order(order)
         self.assertTrue(run)
         self.assertEqual(run.state, "generated")
         self.assertEqual(run.template_version_id, self.version)
@@ -259,7 +279,7 @@ class TestProgrammeTemplateGovernance(TransactionCase):
         dependent = run.task_ids.filtered(lambda task: task.hjig_template_activity_id == self.activity_2)
         first = run.task_ids.filtered(lambda task: task.hjig_template_activity_id == self.activity_1)
         self.assertEqual(dependent.depend_on_ids, first)
-        order.action_activate_hjig_programme()
+        self._activate_order(order)
         self.assertEqual(
             self.env["hjig.programme.run"].search_count([("sale_order_id", "=", order.id)]), 1
         )
@@ -269,12 +289,35 @@ class TestProgrammeTemplateGovernance(TransactionCase):
 
     def test_generated_snapshot_cannot_be_repointed_or_deleted(self):
         order = self._sale_order(hjig_project_code="HJ-PGT-2026-0002")
-        order.action_activate_hjig_programme()
-        run = order.hjig_programme_run_id
+        run = self._activate_order(order)
         with self.assertRaises(ValidationError):
             run.template_version_id = False
         with self.assertRaises(UserError):
             run.unlink()
+
+    def test_order_adopts_single_legacy_linked_project_without_generating(self):
+        if "x_order_reference_id" not in self.env["project.project"]._fields:
+            self.skipTest("Legacy order-reference field is not installed")
+        order = self._sale_order(hjig_project_code="HJ-PGT-2026-0099")
+        project = self.env["project.project"].create({
+            "name": "Existing Order-Linked Project",
+            "partner_id": self.partner.id,
+            "company_id": order.company_id.id,
+            "hjig_project_record_type": "customer",
+            "x_project_code": "HJ-PGT-2026-0099",
+            "x_order_reference_id": order.id,
+        })
+        project_count = self.env["project.project"].with_context(active_test=False).search_count([])
+        order.action_activate_hjig_programme()
+        self.assertEqual(order.hjig_project_id, project)
+        self.assertEqual(order.hjig_programme_run_id.project_id, project)
+        self.assertEqual(order.hjig_programme_run_id.state, "draft")
+        self.assertEqual(
+            self.env["project.project"].with_context(active_test=False).search_count([]),
+            project_count,
+        )
+        with self.assertRaisesRegex(ValidationError, "Assign project-specific holders"):
+            order.hjig_programme_run_id.action_generate_execution()
 
     def test_unapproved_version_cannot_activate_order(self):
         draft = self.env["hjig.programme.template.version"].create({
@@ -393,8 +436,7 @@ class TestProgrammeTemplateGovernance(TransactionCase):
 
     def test_sourcebridge_supports_multiple_components_per_programme(self):
         order = self._sale_order(hjig_project_code="HJ-PGT-2026-0004")
-        order.action_activate_hjig_programme()
-        run = order.hjig_programme_run_id
+        run = self._activate_order(order)
         engagement = self.env["hjig.sourcebridge.engagement"].create({
             "code": "SB-PGT-0001", "name": "Two Components", "project_id": run.project_id.id,
             "programme_run_id": run.id, "owner_designation_id": self.owner_designation.id,
@@ -411,7 +453,7 @@ class TestProgrammeTemplateGovernance(TransactionCase):
 
     def test_gate_cannot_approve_without_completed_tasks_and_documents(self):
         order = self._sale_order(hjig_project_code="HJ-PGT-2026-0005")
-        order.action_activate_hjig_programme()
+        self._activate_order(order)
         gate = order.hjig_programme_run_id.gate_ids[:1]
         gate.action_refresh_readiness()
         self.assertEqual(gate.state, "blocked")
@@ -420,7 +462,7 @@ class TestProgrammeTemplateGovernance(TransactionCase):
 
     def test_checklist_result_requires_owner_designation_and_governed_action(self):
         order = self._sale_order(hjig_project_code="HJ-PGT-2026-0006")
-        order.action_activate_hjig_programme()
+        self._activate_order(order)
         item = order.hjig_programme_run_id.checklist_instance_ids
         with self.assertRaises(ValidationError):
             item.status = "pass"
@@ -432,7 +474,7 @@ class TestProgrammeTemplateGovernance(TransactionCase):
 
     def test_nonconditional_checklist_item_cannot_be_na(self):
         order = self._sale_order(hjig_project_code="HJ-PGT-2026-0007")
-        order.action_activate_hjig_programme()
+        self._activate_order(order)
         item = order.hjig_programme_run_id.checklist_instance_ids
         item.remarks = "Not applicable request"
         with self.assertRaises(ValidationError):
@@ -511,6 +553,15 @@ class TestProgrammeTemplateGovernance(TransactionCase):
             "x_project_code": "HJ-PMT-2026-0001",
             "hjig_project_record_type": "customer",
         })
+        for designation, holder in (
+            (self.owner_designation, self.owner_user),
+            (self.approver_designation, self.approver_user),
+        ):
+            self.env["hjig.project.designation.assignment"].create({
+                "project_id": project.id,
+                "designation_id": designation.id,
+                "holder_ids": [(6, 0, [holder.id])],
+            })
         run = self.env["hjig.programme.run"].create({
             "name": "HJ-PMT-2026-0001 — Per Mould Test",
             "sale_order_id": order.id,
@@ -616,8 +667,7 @@ class TestProgrammeTemplateGovernance(TransactionCase):
             hjig_programme_version_id=version.id,
             hjig_project_code="HJ-CND-2026-0001",
         )
-        order.action_activate_hjig_programme()
-        run = order.hjig_programme_run_id
+        run = self._activate_order(order)
         self.assertEqual(run.state, "draft")
         self.assertEqual(len(run.scope_decision_ids), 1)
         self.assertFalse(run.task_ids)

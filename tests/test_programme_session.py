@@ -88,6 +88,12 @@ class TestProgrammeAdvisorySessions(TransactionCase):
             "name": "Advisory Project", "x_project_code": "HJ-TLL-2026-0001",
             "hjig_project_record_type": "customer",
         })
+        for designation, holder in ((self.owner, self.owner_user), (self.approver, self.approver_user)):
+            self.env["hjig.project.designation.assignment"].create({
+                "project_id": project.id,
+                "designation_id": designation.id,
+                "holder_ids": [(6, 0, [holder.id])],
+            })
         run = self.env["hjig.programme.run"].create({
             "name": "HJ-TLL-2026-0001 — ToolLock Lite", "sale_order_id": order.id,
             "project_id": project.id, "template_version_id": self.version.id,

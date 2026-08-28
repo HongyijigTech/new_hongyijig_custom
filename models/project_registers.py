@@ -137,7 +137,10 @@ class HjigFinalMouldPlan(models.Model):
             raise UserError(_("Only a Project Administrator may change designation authority."))
         if controlled.intersection(vals) and self.filtered(lambda rec: rec.workflow_state in ("approved", "superseded")):
             allowed_supersede = set(vals) == {"workflow_state"} and vals.get("workflow_state") == "superseded"
-            if not allowed_supersede or any(self.env.user not in rec.approver_designation_id.holder_ids for rec in self):
+            if not allowed_supersede or any(
+                not rec.approver_designation_id._user_holds_for_project(self.env.user, rec.project_id)
+                for rec in self
+            ):
                 raise ValidationError(_("Approved or superseded Final Mould Plans are read-only."))
         identity_fields = {"project_id", "revision", "source_mould_ids", "owner_designation_id", "approver_designation_id"}
         if identity_fields.intersection(vals) and self.filtered(lambda rec: rec.workflow_state != "draft"):
@@ -149,20 +152,20 @@ class HjigFinalMouldPlan(models.Model):
                     if set(vals) - {"workflow_state", "submitted_by_id"}:
                         raise ValidationError(_("Save plan changes before using the controlled submission transition."))
                     plan._check_snapshot_integrity()
-                    if self.env.user not in plan.owner_designation_id.holder_ids or vals.get("submitted_by_id") != self.env.user.id:
+                    if not plan.owner_designation_id._user_holds_for_project(self.env.user, plan.project_id) or vals.get("submitted_by_id") != self.env.user.id:
                         raise UserError(_("Only the Owner Designation holder may submit this Final Mould Plan."))
                 elif plan.workflow_state == "review" and target == "approved":
                     if set(vals) - {"workflow_state", "approved_by_id"}:
                         raise ValidationError(_("Save review changes before using the controlled approval transition."))
                     plan._check_snapshot_integrity()
-                    if self.env.user not in plan.approver_designation_id.holder_ids or plan.submitted_by_id == self.env.user:
+                    if not plan.approver_designation_id._user_holds_for_project(self.env.user, plan.project_id) or plan.submitted_by_id == self.env.user:
                         raise UserError(_("A different current Approver Designation holder must approve this Final Mould Plan."))
                     if not plan.effective_date or vals.get("approved_by_id") != self.env.user.id:
                         raise ValidationError(_("Effective Date and the authenticated approver are required."))
                 elif plan.workflow_state == "approved" and target == "superseded":
                     if set(vals) != {"workflow_state"}:
                         raise ValidationError(_("Superseding may only change workflow status."))
-                    if self.env.user not in plan.approver_designation_id.holder_ids:
+                    if not plan.approver_designation_id._user_holds_for_project(self.env.user, plan.project_id):
                         raise UserError(_("Only the Approver Designation holder may supersede this plan."))
                 else:
                     raise ValidationError(_("Invalid Final Mould Plan workflow transition."))
@@ -198,7 +201,7 @@ class HjigFinalMouldPlan(models.Model):
         for plan in self:
             if plan.workflow_state != "draft" or not plan.line_ids:
                 raise ValidationError(_("Generate the Final Plan lines before submission."))
-            if self.env.user not in plan.owner_designation_id.holder_ids:
+            if not plan.owner_designation_id._user_holds_for_project(self.env.user, plan.project_id):
                 raise UserError(_("Only a current holder of the Owner Designation may submit this Final Mould Plan."))
             plan.write({
                 "workflow_state": "review", "submitted_by_id": self.env.user.id,
@@ -208,7 +211,7 @@ class HjigFinalMouldPlan(models.Model):
         for plan in self:
             if plan.workflow_state != "review":
                 raise UserError(_("Only a Final Mould Plan Under Review can be approved."))
-            if self.env.user not in plan.approver_designation_id.holder_ids:
+            if not plan.approver_designation_id._user_holds_for_project(self.env.user, plan.project_id):
                 raise UserError(_("Only a current holder of the Approver Designation may approve this Final Mould Plan."))
             if plan.submitted_by_id == self.env.user:
                 raise ValidationError(_("The same user cannot submit and approve the Final Mould Plan."))
@@ -345,15 +348,15 @@ class HjigProjectRisk(models.Model):
             target = vals["status"]
             for risk in self:
                 if risk.status == "open" and target == "mitigating":
-                    if set(vals) != {"status"} or self.env.user not in risk.owner_designation_id.holder_ids:
+                    if set(vals) != {"status"} or not risk.owner_designation_id._user_holds_for_project(self.env.user, risk.project_id):
                         raise UserError(_("Only the Owner Designation holder may start mitigation."))
                 elif risk.status in ("open", "mitigating") and target == "accepted":
-                    if set(vals) != {"status"} or self.env.user not in risk.approver_designation_id.holder_ids:
+                    if set(vals) != {"status"} or not risk.approver_designation_id._user_holds_for_project(self.env.user, risk.project_id):
                         raise UserError(_("Only the Approver Designation holder may accept a risk."))
                 elif target == "resolved":
                     if set(vals) - {"status", "resolved_by_id", "resolved_date"}:
                         raise ValidationError(_("Save risk changes before using the controlled resolution transition."))
-                    if self.env.user not in risk.approver_designation_id.holder_ids:
+                    if not risk.approver_designation_id._user_holds_for_project(self.env.user, risk.project_id):
                         raise UserError(_("Only a current holder of the Approver Designation may resolve this risk."))
                     notes = vals.get("resolution_notes", risk.resolution_notes)
                     if not notes or vals.get("resolved_by_id") != self.env.user.id or not vals.get("resolved_date"):
@@ -370,7 +373,7 @@ class HjigProjectRisk(models.Model):
 
     def action_resolve(self):
         for risk in self:
-            if self.env.user not in risk.approver_designation_id.holder_ids:
+            if not risk.approver_designation_id._user_holds_for_project(self.env.user, risk.project_id):
                 raise UserError(_("Only a current holder of the Approver Designation may resolve this risk."))
             if not risk.resolution_notes:
                 raise ValidationError(_("Resolution Notes are required."))
@@ -455,18 +458,18 @@ class HjigProjectIssue(models.Model):
             target = vals["status"]
             for issue in self:
                 if issue.status == "open" and target == "in_progress":
-                    if set(vals) != {"status"} or self.env.user not in issue.owner_designation_id.holder_ids:
+                    if set(vals) != {"status"} or not issue.owner_designation_id._user_holds_for_project(self.env.user, issue.project_id):
                         raise UserError(_("Only the Owner Designation holder may start issue work."))
                 elif issue.status in ("open", "in_progress") and target == "blocked":
-                    if set(vals) != {"status"} or self.env.user not in issue.owner_designation_id.holder_ids:
+                    if set(vals) != {"status"} or not issue.owner_designation_id._user_holds_for_project(self.env.user, issue.project_id):
                         raise UserError(_("Only the Owner Designation holder may mark an issue blocked."))
                 elif issue.status == "blocked" and target == "in_progress":
-                    if set(vals) != {"status"} or self.env.user not in issue.owner_designation_id.holder_ids:
+                    if set(vals) != {"status"} or not issue.owner_designation_id._user_holds_for_project(self.env.user, issue.project_id):
                         raise UserError(_("Only the Owner Designation holder may resume issue work."))
                 elif target == "closed":
                     if set(vals) - {"status", "closed_by_id", "closed_date"}:
                         raise ValidationError(_("Save issue changes before using the controlled closure transition."))
-                    if self.env.user not in issue.approver_designation_id.holder_ids:
+                    if not issue.approver_designation_id._user_holds_for_project(self.env.user, issue.project_id):
                         raise UserError(_("Only a current holder of the Approver Designation may close this issue."))
                     root_cause = vals.get("root_cause", issue.root_cause)
                     closure_notes = vals.get("closure_notes", issue.closure_notes)
@@ -488,7 +491,7 @@ class HjigProjectIssue(models.Model):
 
     def action_close(self):
         for issue in self:
-            if self.env.user not in issue.approver_designation_id.holder_ids:
+            if not issue.approver_designation_id._user_holds_for_project(self.env.user, issue.project_id):
                 raise UserError(_("Only a current holder of the Approver Designation may close this issue."))
             issue._check_closure_requirements()
             issue.write({
@@ -606,7 +609,7 @@ class HjigProjectEcn(models.Model):
         for ecn in self.filtered(lambda rec: rec.status == "approved" and "status" not in vals):
             if set(vals) - CHATTER_FIELDS - {"implementation_date", "remarks"}:
                 raise ValidationError(_("Approved ECN definition, costs and evidence are locked."))
-            if set(vals).intersection({"implementation_date", "remarks"}) and self.env.user not in ecn.owner_designation_id.holder_ids:
+            if set(vals).intersection({"implementation_date", "remarks"}) and not ecn.owner_designation_id._user_holds_for_project(self.env.user, ecn.project_id):
                 raise UserError(_("Only the Owner Designation holder may update implementation details."))
         if controlled.intersection(vals) and self.filtered(lambda rec: rec.status == "implemented" and "status" not in vals):
             raise ValidationError(_("Implemented ECNs are read-only until controlled closure."))
@@ -616,14 +619,14 @@ class HjigProjectEcn(models.Model):
                 if ecn.status == "draft" and target == "review":
                     if set(vals) - {"status", "submitted_by_id"}:
                         raise ValidationError(_("Save ECN changes before using the controlled submission transition."))
-                    if self.env.user not in ecn.owner_designation_id.holder_ids or vals.get("submitted_by_id") != self.env.user.id:
+                    if not ecn.owner_designation_id._user_holds_for_project(self.env.user, ecn.project_id) or vals.get("submitted_by_id") != self.env.user.id:
                         raise UserError(_("Only the Owner Designation holder may submit this ECN."))
                     if not ecn.impacted_part_ids and not ecn.impacted_mould_ids:
                         raise ValidationError(_("Select at least one impacted part or mould."))
                 elif ecn.status == "review" and target == "approved":
                     if set(vals) - {"status", "approved_by_id"}:
                         raise ValidationError(_("Save review changes before using the controlled approval transition."))
-                    if self.env.user not in ecn.approver_designation_id.holder_ids or ecn.submitted_by_id == self.env.user:
+                    if not ecn.approver_designation_id._user_holds_for_project(self.env.user, ecn.project_id) or ecn.submitted_by_id == self.env.user:
                         raise UserError(_("A different current Approver Designation holder must approve this ECN."))
                     if vals.get("approved_by_id") != self.env.user.id:
                         raise ValidationError(_("Authenticated approval metadata is required."))
@@ -631,12 +634,12 @@ class HjigProjectEcn(models.Model):
                 elif ecn.status == "approved" and target == "implemented":
                     if set(vals) != {"status"}:
                         raise ValidationError(_("Implementation transition may only change workflow status."))
-                    if self.env.user not in ecn.owner_designation_id.holder_ids or not ecn.implementation_date:
+                    if not ecn.owner_designation_id._user_holds_for_project(self.env.user, ecn.project_id) or not ecn.implementation_date:
                         raise UserError(_("Only the Owner Designation holder may implement an ECN with an Implementation Date."))
                 elif ecn.status == "implemented" and target == "closed":
                     if set(vals) - {"status", "closed_date"}:
                         raise ValidationError(_("Closure transition may only set controlled closure metadata."))
-                    if self.env.user not in ecn.approver_designation_id.holder_ids or not vals.get("closed_date"):
+                    if not ecn.approver_designation_id._user_holds_for_project(self.env.user, ecn.project_id) or not vals.get("closed_date"):
                         raise UserError(_("Only the Approver Designation holder may close this ECN."))
                 else:
                     raise ValidationError(_("Invalid ECN workflow transition."))
@@ -646,7 +649,7 @@ class HjigProjectEcn(models.Model):
         for ecn in self:
             if ecn.status != "draft":
                 raise UserError(_("Only Draft ECNs can be submitted."))
-            if self.env.user not in ecn.owner_designation_id.holder_ids:
+            if not ecn.owner_designation_id._user_holds_for_project(self.env.user, ecn.project_id):
                 raise UserError(_("Only a current holder of the Owner Designation may submit this ECN."))
             if not ecn.impacted_part_ids and not ecn.impacted_mould_ids:
                 raise ValidationError(_("Select at least one impacted part or mould."))
@@ -656,7 +659,7 @@ class HjigProjectEcn(models.Model):
         for ecn in self:
             if ecn.status != "review":
                 raise UserError(_("Only ECNs Under Review can be approved."))
-            if self.env.user not in ecn.approver_designation_id.holder_ids:
+            if not ecn.approver_designation_id._user_holds_for_project(self.env.user, ecn.project_id):
                 raise UserError(_("Only a current holder of the Approver Designation may approve this ECN."))
             if ecn.submitted_by_id == self.env.user:
                 raise ValidationError(_("The same user cannot submit and approve an ECN."))
@@ -667,7 +670,7 @@ class HjigProjectEcn(models.Model):
         for ecn in self:
             if ecn.status != "approved" or not ecn.implementation_date:
                 raise ValidationError(_("Set Implementation Date on an Approved ECN first."))
-            if self.env.user not in ecn.owner_designation_id.holder_ids:
+            if not ecn.owner_designation_id._user_holds_for_project(self.env.user, ecn.project_id):
                 raise UserError(_("Only a current holder of the Owner Designation may mark implementation."))
             ecn.write({"status": "implemented"})
 
@@ -675,7 +678,7 @@ class HjigProjectEcn(models.Model):
         for ecn in self:
             if ecn.status != "implemented":
                 raise UserError(_("Only Implemented ECNs can be closed."))
-            if self.env.user not in ecn.approver_designation_id.holder_ids:
+            if not ecn.approver_designation_id._user_holds_for_project(self.env.user, ecn.project_id):
                 raise UserError(_("Only a current holder of the Approver Designation may close this ECN."))
             ecn.write({
                 "status": "closed", "closed_date": fields.Date.context_today(ecn),

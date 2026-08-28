@@ -41,6 +41,15 @@ class TestNativeProjectForms(TransactionCase):
             "hjig_project_record_type": "customer",
             "x_project_code": "HJ-NAT-2026-0001",
         })
+        for designation, holder in (
+            (cls.owner_designation, cls.owner),
+            (cls.approver_designation, cls.approver),
+        ):
+            cls.env["hjig.project.designation.assignment"].create({
+                "project_id": cls.project.id,
+                "designation_id": designation.id,
+                "holder_ids": [(6, 0, [holder.id])],
+            })
         cls.mould_artifact = cls._artifact("NATIVE-TEST-MPL", "Test Mould Plan")
         cls.visual_artifact = cls._artifact("NATIVE-TEST-VIR", "Test Visual Report")
         cls.assembly_artifact = cls._artifact("NATIVE-TEST-AIR", "Test Assembly Report")

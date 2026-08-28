@@ -6,6 +6,24 @@
         <field name="comment">May approve controlled project documents when the user also holds the required approver designation.</field>
     </record>
 
+    <record id="rule_hjig_project_designation_visibility" model="ir.rule">
+        <field name="name">Project Designation Assignment: project visibility</field>
+        <field name="model_id" ref="model_hjig_project_designation_assignment"/>
+        <field name="domain_force">['|', ('project_id.privacy_visibility', 'in', ['employees', 'portal']), ('project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+    <record id="rule_hjig_project_designation_company" model="ir.rule">
+        <field name="name">Project Designation Assignment: multi-company</field>
+        <field name="model_id" ref="model_hjig_project_designation_assignment"/>
+        <field name="domain_force">[('project_id.company_id', 'in', company_ids + [False])]</field>
+    </record>
+    <record id="rule_hjig_project_designation_manager" model="ir.rule">
+        <field name="name">Project Designation Assignment: manager oversight</field>
+        <field name="model_id" ref="model_hjig_project_designation_assignment"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
+    </record>
+
     <!-- Native project registers follow the same visibility boundary as Odoo projects. -->
     <record id="rule_hjig_final_plan_company" model="ir.rule">
         <field name="name">Final Mould Plan: multi-company</field>
