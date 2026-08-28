@@ -82,6 +82,38 @@ for programme in programmes.sorted(lambda item: item.template_id.code):
         lambda rule: rule.source_reference != "PN_CTL_Activity_Dependencies_Specification_v1.4"
     ):
         raise RuntimeError(f"{code} contains superseded dependency authority")
+    a091 = programme.activity_line_ids.filtered(
+        lambda activity: "A-091" in (activity.legacy_master_codes or "").upper()
+    )[:1]
+    if a091 and "NO ACTUAL PAYMENT" not in (a091.name or "").upper():
+        raise RuntimeError(f"{code} A-091 is not clearly authorization-only")
+    cm11 = programme.activity_line_ids.filtered(
+        lambda activity: (activity.name or "").upper().startswith("CM-11:")
+    )
+    if code in {"LGC", "LGV", "TLC"}:
+        if len(cm11) != 1 or "SOLE STANDARD PAYMENT EVENT" not in (cm11.name or "").upper():
+            raise RuntimeError(f"{code} does not identify CM-11 as the sole actual final payment")
+        b8_close = programme.activity_line_ids.filtered(
+            lambda activity: "B8-09" in (activity.legacy_master_codes or "").upper()
+        )[:1]
+        if cm11 not in b8_close.predecessor_ids:
+            raise RuntimeError(f"{code} can close before CM-11 actual final payment")
+    a067 = programme.activity_line_ids.filtered(
+        lambda activity: "A-067" in (activity.legacy_master_codes or "").upper()
+    )[:1]
+    cm07_demand = programme.activity_line_ids.filtered(
+        lambda activity: (activity.name or "").upper().startswith("CM-07: DEMAND RAISED")
+    )[:1]
+    cm07_collected = programme.activity_line_ids.filtered(
+        lambda activity: (activity.name or "").upper().startswith("CM-07: GOVERNANCE FEE COLLECTED")
+    )[:1]
+    if a067 and (
+        not cm07_demand
+        or cm07_demand.gate_line_id != a067.gate_line_id
+        or a067 not in cm07_demand.predecessor_ids
+        or cm07_demand not in cm07_collected.predecessor_ids
+    ):
+        raise RuntimeError(f"{code} CM-07 is not correctly triggered after A-067")
     mould_stages = programme.gate_line_ids.filtered(
         lambda gate: gate.stage_id.code in {"TG-02", "TG-03", "TG-04", "TG-05", "TG-06", "TG-07", "TG-08", "TG-09"}
     )

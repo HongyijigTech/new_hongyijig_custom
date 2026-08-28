@@ -148,6 +148,11 @@ class HjigProgrammeTemplateVersion(models.Model):
                     "sequence": a067.sequence + 1,
                 })
             b8_close = activity_by_master.get("B8-09")
+            a091 = activity_by_master.get("A-091")
+            if a091:
+                a091.write({
+                    "name": "A-091: Final 5% Release Authorization / Initiation (No Actual Payment)",
+                })
             cm11 = version.activity_line_ids.filtered(
                 lambda item: (item.name or "").upper().startswith("CM-11:")
             )[:1]
@@ -155,6 +160,11 @@ class HjigProgrammeTemplateVersion(models.Model):
                 cm11.write({
                     "gate_line_id": b8_close.gate_line_id.id,
                     "sequence": b8_close.sequence - 1,
+                    "name": (
+                        "CM-11: Actual Final 5% Release at B8 Lite-Closure (Sole Standard Payment Event)"
+                        if version.template_id.code == "TLC"
+                        else "CM-11: Actual Final 5% Release at B8 Closure (Sole Standard Payment Event)"
+                    ),
                 })
 
             version.dependency_rule_ids.unlink()
