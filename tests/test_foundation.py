@@ -72,6 +72,14 @@ class TestHongyiFoundation(TransactionCase):
         baseline = self._baseline()
         with self.assertRaises(ValidationError):
             baseline.state = "approved"
+        with self.assertRaises(ValidationError):
+            baseline.with_context(allow_hjig_baseline_workflow=True).write({"state": "approved"})
+
+    def test_project_user_cannot_self_enrol(self):
+        with self.assertRaises(UserError):
+            self.project.with_user(self.requester).write({
+                "hjig_authorized_user_ids": [(4, self.requester.id)],
+            })
 
     def test_baseline_approval_and_supersession(self):
         first = self._baseline()

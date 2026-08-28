@@ -70,6 +70,11 @@ class TestChecklistGate(TransactionCase):
         checklist.action_mark_ready()
         gate.with_user(self.requester).action_request_decision()
         self.assertEqual(gate.state, "pending")
+        with self.assertRaises(ValidationError):
+            self.env["hjig.checklist"].create({
+                "project_id": self.project.id, "target_ref": self._target(),
+                "template_id": self.template.id, "gate_id": gate.id,
+            })
         gate.approval_id.with_user(self.approver).action_approve()
         gate.action_apply_decision()
         self.assertEqual(gate.state, "go")

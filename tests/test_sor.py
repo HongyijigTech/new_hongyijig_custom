@@ -104,3 +104,16 @@ class TestHongyiSor(TransactionCase):
         sor = self._create_sor()
         sor.write({"no_product_warranty": False})
         self.assertTrue(sor.no_product_warranty)
+
+    def test_rejected_sor_reuses_baseline_for_resubmission(self):
+        sor = self._create_sor(revision="R02")
+        self._add_specified_requirement(sor)
+        sor.with_user(self.requester).action_submit_review()
+        baseline = sor.baseline_id
+        baseline.approval_id.decision_reason = "Acceptance criteria need clarification."
+        baseline.approval_id.with_user(self.approver).action_reject()
+        sor.action_apply_decision()
+        self.assertEqual(sor.state, "rejected")
+        sor.with_user(self.requester).action_submit_review()
+        self.assertEqual(sor.baseline_id, baseline)
+        self.assertEqual(sor.state, "review")

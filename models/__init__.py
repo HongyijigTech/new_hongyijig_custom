@@ -7,3 +7,5 @@ from . import governance_master
 from . import project_document
 from . import sor
 from . import checklist_gate
+from . import execution_quality
+from . import knowledge_ai

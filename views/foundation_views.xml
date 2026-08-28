@@ -158,7 +158,7 @@
         <field name="arch" type="xml">
             <xpath expr="//sheet/notebook" position="inside">
                 <page string="Hongyi Team" name="hjig_project_team">
-                    <field name="hjig_authorized_user_ids" widget="many2many_tags"/>
+                    <field name="hjig_authorized_user_ids" widget="many2many_tags" groups="project.group_project_manager"/>
                 </page>
             </xpath>
         </field>

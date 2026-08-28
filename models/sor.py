@@ -3,6 +3,8 @@
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
+from .workflow_guard import is_workflow_context, workflow_context
+
 
 INDUSTRY_SELECTION = [
     ("automotive", "Automotive"),
@@ -146,10 +148,10 @@ class HjigSor(models.Model):
                     raise ValidationError(_("Route A requires the original customer SOR as a link or attachment."))
 
     def write(self, vals):
-        if "state" in vals and not self.env.context.get("allow_hjig_sor_workflow"):
+        if "state" in vals and not is_workflow_context(self.env):
             if any(record.state != vals["state"] for record in self):
                 raise ValidationError(_("SOR state may only change through controlled workflow actions."))
-        if "baseline_id" in vals and not self.env.context.get("allow_hjig_sor_workflow"):
+        if "baseline_id" in vals and not is_workflow_context(self.env):
             raise ValidationError(_("The SOR baseline is controlled by the approval workflow."))
         if self._LOCKED_FIELDS.intersection(vals) and any(
             record.state in ("frozen", "superseded") for record in self
@@ -169,7 +171,7 @@ class HjigSor(models.Model):
             if sor.state not in ("draft", "rejected"):
                 raise UserError(_("Only Draft or Rejected SOR records can enter mapping."))
             previous_state = sor.state
-            sor.with_context(allow_hjig_sor_workflow=True).write({"state": "mapping"})
+            sor.with_context(**workflow_context()).write({"state": "mapping"})
             sor._log_transition(previous_state, "mapping", "mapping_started")
 
     def _check_ready_for_review(self):
@@ -187,17 +189,21 @@ class HjigSor(models.Model):
             if sor.state not in ("draft", "mapping", "rejected"):
                 raise UserError(_("Only Draft, Mapping, or Rejected SOR records can be submitted."))
             previous_state = sor.state
-            baseline = self.env["hjig.baseline"].create({
-                "project_id": sor.project_id.id,
-                "target_ref": "%s,%s" % (sor._name, sor.id),
-                "baseline_type": "sor",
-                "revision": sor.revision,
-                "effective_date": sor.effective_date,
-                "change_reason": "SOR freeze request %s" % sor.code,
-                "approval_authority_designation_id": sor.approval_authority_designation_id.id,
-            })
+            baseline = sor.baseline_id
+            if not baseline:
+                baseline = self.env["hjig.baseline"].create({
+                    "project_id": sor.project_id.id,
+                    "target_ref": "%s,%s" % (sor._name, sor.id),
+                    "baseline_type": "sor",
+                    "revision": sor.revision,
+                    "effective_date": sor.effective_date,
+                    "change_reason": "SOR freeze request %s" % sor.code,
+                    "approval_authority_designation_id": sor.approval_authority_designation_id.id,
+                })
+            elif baseline.state != "rejected":
+                raise ValidationError(_("Existing SOR baseline is not available for resubmission."))
             baseline.action_submit_review()
-            sor.with_context(allow_hjig_sor_workflow=True).write({
+            sor.with_context(**workflow_context()).write({
                 "state": "review", "baseline_id": baseline.id,
             })
             sor._log_transition(previous_state, "review", "submitted", baseline.approval_id)
@@ -213,7 +219,7 @@ class HjigSor(models.Model):
                 next_state = "rejected"
             else:
                 raise UserError(_("The SOR approval is still pending."))
-            sor.with_context(allow_hjig_sor_workflow=True).write({"state": next_state})
+            sor.with_context(**workflow_context()).write({"state": next_state})
             sor._log_transition("review", next_state, sor.baseline_id.approval_id.state, sor.baseline_id.approval_id)
 
     def _log_transition(self, from_state, to_state, decision, approval=False):
@@ -370,7 +376,7 @@ class HjigSorRequirementVerification(models.Model):
             if set(vals) - allowed:
                 raise ValidationError(_("The phase allocation is locked after SOR freeze."))
         workflow_fields = {"status", "verified_by_id", "verified_date"}
-        if workflow_fields.intersection(vals) and not self.env.context.get("allow_hjig_sor_verification"):
+        if workflow_fields.intersection(vals) and not is_workflow_context(self.env):
             raise ValidationError(_("Verification status may only change through verification actions."))
         return super().write(vals)
 
@@ -387,14 +393,24 @@ class HjigSorRequirementVerification(models.Model):
 
     def _record_result(self, result):
         for verification in self:
+            if verification.status != "pending":
+                raise UserError(_("Only Pending requirement verifications can be decided."))
             if verification.sor_id.state != "frozen":
                 raise UserError(_("Requirement verification starts only after the SOR is Frozen."))
+            if self.env.user not in verification.responsible_designation_id.holder_ids:
+                raise UserError(_("Only a holder of the responsible designation may verify this requirement."))
             if not verification.check_required:
                 raise UserError(_("This phase is not marked for verification."))
             if result == "pass" and not verification.evidence_ids:
                 raise ValidationError(_("Evidence is required before a phase verification can pass."))
-            verification.with_context(allow_hjig_sor_verification=True).write({
+            verification.with_context(**workflow_context()).write({
                 "status": result,
                 "verified_by_id": self.env.user.id,
                 "verified_date": fields.Datetime.now(),
+            })
+            self.env["hjig.transition.log"].sudo().create({
+                "project_id": verification.project_id.id,
+                "target_ref": "%s,%s" % (verification.requirement_id._name, verification.requirement_id.id),
+                "from_state": "pending", "to_state": result, "decision": result,
+                "actor_id": self.env.user.id,
             })

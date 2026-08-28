@@ -3,6 +3,8 @@
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
+from .workflow_guard import is_workflow_context, workflow_context
+
 
 class ProjectProject(models.Model):
     _inherit = "project.project"
@@ -19,6 +21,19 @@ class ProjectProject(models.Model):
     hjig_baseline_ids = fields.One2many("hjig.baseline", "project_id", string="Controlled Baselines")
     hjig_evidence_ids = fields.One2many("hjig.evidence.link", "project_id", string="Evidence")
     hjig_approval_ids = fields.One2many("hjig.approval", "project_id", string="Approvals")
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        if any("hjig_authorized_user_ids" in vals for vals in vals_list) and not self.env.user.has_group(
+            "project.group_project_manager"
+        ):
+            raise UserError(_("Only Project Managers may assign the governed Hongyi project team."))
+        return super().create(vals_list)
+
+    def write(self, vals):
+        if "hjig_authorized_user_ids" in vals and not self.env.user.has_group("project.group_project_manager"):
+            raise UserError(_("Only Project Managers may change the governed Hongyi project team."))
+        return super().write(vals)
 
 
 class HjigTargetMixin(models.AbstractModel):
@@ -138,9 +153,9 @@ class HjigBaseline(models.Model):
                     raise ValidationError(_("A revision must keep the same baseline type."))
 
     def write(self, vals):
-        if "approval_id" in vals and not self.env.context.get("allow_hjig_baseline_workflow"):
+        if "approval_id" in vals and not is_workflow_context(self.env):
             raise ValidationError(_("The linked approval is controlled by the baseline workflow."))
-        if "state" in vals and not self.env.context.get("allow_hjig_baseline_workflow"):
+        if "state" in vals and not is_workflow_context(self.env):
             if any(record.state != vals["state"] for record in self):
                 raise ValidationError(_("Baseline state may only change through controlled workflow actions."))
         if self._LOCKED_FIELDS.intersection(vals) and any(
@@ -159,14 +174,14 @@ class HjigBaseline(models.Model):
             if baseline.state not in ("draft", "rejected"):
                 raise UserError(_("Only Draft or Rejected baselines can be submitted."))
             previous_state = baseline.state
-            approval = self.env["hjig.approval"].create({
+            approval = self.env["hjig.approval"].sudo().create({
                 "project_id": baseline.project_id.id,
                 "target_ref": "%s,%s" % (baseline._name, baseline.id),
                 "approval_type": "baseline",
                 "authority_designation_id": baseline.approval_authority_designation_id.id,
                 "requested_by_id": self.env.user.id,
             })
-            baseline.with_context(allow_hjig_baseline_workflow=True).write({
+            baseline.with_context(**workflow_context()).write({
                 "state": "review",
                 "approval_id": approval.id,
             })
@@ -190,13 +205,13 @@ class HjigBaseline(models.Model):
                 if baseline.supersedes_id:
                     if baseline.supersedes_id.state != "approved":
                         raise ValidationError(_("The superseded baseline must currently be Approved."))
-                    baseline.supersedes_id.with_context(allow_hjig_baseline_workflow=True).write({
+                    baseline.supersedes_id.with_context(**workflow_context()).write({
                         "state": "superseded", "superseded_by_id": baseline.id,
                     })
-                baseline.with_context(allow_hjig_baseline_workflow=True).write({"state": "approved"})
+                baseline.with_context(**workflow_context()).write({"state": "approved"})
                 target_state = "approved"
             elif baseline.approval_id.state == "rejected":
-                baseline.with_context(allow_hjig_baseline_workflow=True).write({"state": "rejected"})
+                baseline.with_context(**workflow_context()).write({"state": "rejected"})
                 target_state = "rejected"
             else:
                 raise UserError(_("The approval decision is still pending."))
@@ -273,7 +288,7 @@ class HjigEvidenceLink(models.Model):
 
     def write(self, vals):
         workflow_fields = {"verification_state", "verifier_id", "verification_date"}
-        if workflow_fields.intersection(vals) and not self.env.context.get("allow_hjig_evidence_workflow"):
+        if workflow_fields.intersection(vals) and not is_workflow_context(self.env):
             raise ValidationError(_("Evidence verification fields may only change through verification actions."))
         if self._CONTROLLED_FIELDS.intersection(vals) and any(
             record.verification_state != "unverified" for record in self
@@ -282,10 +297,12 @@ class HjigEvidenceLink(models.Model):
         return super().write(vals)
 
     def _record_verification(self, state):
+        if not self.env.user.has_group("new_hongyijig_custom.group_hjig_governance_approver"):
+            raise UserError(_("Only authorised Governance Approvers may verify evidence."))
         for evidence in self:
             if evidence.verification_state != "unverified":
                 raise UserError(_("Only Unverified evidence can be accepted or rejected."))
-            evidence.with_context(allow_hjig_evidence_workflow=True).write({
+            evidence.with_context(**workflow_context()).write({
                 "verification_state": state,
                 "verifier_id": self.env.user.id,
                 "verification_date": fields.Datetime.now(),
@@ -304,6 +321,11 @@ class HjigEvidenceLink(models.Model):
 
     def action_reject(self):
         self._record_verification("rejected")
+
+    def unlink(self):
+        if any(evidence.verification_state != "unverified" for evidence in self):
+            raise UserError(_("Verified evidence cannot be deleted. Add replacement evidence instead."))
+        return super().unlink()
 
 
 class HjigApproval(models.Model):
@@ -330,7 +352,7 @@ class HjigApproval(models.Model):
         tracking=True,
     )
     authority_designation_id = fields.Many2one(
-        "hjig.governance.designation", ondelete="restrict", tracking=True
+        "hjig.governance.designation", required=True, ondelete="restrict", tracking=True
     )
     requested_by_id = fields.Many2one("res.users", required=True, readonly=True, copy=False)
     requested_date = fields.Datetime(default=fields.Datetime.now, required=True, readonly=True, copy=False)
@@ -365,7 +387,7 @@ class HjigApproval(models.Model):
 
     def write(self, vals):
         workflow_fields = {"state", "approver_id", "decision_date", "requested_by_id", "requested_date"}
-        if workflow_fields.intersection(vals) and not self.env.context.get("allow_hjig_approval_workflow"):
+        if workflow_fields.intersection(vals) and not is_workflow_context(self.env):
             raise ValidationError(_("Approval audit fields may only change through decision actions."))
         if any(record.state != "pending" for record in self):
             protected = {
@@ -392,7 +414,7 @@ class HjigApproval(models.Model):
                 raise UserError(_("Only Pending approvals can be decided."))
             if state == "rejected" and not (approval.decision_reason or "").strip():
                 raise ValidationError(_("A rejection reason is required."))
-            approval.with_context(allow_hjig_approval_workflow=True).write({
+            approval.with_context(**workflow_context()).write({
                 "state": state,
                 "approver_id": self.env.user.id,
                 "decision_date": fields.Datetime.now(),
@@ -413,6 +435,9 @@ class HjigApproval(models.Model):
 
     def action_reject(self):
         self._record_decision("rejected")
+
+    def unlink(self):
+        raise UserError(_("Approval records are retained as audit history and cannot be deleted."))
 
 
 class HjigTransitionLog(models.Model):

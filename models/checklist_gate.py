@@ -3,6 +3,8 @@
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
+from .workflow_guard import is_workflow_context, workflow_context
+
 
 class HjigTargetMixin(models.AbstractModel):
     _inherit = "hjig.target.mixin"
@@ -131,6 +133,9 @@ class HjigChecklist(models.Model):
     def create(self, vals_list):
         sequence = self.env["ir.sequence"]
         for vals in vals_list:
+            gate = self.env["hjig.gate"].browse(vals.get("gate_id")).exists()
+            if gate and gate.state != "draft":
+                raise ValidationError(_("Checklists cannot be added after a gate decision is requested."))
             vals["state"] = "draft"
             if vals.get("code", _("New")) == _("New"):
                 vals["code"] = sequence.next_by_code("hjig.checklist") or _("New")
@@ -194,18 +199,25 @@ class HjigChecklist(models.Model):
                 checklist.blocking_summary = False
 
     def write(self, vals):
-        if "state" in vals and not self.env.context.get("allow_hjig_checklist_workflow"):
+        if "state" in vals and not is_workflow_context(self.env):
             raise ValidationError(_("Checklist state may only change through workflow actions."))
         locked_fields = {"project_id", "target_ref", "template_id", "gate_id"}
         if locked_fields.intersection(vals) and any(record.state in ("ready", "closed") for record in self):
             raise ValidationError(_("Ready or Closed checklist identity is read-only."))
+        if "gate_id" in vals and any(record.gate_id and record.gate_id.state != "draft" for record in self):
+            raise ValidationError(_("Checklist gate assignment is locked after decision request."))
         return super().write(vals)
+
+    def unlink(self):
+        if any(record.state in ("ready", "closed") or (record.gate_id and record.gate_id.state != "draft") for record in self):
+            raise UserError(_("Ready, Closed, or decision-linked checklists cannot be deleted."))
+        return super().unlink()
 
     def action_start(self):
         for checklist in self:
             if checklist.state != "draft":
                 raise UserError(_("Only Draft checklists can start."))
-            checklist.with_context(allow_hjig_checklist_workflow=True).write({"state": "in_progress"})
+            checklist.with_context(**workflow_context()).write({"state": "in_progress"})
 
     def action_mark_ready(self):
         for checklist in self:
@@ -213,7 +225,7 @@ class HjigChecklist(models.Model):
                 raise UserError(_("Only an open checklist can be marked Ready."))
             if checklist.readiness not in ("pass", "warn"):
                 raise ValidationError(checklist.blocking_summary or _("Checklist is not ready."))
-            checklist.with_context(allow_hjig_checklist_workflow=True).write({"state": "ready"})
+            checklist.with_context(**workflow_context()).write({"state": "ready"})
 
 
 class HjigChecklistResponse(models.Model):
@@ -244,6 +256,14 @@ class HjigChecklistResponse(models.Model):
         "UNIQUE(checklist_id, template_item_id)", "A checklist can contain each template item only once."
     )
 
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            checklist = self.env["hjig.checklist"].browse(vals.get("checklist_id")).exists()
+            if checklist and checklist.state in ("ready", "closed"):
+                raise ValidationError(_("Responses cannot be added to Ready or Closed checklists."))
+        return super().create(vals_list)
+
     @api.constrains("template_item_id", "checklist_id", "evidence_ids")
     def _check_response_governance(self):
         for response in self:
@@ -256,9 +276,14 @@ class HjigChecklistResponse(models.Model):
         if any(response.checklist_id.state in ("ready", "closed") for response in self):
             raise ValidationError(_("Responses are read-only after the checklist is Ready or Closed."))
         workflow_fields = {"result", "verified_by_id", "verified_date"}
-        if workflow_fields.intersection(vals) and not self.env.context.get("allow_hjig_checklist_response"):
+        if workflow_fields.intersection(vals) and not is_workflow_context(self.env):
             raise ValidationError(_("Checklist results may only change through response actions."))
         return super().write(vals)
+
+    def unlink(self):
+        if any(response.checklist_id.state in ("ready", "closed") for response in self):
+            raise UserError(_("Responses cannot be deleted from Ready or Closed checklists."))
+        return super().unlink()
 
     def action_pass(self):
         self._record_result("pass")
@@ -275,7 +300,7 @@ class HjigChecklistResponse(models.Model):
                 raise ValidationError(_("Evidence is required before this item can pass."))
             if result == "not_applicable" and response.blocking and not (response.comments or "").strip():
                 raise ValidationError(_("A reason is required when a blocking item is Not Applicable."))
-            response.with_context(allow_hjig_checklist_response=True).write({
+            response.with_context(**workflow_context()).write({
                 "result": result,
                 "verified_by_id": self.env.user.id,
                 "verified_date": fields.Datetime.now(),
@@ -353,7 +378,7 @@ class HjigGate(models.Model):
 
     def write(self, vals):
         workflow_fields = {"state", "approval_id"}
-        if workflow_fields.intersection(vals) and not self.env.context.get("allow_hjig_gate_workflow"):
+        if workflow_fields.intersection(vals) and not is_workflow_context(self.env):
             raise ValidationError(_("Gate decision fields may only change through the controlled workflow."))
         governed = {"project_id", "target_ref", "stage_id", "cycle", "approval_authority_designation_id"}
         if governed.intersection(vals) and any(gate.state in ("pending", "go", "no_go") for gate in self):
@@ -366,14 +391,14 @@ class HjigGate(models.Model):
                 raise UserError(_("Only Draft gates can request a decision."))
             if gate.readiness not in ("pass", "warn"):
                 raise ValidationError(gate.blocking_summary or _("Gate is not ready."))
-            approval = self.env["hjig.approval"].create({
+            approval = self.env["hjig.approval"].sudo().create({
                 "project_id": gate.project_id.id,
                 "target_ref": "%s,%s" % (gate._name, gate.id),
                 "approval_type": "gate",
                 "authority_designation_id": gate.approval_authority_designation_id.id,
                 "requested_by_id": self.env.user.id,
             })
-            gate.with_context(allow_hjig_gate_workflow=True).write({
+            gate.with_context(**workflow_context()).write({
                 "state": "pending", "approval_id": approval.id,
             })
 
@@ -387,8 +412,12 @@ class HjigGate(models.Model):
                 next_state = "no_go"
             else:
                 raise UserError(_("The gate approval decision is still pending."))
-            gate.with_context(allow_hjig_gate_workflow=True).write({"state": next_state})
-            gate.checklist_ids.with_context(allow_hjig_checklist_workflow=True).write({"state": "closed"})
+            if gate.readiness not in ("pass", "warn"):
+                raise ValidationError(gate.blocking_summary or _("Gate readiness changed after decision request."))
+            if gate.readiness == "warn" and next_state == "go" and not (gate.approval_id.decision_reason or "").strip():
+                raise ValidationError(_("A GO decision with warnings requires the approver's acceptance reason."))
+            gate.with_context(**workflow_context()).write({"state": next_state})
+            gate.checklist_ids.with_context(**workflow_context()).write({"state": "closed"})
             self.env["hjig.transition.log"].sudo().create({
                 "project_id": gate.project_id.id,
                 "target_ref": "%s,%s" % (gate._name, gate.id),
@@ -398,3 +427,8 @@ class HjigGate(models.Model):
                 "approval_id": gate.approval_id.id,
                 "reason": gate.approval_id.decision_reason,
             })
+
+    def unlink(self):
+        if any(gate.state != "draft" for gate in self):
+            raise UserError(_("A gate cannot be deleted after a decision is requested."))
+        return super().unlink()

@@ -4,6 +4,8 @@ import re
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
+from .workflow_guard import is_workflow_context, workflow_context
+
 
 PROJECT_CODE_PATTERN = re.compile(r"^HJ-[A-Z0-9]{2,6}-\d{4}-\d{4}$")
 
@@ -357,13 +359,13 @@ class HjigProjectDocument(models.Model):
                 )
 
     def write(self, vals):
-        if "status" in vals and not self.env.context.get("allow_document_workflow"):
+        if "status" in vals and not is_workflow_context(self.env):
             for document in self:
                 if vals["status"] != document.status:
                     raise ValidationError(
                         _("Document status may only change through the controlled workflow actions.")
                     )
-        if not self.env.context.get("allow_document_supersede"):
+        if not is_workflow_context(self.env):
             changed = self._CONTROLLED_FIELDS.intersection(vals)
             locked = self.filtered(lambda document: document.status in ("approved", "superseded"))
             if changed and locked:
@@ -385,7 +387,7 @@ class HjigProjectDocument(models.Model):
                 raise UserError(
                     _("Only a current holder of the Owner Designation may submit this document.")
                 )
-            document.with_context(allow_document_workflow=True).write({
+            document.with_context(**workflow_context()).write({
                 "owner_id": self.env.user.id,
                 "status": "review",
             })
@@ -411,14 +413,11 @@ class HjigProjectDocument(models.Model):
                     raise ValidationError(_("The superseded document must currently be Approved."))
                 if not document.ecn_reference:
                     raise ValidationError(_("An ECN / Change Reference is required when superseding an approved document."))
-                document.supersedes_id.with_context(
-                    allow_document_supersede=True,
-                    allow_document_workflow=True,
-                ).write({
+                document.supersedes_id.with_context(**workflow_context()).write({
                     "status": "superseded",
                     "superseded_by_id": document.id,
                 })
-            document.with_context(allow_document_workflow=True).write({
+            document.with_context(**workflow_context()).write({
                 "approver_id": self.env.user.id,
                 "status": "approved",
             })
