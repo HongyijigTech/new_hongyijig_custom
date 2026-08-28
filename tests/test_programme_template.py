@@ -585,3 +585,4 @@ class TestProgrammeTemplateGovernance(TransactionCase):
             self.assertIn(stage, artifact.applicable_stage_ids)
 
         self.assertEqual(STAGE_MASTER_GATE_ARTIFACTS["TG-04"], "FRM-B5-G01")
+        self.assertEqual(STAGE_MASTER_GATE_ARTIFACTS["PA-00"], "FRM-B1-G01")
