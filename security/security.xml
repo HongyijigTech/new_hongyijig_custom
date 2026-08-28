@@ -5,4 +5,81 @@
         <field name="implied_ids" eval="[(4, ref('project.group_project_user'))]"/>
         <field name="comment">May approve controlled project documents when the user also holds the required approver designation.</field>
     </record>
+
+    <record id="group_hjig_governance_approver" model="res.groups">
+        <field name="name">Hongyi Governance Approver</field>
+        <field name="implied_ids" eval="[(4, ref('project.group_project_user'))]"/>
+        <field name="comment">May approve or reject governed baselines, engineering decisions, commercial changes and gates when the user also holds the required designation.</field>
+    </record>
+
+    <record id="rule_hjig_baseline_company" model="ir.rule">
+        <field name="name">Hongyi Baseline: allowed companies</field>
+        <field name="model_id" ref="model_hjig_baseline"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_hjig_evidence_company" model="ir.rule">
+        <field name="name">Hongyi Evidence: allowed companies</field>
+        <field name="model_id" ref="model_hjig_evidence_link"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_hjig_approval_company" model="ir.rule">
+        <field name="name">Hongyi Approval: allowed companies</field>
+        <field name="model_id" ref="model_hjig_approval"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_hjig_transition_company" model="ir.rule">
+        <field name="name">Hongyi Transition Log: allowed companies</field>
+        <field name="model_id" ref="model_hjig_transition_log"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="rule_hjig_baseline_project_team" model="ir.rule">
+        <field name="name">Hongyi Baseline: assigned project team</field>
+        <field name="model_id" ref="model_hjig_baseline"/>
+        <field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_user'))]"/>
+    </record>
+    <record id="rule_hjig_evidence_project_team" model="ir.rule">
+        <field name="name">Hongyi Evidence: assigned project team</field>
+        <field name="model_id" ref="model_hjig_evidence_link"/>
+        <field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_user'))]"/>
+    </record>
+    <record id="rule_hjig_approval_project_team" model="ir.rule">
+        <field name="name">Hongyi Approval: assigned project team</field>
+        <field name="model_id" ref="model_hjig_approval"/>
+        <field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_user'))]"/>
+    </record>
+    <record id="rule_hjig_transition_project_team" model="ir.rule">
+        <field name="name">Hongyi Transition Log: assigned project team</field>
+        <field name="model_id" ref="model_hjig_transition_log"/>
+        <field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_user'))]"/>
+    </record>
+
+    <record id="rule_hjig_baseline_manager_all" model="ir.rule">
+        <field name="name">Hongyi Baseline: project manager access</field>
+        <field name="model_id" ref="model_hjig_baseline"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
+    </record>
+    <record id="rule_hjig_evidence_manager_all" model="ir.rule">
+        <field name="name">Hongyi Evidence: project manager access</field>
+        <field name="model_id" ref="model_hjig_evidence_link"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
+    </record>
+    <record id="rule_hjig_approval_manager_all" model="ir.rule">
+        <field name="name">Hongyi Approval: project manager access</field>
+        <field name="model_id" ref="model_hjig_approval"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
+    </record>
+    <record id="rule_hjig_transition_manager_all" model="ir.rule">
+        <field name="name">Hongyi Transition Log: project manager access</field>
+        <field name="model_id" ref="model_hjig_transition_log"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
+    </record>
 </odoo>

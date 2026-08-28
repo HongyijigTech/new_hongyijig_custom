@@ -11,3 +11,11 @@
 "access_hjig_artifact_master_user","hjig.governance.artifact.master user","model_hjig_governance_artifact_master","project.group_project_user",1,0,0,0
 "access_hjig_artifact_master_manager","hjig.governance.artifact.master manager","model_hjig_governance_artifact_master","project.group_project_manager",1,1,1,1
 "access_hjig_artifact_master_controller","hjig.governance.artifact.master controller","model_hjig_governance_artifact_master","new_hongyijig_custom.group_hjig_document_controller",1,0,0,0
+"access_hjig_baseline_user","hjig.baseline user","model_hjig_baseline","project.group_project_user",1,1,1,0
+"access_hjig_baseline_manager","hjig.baseline manager","model_hjig_baseline","project.group_project_manager",1,1,1,1
+"access_hjig_evidence_user","hjig.evidence.link user","model_hjig_evidence_link","project.group_project_user",1,1,1,0
+"access_hjig_evidence_manager","hjig.evidence.link manager","model_hjig_evidence_link","project.group_project_manager",1,1,1,1
+"access_hjig_approval_user","hjig.approval user","model_hjig_approval","project.group_project_user",1,1,1,0
+"access_hjig_approval_manager","hjig.approval manager","model_hjig_approval","project.group_project_manager",1,1,1,1
+"access_hjig_transition_user","hjig.transition.log user","model_hjig_transition_log","project.group_project_user",1,0,0,0
+"access_hjig_transition_manager","hjig.transition.log manager","model_hjig_transition_log","project.group_project_manager",1,0,1,0
