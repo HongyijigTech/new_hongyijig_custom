@@ -31,7 +31,7 @@ GATE_FORM_EXIT_ITEMS = (
     ("TG-02", 8, "No unresolved DFM red flags"),
     ("TG-02", 9, "Weekly meeting with toolmaker confirmed and scheduled from B3 entry"),
     ("TG-02", 10, "CM-04 (30% to Toolmaker) payment CONFIRMED RELEASED — simultaneously with Steel GO (A-022)\nTHIS GATE DOES NOT CLOSE UNTIL CM-04 IS CONFIRMED RELEASED. B3 cannot begin without this. Payment must happen AT the gate — not after. If CM-04 is delayed, TG-02 stays open and no B3 activities may begin."),
-    ("TG-02", 11, "B3 team briefed and ready — Sr. Tool Development Engineer (Goutam) + Sr. Development Engineer China (Wang) confirmed available\nPre-tooling team (Sr. Tool Design Engineer) steps back. B3 team now takes over direct interaction with toolmaker in China."),
+    ("TG-02", 11, "B3 team briefed and ready — Sr. Tool Development Engineer + Sr. Development Engineer China confirmed available\nPre-tooling team (Sr. Tool Design Engineer) steps back. B3 team now takes over direct interaction with toolmaker in China."),
     ("TG-02", 12, "Risk Register reviewed — no new risk with score ≥16 unresolved\nIf new risk ≥16: document in Risk Register + escalate to PMO before gate closes."),
     ("TG-03", 1, "All machining activities complete (A-025)\nAll manufacturing stages with evidence uploaded for this specific mould."),
     ("TG-03", 2, "Weekly manufacturing reports received — Week 1 to 6 (A-026 to A-031)"),

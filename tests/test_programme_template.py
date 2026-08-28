@@ -388,6 +388,17 @@ class TestProgrammeTemplateGovernance(TransactionCase):
             "approver_designation_id": self.approver_designation.id,
             "execution_basis": "mould",
         })
+        component_activity = self.env["hjig.programme.template.activity"].create({
+            "version_id": version.id,
+            "code": "PMT-A02",
+            "name": "Per component controlled activity",
+            "sequence": 20,
+            "gate_line_id": gate.id,
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+            "execution_basis": "component",
+            "predecessor_ids": [(6, 0, [activity.id])],
+        })
         self.env["hjig.programme.template.artifact"].create({
             "version_id": version.id,
             "artifact_master_id": self.artifact.id,
@@ -436,20 +447,105 @@ class TestProgrammeTemplateGovernance(TransactionCase):
                 "x_owner_designation_id": self.owner_designation.id,
                 "x_approver_designation_id": self.approver_designation.id,
             })
+            part = self.env["x_mould_part"].create({
+                "x_name": "%s Part" % number,
+                "x_mould_id": mould.id,
+                "x_part_number": "%s-P01" % number,
+            })
             mould.with_context(allow_native_form_workflow=True).write({
                 "x_workflow_state": "approved",
                 "x_mould_planning_status": "final_locked",
             })
-            return mould
+            return mould, part
 
-        mould_1 = approved_mould("M-001")
+        mould_1, part_1 = approved_mould("M-001")
         run.action_generate_execution()
         self.assertEqual(run.gate_ids.mould_id, mould_1)
         self.assertEqual(run.checklist_instance_ids.mould_id, mould_1)
         self.assertEqual(run.artifact_requirement_ids.mould_id, mould_1)
+        self.assertEqual(len(run.task_ids), 2)
+        mould_task_1 = run.task_ids.filtered(
+            lambda task: task.hjig_template_activity_id == activity
+        )
+        component_task_1 = run.task_ids.filtered(
+            lambda task: task.hjig_template_activity_id == component_activity
+        )
+        self.assertEqual(mould_task_1.hjig_mould_id, mould_1)
+        self.assertEqual(component_task_1.hjig_part_id, part_1)
+        self.assertEqual(component_task_1.depend_on_ids, mould_task_1)
 
-        mould_2 = approved_mould("M-002")
+        mould_2, part_2 = approved_mould("M-002")
         run.action_sync_mould_execution()
         self.assertEqual(set(run.gate_ids.mapped("mould_id").ids), {mould_1.id, mould_2.id})
         self.assertEqual(len(run.checklist_instance_ids), 2)
         self.assertEqual(len(run.artifact_requirement_ids), 2)
+        self.assertEqual(len(run.task_ids), 4)
+        component_task_2 = run.task_ids.filtered(lambda task: task.hjig_part_id == part_2)
+        mould_task_2 = run.task_ids.filtered(
+            lambda task: task.hjig_template_activity_id == activity and task.hjig_mould_id == mould_2
+        )
+        self.assertEqual(component_task_2.depend_on_ids, mould_task_2)
+
+    def test_conditional_activity_requires_designation_scope_decision(self):
+        template = self.env["hjig.programme.template"].create({
+            "code": "CND",
+            "name": "Conditional Programme Test",
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+        })
+        version = self.env["hjig.programme.template.version"].create({
+            "template_id": template.id,
+            "version": "1.0",
+            "effective_from": "2026-08-28",
+            "dependency_review_status": "verified",
+            "evidence_review_status": "verified",
+        })
+        gate = self.env["hjig.programme.template.gate"].create({
+            "version_id": version.id, "stage_id": self.stage.id,
+        })
+        activity = self.env["hjig.programme.template.activity"].create({
+            "version_id": version.id,
+            "code": "CND-A01",
+            "name": "Conditional Moldflow Review",
+            "gate_line_id": gate.id,
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+            "conditional": True,
+        })
+        self.env["hjig.programme.template.artifact"].create({
+            "version_id": version.id,
+            "artifact_master_id": self.artifact.id,
+            "stage_id": self.stage.id,
+        })
+        self.env["hjig.programme.template.checklist.item"].create({
+            "version_id": version.id,
+            "gate_line_id": gate.id,
+            "code": "CND-CHECK-01",
+            "subhead": "technical",
+            "item_text": "Conditional scope is governed",
+            "evidence_required": False,
+            "linked_activity_id": activity.id,
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+            "source_reference": "Test authority",
+            "source_version": "1.0",
+        })
+        version.action_submit_review()
+        version.with_user(self.approver_user).action_approve()
+        order = self._sale_order(
+            hjig_programme_version_id=version.id,
+            hjig_project_code="HJ-CND-2026-0001",
+        )
+        order.action_activate_hjig_programme()
+        run = order.hjig_programme_run_id
+        self.assertEqual(run.state, "draft")
+        self.assertEqual(len(run.scope_decision_ids), 1)
+        self.assertFalse(run.task_ids)
+        with self.assertRaises(ValidationError):
+            run.action_generate_execution()
+        run.scope_decision_ids.with_user(self.owner_user).write({
+            "decision": "exclude", "reason": "Moldflow is not required for this project scope.",
+        })
+        run.action_generate_execution()
+        self.assertEqual(run.state, "generated")
+        self.assertFalse(run.task_ids)

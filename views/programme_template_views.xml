@@ -113,7 +113,7 @@
                         </group>
                     </group>
                     <notebook>
-                        <page string="Gates" invisible="execution_mode == 'advisory_sessions'">
+                        <page string="Route Controls / Gates" invisible="execution_mode == 'advisory_sessions'">
                             <field name="gate_line_ids" readonly="state in ['approved', 'retired']">
                                 <list editable="bottom">
                                     <field name="sequence"/>
@@ -249,12 +249,30 @@
                             <field name="definition_hash" readonly="1"/>
                         </group>
                     </group>
+                    <button name="action_generate_execution" type="object" string="Generate Governed Execution"
+                            class="btn-primary" invisible="state != 'draft' or execution_mode == 'advisory_sessions'"/>
                     <button name="action_close_run" type="object" string="Close Programme Run"
                             class="btn-primary" invisible="state != 'generated'"/>
                     <button name="action_sync_mould_execution" type="object" string="Sync Approved Moulds"
                             invisible="state != 'generated' or execution_mode == 'advisory_sessions'"/>
                     <notebook>
-                        <page string="Governed Gates" invisible="execution_mode == 'advisory_sessions'">
+                        <page string="Conditional Scope" invisible="execution_mode == 'advisory_sessions' or not scope_decision_ids">
+                            <field name="scope_decision_ids" readonly="state != 'draft'">
+                                <list create="false" delete="false" editable="bottom"
+                                      decoration-warning="decision == 'pending'"
+                                      decoration-success="decision == 'include'"
+                                      decoration-muted="decision == 'exclude'">
+                                    <field name="activity_code"/>
+                                    <field name="activity_name"/>
+                                    <field name="execution_basis"/>
+                                    <field name="decision"/>
+                                    <field name="reason"/>
+                                    <field name="decided_by_id"/>
+                                    <field name="decided_on"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Route Controls / Gates" invisible="execution_mode == 'advisory_sessions'">
                             <field name="gate_ids">
                                 <list create="false" delete="false">
                                     <field name="sequence"/>
@@ -276,6 +294,9 @@
                                     <field name="sequence"/>
                                     <field name="name"/>
                                     <field name="hjig_governance_stage_id"/>
+                                    <field name="hjig_execution_basis"/>
+                                    <field name="hjig_mould_id"/>
+                                    <field name="hjig_part_id"/>
                                     <field name="hjig_owner_designation_id"/>
                                     <field name="hjig_approver_designation_id"/>
                                     <field name="stage_id"/>

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import hashlib
 import json
+import re
 
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
@@ -271,6 +272,15 @@ class HjigProgrammeTemplateVersion(models.Model):
                 ):
                     raise ValidationError(
                         _("Every required gate needs at least one authoritative mandatory checklist item.")
+                    )
+                untyped_evidence = record.checklist_item_ids.filtered(
+                    lambda item: item.gate_line_id == gate
+                    and item.evidence_required
+                    and not item.evidence_artifact_id
+                )
+                if untyped_evidence:
+                    raise ValidationError(
+                        _("Every evidence-required checklist item must specify its controlled SOP/Form type before review.")
                     )
                 if gate.execution_basis == "mould" and not record.checklist_item_ids.filtered(
                     lambda item: item.gate_line_id == gate
@@ -654,6 +664,67 @@ class HjigProgrammeTemplateArtifact(models.Model):
                 raise ValidationError(_("The SOP/Form rule stage must exist in the programme version."))
 
 
+class HjigProgrammeRunScopeDecision(models.Model):
+    _name = "hjig.programme.run.scope.decision"
+    _description = "Programme Conditional Activity Scope Decision"
+    _order = "run_id, template_activity_id"
+
+    run_id = fields.Many2one(
+        "hjig.programme.run", required=True, ondelete="cascade", index=True, readonly=True
+    )
+    template_activity_id = fields.Many2one(
+        "hjig.programme.template.activity", required=True, ondelete="restrict", index=True, readonly=True
+    )
+    activity_code = fields.Char(related="template_activity_id.code", store=True, readonly=True)
+    activity_name = fields.Char(related="template_activity_id.name", readonly=True)
+    execution_basis = fields.Selection(
+        related="template_activity_id.execution_basis", store=True, readonly=True
+    )
+    decision = fields.Selection(
+        [("pending", "Pending"), ("include", "Include"), ("exclude", "Exclude / N/A")],
+        required=True,
+        default="pending",
+    )
+    reason = fields.Text()
+    decided_by_id = fields.Many2one("res.users", readonly=True, copy=False)
+    decided_on = fields.Datetime(readonly=True, copy=False)
+
+    _run_activity_unique = models.Constraint(
+        "UNIQUE(run_id, template_activity_id)",
+        "A conditional activity may have only one scope decision in a programme run.",
+    )
+
+    @api.constrains("run_id", "template_activity_id", "decision", "reason")
+    def _check_scope_decision(self):
+        for item in self:
+            if item.template_activity_id.version_id != item.run_id.template_version_id:
+                raise ValidationError(_("The conditional activity must belong to the run template version."))
+            if not item.template_activity_id.conditional:
+                raise ValidationError(_("Scope decisions are allowed only for conditional activities."))
+            if item.decision == "exclude" and not (item.reason or "").strip():
+                raise ValidationError(_("An exclusion reason is required for audit traceability."))
+
+    def write(self, vals):
+        if self.filtered(lambda item: item.run_id.state != "draft"):
+            raise ValidationError(_("Conditional scope decisions are frozen after execution generation."))
+        if "decision" in vals:
+            for item in self:
+                permitted = (
+                    item.run_id.template_version_id.template_id.owner_designation_id.holder_ids
+                    | item.run_id.template_version_id.template_id.approver_designation_id.holder_ids
+                )
+                if self.env.user not in permitted:
+                    raise UserError(_("Only a current programme owner or approver designation holder may decide activity scope."))
+            vals = dict(vals)
+            vals.update({"decided_by_id": self.env.user.id, "decided_on": fields.Datetime.now()})
+        return super().write(vals)
+
+    def unlink(self):
+        if self.filtered(lambda item: item.run_id.state != "draft"):
+            raise UserError(_("Generated programme scope decisions cannot be deleted."))
+        return super().unlink()
+
+
 class HjigProgrammeRun(models.Model):
     _name = "hjig.programme.run"
     _description = "Immutable Programme Run Snapshot"
@@ -688,6 +759,9 @@ class HjigProgrammeRun(models.Model):
     checklist_instance_ids = fields.One2many(
         "hjig.programme.checklist.instance", "run_id", readonly=True
     )
+    scope_decision_ids = fields.One2many(
+        "hjig.programme.run.scope.decision", "run_id", string="Conditional Scope Decisions"
+    )
     sourcebridge_engagement_ids = fields.One2many(
         "hjig.sourcebridge.engagement", "programme_run_id", string="SourceBridge Engagements"
     )
@@ -720,35 +794,110 @@ class HjigProgrammeRun(models.Model):
             raise UserError(_("A generated programme run cannot be deleted."))
         return super().unlink()
 
+    def _ensure_scope_decisions(self):
+        Decision = self.env["hjig.programme.run.scope.decision"]
+        for run in self:
+            existing = run.scope_decision_ids.mapped("template_activity_id")
+            for activity in run.template_version_id.activity_line_ids.filtered("conditional") - existing:
+                Decision.create({"run_id": run.id, "template_activity_id": activity.id})
+        return True
+
+    def _included_activities(self):
+        self.ensure_one()
+        excluded = self.scope_decision_ids.filtered(
+            lambda decision: decision.decision == "exclude"
+        ).mapped("template_activity_id")
+        return self.template_version_id.activity_line_ids - excluded
+
+    def _activity_scope_values(self, activity):
+        self.ensure_one()
+        if activity.execution_basis == "project":
+            return [(False, False)]
+        moulds = self._approved_moulds()
+        if activity.execution_basis == "mould":
+            return [(mould, False) for mould in moulds]
+        parts = self.env["x_mould_part"].search([
+            ("x_mould_id", "in", moulds.ids), ("x_active", "=", True),
+        ])
+        return [(part.x_mould_id, part) for part in parts]
+
+    def _sync_activity_tasks(self):
+        Task = self.env["project.task"]
+        for run in self:
+            included = run._included_activities()
+            for activity in included.sorted(lambda line: (line.sequence, line.id)):
+                for mould, part in run._activity_scope_values(activity):
+                    scope_key = (
+                        "C:%s" % part.id if part else "M:%s" % mould.id if mould else "P"
+                    )
+                    existing = run.task_ids.filtered(
+                        lambda task: task.hjig_template_activity_id == activity
+                        and task.hjig_execution_scope_key == scope_key
+                    )
+                    if existing:
+                        continue
+                    scope_label = part.x_part_number if part else mould.x_mould_number if mould else False
+                    Task.create({
+                        "name": "%s%s" % (activity.name, " — %s" % scope_label if scope_label else ""),
+                        "project_id": run.project_id.id,
+                        "sequence": activity.sequence,
+                        "user_ids": [(6, 0, activity.owner_designation_id.holder_ids.ids)],
+                        "hjig_programme_run_id": run.id,
+                        "hjig_template_activity_id": activity.id,
+                        "hjig_governance_stage_id": activity.gate_line_id.stage_id.id,
+                        "hjig_owner_designation_id": activity.owner_designation_id.id,
+                        "hjig_approver_designation_id": activity.approver_designation_id.id,
+                        "hjig_execution_basis": activity.execution_basis,
+                        "hjig_execution_scope_key": scope_key,
+                        "hjig_mould_id": mould.id if mould else False,
+                        "hjig_part_id": part.id if part else False,
+                    })
+            stale = run.task_ids.filtered(
+                lambda task: task.hjig_template_activity_id not in included
+            )
+            if stale:
+                raise ValidationError(_("Excluded conditional activities already have generated tasks."))
+        return True
+
+    def _scoped_predecessor_tasks(self, task, predecessor_activity):
+        self.ensure_one()
+        candidates = self.task_ids.filtered(
+            lambda item: item.hjig_template_activity_id == predecessor_activity
+        )
+        if predecessor_activity.execution_basis == "project":
+            return candidates.filtered(lambda item: item.hjig_execution_scope_key == "P")
+        if task.hjig_execution_basis == "project":
+            return candidates
+        if predecessor_activity.execution_basis == "mould":
+            return candidates.filtered(lambda item: item.hjig_mould_id == task.hjig_mould_id)
+        if task.hjig_execution_basis == "component":
+            return candidates.filtered(lambda item: item.hjig_part_id == task.hjig_part_id)
+        return candidates.filtered(lambda item: item.hjig_mould_id == task.hjig_mould_id)
+
+    def _sync_task_dependencies(self):
+        for run in self:
+            included = run._included_activities()
+            for task in run.task_ids:
+                predecessors = self.env["project.task"]
+                for predecessor in task.hjig_template_activity_id.predecessor_ids & included:
+                    predecessors |= run._scoped_predecessor_tasks(task, predecessor)
+                task.depend_on_ids = [(6, 0, predecessors.ids)]
+        return True
+
     def action_generate_execution(self):
         for run in self:
             if run.state == "generated":
                 continue
             if run.template_version_id.state != "approved":
                 raise ValidationError(_("Only an approved programme version can generate execution records."))
-            version = run.template_version_id
-            task_by_activity = {}
-            for activity in version.activity_line_ids.sorted(lambda line: (line.sequence, line.id)):
-                users = activity.owner_designation_id.holder_ids
-                task = self.env["project.task"].create({
-                    "name": activity.name,
-                    "project_id": run.project_id.id,
-                    "sequence": activity.sequence,
-                    "user_ids": [(6, 0, users.ids)],
-                    "hjig_programme_run_id": run.id,
-                    "hjig_template_activity_id": activity.id,
-                    "hjig_governance_stage_id": activity.gate_line_id.stage_id.id,
-                    "hjig_owner_designation_id": activity.owner_designation_id.id,
-                    "hjig_approver_designation_id": activity.approver_designation_id.id,
-                })
-                task_by_activity[activity.id] = task
-            for activity in version.activity_line_ids:
-                task = task_by_activity[activity.id]
-                predecessors = self.env["project.task"].browse(
-                    [task_by_activity[item.id].id for item in activity.predecessor_ids]
+            run._ensure_scope_decisions()
+            if run.scope_decision_ids.filtered(lambda decision: decision.decision == "pending"):
+                raise ValidationError(
+                    _("Decide every conditional activity scope before generating programme execution.")
                 )
-                if predecessors:
-                    task.depend_on_ids = [(6, 0, predecessors.ids)]
+            version = run.template_version_id
+            run._sync_activity_tasks()
+            run._sync_task_dependencies()
             run._sync_execution_scopes()
             payload = version._definition_payload()
             run.with_context(hjig_run_workflow=True).write({
@@ -851,6 +1000,8 @@ class HjigProgrammeRun(models.Model):
         for run in self:
             if run.state != "generated":
                 raise UserError(_("Mould execution can be synchronised only after programme generation."))
+            run._sync_activity_tasks()
+            run._sync_task_dependencies()
             run._sync_execution_scopes()
         return True
 
@@ -953,7 +1104,14 @@ class HjigProgrammeRunGate(models.Model):
         )
         if earlier:
             reasons.append(_("earlier required gates are not approved"))
-        tasks = self.run_id.task_ids.filtered(lambda task: task.hjig_governance_stage_id == self.stage_id)
+        tasks = self.run_id.task_ids.filtered(
+            lambda task: task.hjig_governance_stage_id == self.stage_id
+            and (
+                not self.mould_id
+                or task.hjig_execution_basis == "project"
+                or task.hjig_mould_id == self.mould_id
+            )
+        )
         if tasks.filtered(lambda task: not task.stage_id.fold):
             reasons.append(_("gate activities are not complete"))
         artifacts = self.run_id.artifact_requirement_ids.filtered(
@@ -1376,10 +1534,10 @@ class SaleOrder(models.Model):
                 _("The Project Code programme segment must match the selected programme template (%s).")
                 % version.template_id.code
             )
-        approved_pdf_prefixes = ("https://drive.google.com/", "https://docs.google.com/")
-        if not (self.hjig_order_punch_pdf_url or "").strip().startswith(approved_pdf_prefixes):
+        drive_pdf_pattern = re.compile(r"^https://drive\.google\.com/(?:file/d/|open\?id=)[A-Za-z0-9_-]+")
+        if not drive_pdf_pattern.match((self.hjig_order_punch_pdf_url or "").strip()):
             raise ValidationError(_("Link the approved Order Punch PDF before programme activation."))
-        if not (self.hjig_commercial_pdf_url or "").strip().startswith(approved_pdf_prefixes):
+        if not drive_pdf_pattern.match((self.hjig_commercial_pdf_url or "").strip()):
             raise ValidationError(_("Link the approved Commercial PDF before programme activation."))
         project = self.hjig_project_id
         if not project:
@@ -1403,7 +1561,9 @@ class SaleOrder(models.Model):
         self.with_context(hjig_programme_activation=True).write({
             "hjig_project_id": project.id, "hjig_programme_run_id": run.id
         })
-        run.action_generate_execution()
+        run._ensure_scope_decisions()
+        if not run.scope_decision_ids:
+            run.action_generate_execution()
         return self._hjig_run_action(run)
 
     def _hjig_run_action(self, run):
@@ -1450,16 +1610,50 @@ class ProjectTask(models.Model):
     hjig_approver_designation_id = fields.Many2one(
         "hjig.governance.designation", ondelete="restrict", index=True, tracking=True
     )
+    hjig_execution_basis = fields.Selection(
+        [("project", "Project"), ("component", "Component"), ("mould", "Mould")],
+        readonly=True,
+        index=True,
+        copy=False,
+    )
+    hjig_execution_scope_key = fields.Char(readonly=True, index=True, copy=False)
+    hjig_mould_id = fields.Many2one(
+        "x_mould", readonly=True, ondelete="restrict", index=True, copy=False
+    )
+    hjig_part_id = fields.Many2one(
+        "x_mould_part", readonly=True, ondelete="restrict", index=True, copy=False
+    )
 
     _programme_activity_unique = models.Constraint(
-        "UNIQUE(hjig_programme_run_id, hjig_template_activity_id)",
-        "A programme activity can generate only one task in a programme run.",
+        "UNIQUE(hjig_programme_run_id, hjig_template_activity_id, hjig_execution_scope_key)",
+        "A programme activity can generate only one task in the same governed execution scope.",
     )
+
+    @api.constrains(
+        "hjig_programme_run_id", "hjig_template_activity_id", "hjig_execution_basis",
+        "hjig_execution_scope_key", "hjig_mould_id", "hjig_part_id",
+    )
+    def _check_hjig_execution_scope(self):
+        for task in self.filtered("hjig_programme_run_id"):
+            activity = task.hjig_template_activity_id
+            if task.hjig_execution_basis != activity.execution_basis:
+                raise ValidationError(_("Generated task execution basis must match its template activity."))
+            if task.hjig_execution_basis == "project":
+                if task.hjig_execution_scope_key != "P" or task.hjig_mould_id or task.hjig_part_id:
+                    raise ValidationError(_("A project-basis activity cannot carry a mould or component scope."))
+            elif task.hjig_execution_basis == "mould":
+                if not task.hjig_mould_id or task.hjig_part_id:
+                    raise ValidationError(_("A mould-basis activity requires exactly one mould scope."))
+            elif not task.hjig_part_id or task.hjig_part_id.x_mould_id != task.hjig_mould_id:
+                raise ValidationError(_("A component-basis activity requires one component in its matching mould."))
+            if task.hjig_mould_id and task.hjig_mould_id.x_project_id != task.project_id:
+                raise ValidationError(_("Generated task mould scope must belong to the task project."))
 
     def write(self, vals):
         frozen = {
             "hjig_programme_run_id", "hjig_template_activity_id", "hjig_governance_stage_id",
             "hjig_owner_designation_id", "hjig_approver_designation_id",
+            "hjig_execution_basis", "hjig_execution_scope_key", "hjig_mould_id", "hjig_part_id",
         }
         if frozen.intersection(vals) and self.filtered(
             lambda task: task.hjig_programme_run_id.state in ("generated", "closed")

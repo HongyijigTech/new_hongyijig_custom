@@ -73,6 +73,7 @@ class HjigLaunchguardStage(models.Model):
         [
             ("activation", "Project Activation"),
             ("technical_gate", "Technical Gate"),
+            ("milestone", "Route Milestone / Direct Entry Control"),
             ("advisory_session", "Advisory Session"),
             ("closure", "Project Closure"),
         ],

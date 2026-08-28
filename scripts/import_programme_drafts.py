@@ -508,16 +508,21 @@ def sync_dependency_rules(version, programme_code, task_payload_by_id):
         ).sorted("sequence")
         for predecessor in predecessors:
             for successor in successors:
+                if (predecessor.id, successor.id) in represented_pairs:
+                    continue
                 upsert_rule(barrier_source_id, predecessor, successor, {
-                    "predecessor_basis": "project",
-                    "successor_basis": "project",
+                    "predecessor_basis": predecessor.execution_basis,
+                    "successor_basis": successor.execution_basis,
                     "rule_type": "gate_barrier",
-                    "scope_matching_rule": "PROJECT->PROJECT (same programme run)",
+                    "scope_matching_rule": "%s->%s (immediately preceding route control)" % (
+                        predecessor.execution_basis.upper(), successor.execution_basis.upper()
+                    ),
                     "aggregation_requirement": "All activities in the immediately preceding gate must complete.",
                     "conditional_handling": "Gate barrier; conditional activities require approved disposition.",
                     "source_reference": "Verified legacy programme stage route",
                     "source_version": payload.get("snapshot_sha256") or "snapshot",
                 })
+                represented_pairs.add((predecessor.id, successor.id))
                 barrier_source_id -= 1
     stale = version.dependency_rule_ids.filtered(
         lambda rule: rule.legacy_source_rule_id not in expected_source_ids

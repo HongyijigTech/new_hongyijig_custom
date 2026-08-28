@@ -5,7 +5,7 @@ import os
 isolated_db = os.environ.get("HJIG_ISOLATED_TEST_DB")
 if env.cr.dbname != "HongyijigTech_10Feb" and not (
     isolated_db == env.cr.dbname
-    and env.cr.dbname.startswith("hongyijig_bseries_v120_test_")
+    and env.cr.dbname.startswith("hongyijig_bseries_v121_test_")
 ):
     raise RuntimeError("This staging check is restricted to HongyijigTech_10Feb")
 
