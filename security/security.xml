@@ -32,6 +32,21 @@
         <field name="model_id" ref="model_hjig_transition_log"/>
         <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
     </record>
+    <record id="rule_hjig_sor_company" model="ir.rule">
+        <field name="name">Hongyi SOR: allowed companies</field>
+        <field name="model_id" ref="model_hjig_sor"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_hjig_sor_requirement_company" model="ir.rule">
+        <field name="name">Hongyi SOR Requirement: allowed companies</field>
+        <field name="model_id" ref="model_hjig_sor_requirement"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_hjig_sor_verification_company" model="ir.rule">
+        <field name="name">Hongyi SOR Verification: allowed companies</field>
+        <field name="model_id" ref="model_hjig_sor_requirement_verification"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
 
     <record id="rule_hjig_baseline_project_team" model="ir.rule">
         <field name="name">Hongyi Baseline: assigned project team</field>
@@ -57,6 +72,24 @@
         <field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field>
         <field name="groups" eval="[(4, ref('project.group_project_user'))]"/>
     </record>
+    <record id="rule_hjig_sor_project_team" model="ir.rule">
+        <field name="name">Hongyi SOR: assigned project team</field>
+        <field name="model_id" ref="model_hjig_sor"/>
+        <field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_user'))]"/>
+    </record>
+    <record id="rule_hjig_sor_requirement_project_team" model="ir.rule">
+        <field name="name">Hongyi SOR Requirement: assigned project team</field>
+        <field name="model_id" ref="model_hjig_sor_requirement"/>
+        <field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_user'))]"/>
+    </record>
+    <record id="rule_hjig_sor_verification_project_team" model="ir.rule">
+        <field name="name">Hongyi SOR Verification: assigned project team</field>
+        <field name="model_id" ref="model_hjig_sor_requirement_verification"/>
+        <field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_user'))]"/>
+    </record>
 
     <record id="rule_hjig_baseline_manager_all" model="ir.rule">
         <field name="name">Hongyi Baseline: project manager access</field>
@@ -79,6 +112,24 @@
     <record id="rule_hjig_transition_manager_all" model="ir.rule">
         <field name="name">Hongyi Transition Log: project manager access</field>
         <field name="model_id" ref="model_hjig_transition_log"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
+    </record>
+    <record id="rule_hjig_sor_manager_all" model="ir.rule">
+        <field name="name">Hongyi SOR: project manager access</field>
+        <field name="model_id" ref="model_hjig_sor"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
+    </record>
+    <record id="rule_hjig_sor_requirement_manager_all" model="ir.rule">
+        <field name="name">Hongyi SOR Requirement: project manager access</field>
+        <field name="model_id" ref="model_hjig_sor_requirement"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
+    </record>
+    <record id="rule_hjig_sor_verification_manager_all" model="ir.rule">
+        <field name="name">Hongyi SOR Verification: project manager access</field>
+        <field name="model_id" ref="model_hjig_sor_requirement_verification"/>
         <field name="domain_force">[(1, '=', 1)]</field>
         <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
     </record>

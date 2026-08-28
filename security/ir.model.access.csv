@@ -19,3 +19,9 @@
 "access_hjig_approval_manager","hjig.approval manager","model_hjig_approval","project.group_project_manager",1,1,1,1
 "access_hjig_transition_user","hjig.transition.log user","model_hjig_transition_log","project.group_project_user",1,0,0,0
 "access_hjig_transition_manager","hjig.transition.log manager","model_hjig_transition_log","project.group_project_manager",1,0,1,0
+"access_hjig_sor_user","hjig.sor user","model_hjig_sor","project.group_project_user",1,1,1,0
+"access_hjig_sor_manager","hjig.sor manager","model_hjig_sor","project.group_project_manager",1,1,1,1
+"access_hjig_sor_requirement_user","hjig.sor.requirement user","model_hjig_sor_requirement","project.group_project_user",1,1,1,0
+"access_hjig_sor_requirement_manager","hjig.sor.requirement manager","model_hjig_sor_requirement","project.group_project_manager",1,1,1,1
+"access_hjig_sor_verification_user","hjig.sor.requirement.verification user","model_hjig_sor_requirement_verification","project.group_project_user",1,1,1,0
+"access_hjig_sor_verification_manager","hjig.sor.requirement.verification manager","model_hjig_sor_requirement_verification","project.group_project_manager",1,1,1,1
