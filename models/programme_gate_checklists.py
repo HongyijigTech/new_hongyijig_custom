@@ -195,6 +195,23 @@ EXPLICIT_EVIDENCE_ARTIFACT_RULES = (
 )
 
 
+STAGE_MASTER_GATE_ARTIFACTS = {
+    "LGD-SIGNOFF": "FRM-B2-G01",
+    "PRE-B2": "FRM-B2-G01",
+    "TG-01": "FRM-B2-G01",
+    "TG-02": "FRM-B3-G01",
+    "TG-03": "FRM-B4-G01",
+    "TG-04": "FRM-B5-G01",
+    "TG-05": "FRM-B5-G01",
+    "TG-06": "FRM-B5-G01",
+    "TG-07": "FRM-B6-G01",
+    "TG-08": "FRM-B6-G01",
+    "TG-09": "FRM-B7-G01",
+    "TG-10": "FRM-043",
+    "TG-10-LITE": "FRM-043",
+}
+
+
 def _explicit_evidence_artifact_code(stage_code, text):
     """Return a form only when the checklist text explicitly identifies it."""
     upper = (text or "").upper()
@@ -208,6 +225,14 @@ def _explicit_evidence_artifact_code(stage_code, text):
     if stage_code in ("TG-10", "TG-10-LITE"):
         return "FRM-043"
     return False
+
+
+def _checklist_evidence_artifact_code(stage_code, text):
+    """Use a named evidence form first, otherwise the source-backed stage gate form."""
+    return (
+        _explicit_evidence_artifact_code(stage_code, text)
+        or STAGE_MASTER_GATE_ARTIFACTS.get(stage_code)
+    )
 
 
 def _subhead(text):
@@ -285,8 +310,8 @@ class HjigProgrammeTemplateVersion(models.Model):
                     if owner == approver:
                         owner = designation_by_code[owner_code]
                         approver = designation_by_code[approver_code]
-                    explicit_artifact_code = _explicit_evidence_artifact_code(stage_code, text)
-                    artifact = artifact_by_code.get(explicit_artifact_code) if explicit_artifact_code else False
+                    evidence_artifact_code = _checklist_evidence_artifact_code(stage_code, text)
+                    artifact = artifact_by_code.get(evidence_artifact_code) if evidence_artifact_code else False
                     if not artifact and activity:
                         artifact = activity.required_artifact_ids.filtered(
                             lambda item: gate.stage_id in item.applicable_stage_ids

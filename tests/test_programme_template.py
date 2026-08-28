@@ -3,6 +3,8 @@ from odoo.tests import TransactionCase, tagged
 
 from ..models.programme_gate_checklists import (
     GATE_FORM_EXIT_ITEMS,
+    STAGE_MASTER_GATE_ARTIFACTS,
+    _checklist_evidence_artifact_code,
     _explicit_evidence_artifact_code,
 )
 
@@ -570,3 +572,16 @@ class TestProgrammeTemplateGovernance(TransactionCase):
                 artifact.applicable_stage_ids,
                 "%s is not valid for %s" % (artifact_code, stage_code),
             )
+
+    def test_every_authoritative_checklist_has_stage_valid_evidence_type(self):
+        Artifact = self.env["hjig.governance.artifact.master"]
+        Stage = self.env["hjig.launchguard.stage"]
+        for stage_code, _row_number, text in GATE_FORM_EXIT_ITEMS:
+            artifact_code = _checklist_evidence_artifact_code(stage_code, text)
+            self.assertTrue(artifact_code, "%s has no governed evidence type" % stage_code)
+            artifact = Artifact.search([("code", "=", artifact_code)], limit=1)
+            stage = Stage.search([("code", "=", stage_code)], limit=1)
+            self.assertTrue(artifact, "%s is not a governed artifact" % artifact_code)
+            self.assertIn(stage, artifact.applicable_stage_ids)
+
+        self.assertEqual(STAGE_MASTER_GATE_ARTIFACTS["TG-04"], "FRM-B5-G01")
