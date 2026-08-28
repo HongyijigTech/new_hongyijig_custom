@@ -66,8 +66,16 @@ def designations_for(stage_code, activity_name):
     raise RuntimeError("No designation rule for canonical stage %s" % stage_code)
 
 
-if env.cr.dbname != "HongyijigTech_10Feb":
-    raise RuntimeError("Draft import is permitted only in HongyijigTech_10Feb staging")
+database_name = env.cr.dbname
+explicit_database = os.environ.get("HJIG_PROGRAMME_IMPORT_DB")
+explicit_target_allowed = explicit_database == database_name and (
+    database_name == "hongyijig_30April_db"
+    or database_name.startswith("hongyijig_bseries_v127_test_")
+)
+if database_name != "HongyijigTech_10Feb" and not explicit_target_allowed:
+    raise RuntimeError(
+        "Draft import requires staging or an exact HJIG_PROGRAMME_IMPORT_DB production/test target"
+    )
 
 with open(INPUT_PATH, "r", encoding="utf-8") as snapshot:
     payload = json.load(snapshot)

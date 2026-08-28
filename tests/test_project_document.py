@@ -25,7 +25,7 @@ class TestProjectDocumentGovernance(TransactionCase):
         cls.project = cls.env["project.project"].create({
             "name": "LaunchGuard Controlled Project",
             "hjig_project_record_type": "customer",
-            "x_project_code": "hj-lgc-2026-0001",
+            "x_project_code": "hj-tst-2099-9002",
         })
         cls.owner_designation = cls.env["hjig.governance.designation"].create({
             "code": "TEST-OWNER",
@@ -75,12 +75,12 @@ class TestProjectDocumentGovernance(TransactionCase):
         return self.env["hjig.project.document"].create(values)
 
     def test_project_code_is_normalized_and_unique(self):
-        self.assertEqual(self.project.x_project_code, "HJ-LGC-2026-0001")
+        self.assertEqual(self.project.x_project_code, "HJ-TST-2099-9002")
         with self.assertRaises(UniqueViolation), self.env.cr.savepoint():
             self.env["project.project"].create({
                 "name": "Duplicate Code",
                 "hjig_project_record_type": "customer",
-                "x_project_code": "HJ-LGC-2026-0001",
+                "x_project_code": "HJ-TST-2099-9002",
             })
 
     def test_customer_project_requires_valid_code(self):
@@ -99,7 +99,7 @@ class TestProjectDocumentGovernance(TransactionCase):
     def test_project_code_locks_after_first_document(self):
         self._create_document()
         with self.assertRaises(ValidationError):
-            self.project.x_project_code = "HJ-LGC-2026-0002"
+            self.project.x_project_code = "HJ-TST-2099-9003"
 
     def test_master_reference_cannot_enter_customer_register(self):
         with self.assertRaises(ValidationError):
