@@ -7,6 +7,7 @@
             <list>
                 <field name="code"/>
                 <field name="name"/>
+                <field name="execution_mode"/>
                 <field name="owner_designation_id"/>
                 <field name="approver_designation_id"/>
                 <field name="active"/>
@@ -30,6 +31,7 @@
                             <field name="code"/>
                             <field name="owner_designation_id"/>
                             <field name="approver_designation_id"/>
+                            <field name="execution_mode"/>
                         </group>
                         <group><field name="active"/></group>
                     </group>
@@ -62,6 +64,7 @@
             <list decoration-success="state == 'approved'" decoration-muted="state == 'retired'">
                 <field name="name"/>
                 <field name="state"/>
+                <field name="execution_mode"/>
                 <field name="is_current"/>
                 <field name="effective_from"/>
                 <field name="source_project_id"/>
@@ -96,6 +99,7 @@
                             <field name="legacy_source_database" readonly="1"/>
                             <field name="legacy_source_project_id" readonly="1"/>
                             <field name="legacy_source_task_count" readonly="1"/>
+                            <field name="execution_mode" readonly="1"/>
                             <field name="dependency_review_status" readonly="state in ['approved', 'retired']"/>
                             <field name="evidence_review_status" readonly="state in ['approved', 'retired']"/>
                         </group>
@@ -109,7 +113,7 @@
                         </group>
                     </group>
                     <notebook>
-                        <page string="Gates">
+                        <page string="Gates" invisible="execution_mode == 'advisory_sessions'">
                             <field name="gate_line_ids" readonly="state in ['approved', 'retired']">
                                 <list editable="bottom">
                                     <field name="sequence"/>
@@ -120,7 +124,7 @@
                                 </list>
                             </field>
                         </page>
-                        <page string="Activities">
+                        <page string="Activities" invisible="execution_mode == 'advisory_sessions'">
                             <field name="activity_line_ids" readonly="state in ['approved', 'retired']">
                                 <list editable="bottom">
                                     <field name="sequence"/>
@@ -141,7 +145,7 @@
                                 </list>
                             </field>
                         </page>
-                        <page string="Scoped Dependency Rules">
+                        <page string="Scoped Dependency Rules" invisible="execution_mode == 'advisory_sessions'">
                             <field name="dependency_rule_ids" readonly="state in ['approved', 'retired']">
                                 <list editable="bottom">
                                     <field name="legacy_source_rule_id"/>
@@ -155,7 +159,7 @@
                                 </list>
                             </field>
                         </page>
-                        <page string="Required SOPs and Forms">
+                        <page string="Required SOPs and Forms" invisible="execution_mode == 'advisory_sessions'">
                             <field name="artifact_rule_ids" readonly="state in ['approved', 'retired']">
                                 <list editable="bottom">
                                     <field name="stage_id"/>
@@ -164,7 +168,7 @@
                                 </list>
                             </field>
                         </page>
-                        <page string="Gate Checklist Template">
+                        <page string="Gate Checklist Template" invisible="execution_mode == 'advisory_sessions'">
                             <field name="checklist_item_ids" readonly="state in ['approved', 'retired']">
                                 <list editable="bottom" open_form_view="1">
                                     <field name="sequence"/>
@@ -180,6 +184,22 @@
                                     <field name="linked_activity_id" optional="show"/>
                                     <field name="owner_designation_id"/>
                                     <field name="approver_designation_id"/>
+                                    <field name="source_reference" optional="hide"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Advisory Session Template" invisible="execution_mode != 'advisory_sessions'">
+                            <field name="session_line_ids" readonly="state in ['approved', 'retired']">
+                                <list editable="bottom" open_form_view="1">
+                                    <field name="sequence"/>
+                                    <field name="code"/>
+                                    <field name="name"/>
+                                    <field name="stage_id"/>
+                                    <field name="indicative_duration"/>
+                                    <field name="framework_artifact_id"/>
+                                    <field name="owner_designation_id"/>
+                                    <field name="approver_designation_id"/>
+                                    <field name="legacy_source_task_ids" optional="show"/>
                                     <field name="source_reference" optional="hide"/>
                                 </list>
                             </field>
@@ -200,6 +220,7 @@
                 <field name="sale_order_id"/>
                 <field name="project_id"/>
                 <field name="template_version_id"/>
+                <field name="execution_mode"/>
                 <field name="state"/>
                 <field name="activated_on"/>
                 <field name="definition_hash"/>
@@ -219,6 +240,7 @@
                             <field name="sale_order_id"/>
                             <field name="project_id"/>
                             <field name="template_version_id"/>
+                            <field name="execution_mode" readonly="1"/>
                         </group>
                         <group>
                             <field name="state" readonly="1"/>
@@ -230,9 +252,9 @@
                     <button name="action_close_run" type="object" string="Close Programme Run"
                             class="btn-primary" invisible="state != 'generated'"/>
                     <button name="action_sync_mould_execution" type="object" string="Sync Approved Moulds"
-                            invisible="state != 'generated'"/>
+                            invisible="state != 'generated' or execution_mode == 'advisory_sessions'"/>
                     <notebook>
-                        <page string="Governed Gates">
+                        <page string="Governed Gates" invisible="execution_mode == 'advisory_sessions'">
                             <field name="gate_ids">
                                 <list create="false" delete="false">
                                     <field name="sequence"/>
@@ -248,7 +270,7 @@
                                 </list>
                             </field>
                         </page>
-                        <page string="Generated Activities">
+                        <page string="Generated Activities" invisible="execution_mode == 'advisory_sessions'">
                             <field name="task_ids">
                                 <list create="false" delete="false">
                                     <field name="sequence"/>
@@ -260,7 +282,7 @@
                                 </list>
                             </field>
                         </page>
-                        <page string="Required SOPs and Forms">
+                        <page string="Required SOPs and Forms" invisible="execution_mode == 'advisory_sessions'">
                             <field name="artifact_requirement_ids">
                                 <list create="false" delete="false">
                                     <field name="stage_id"/>
@@ -271,7 +293,7 @@
                                 </list>
                             </field>
                         </page>
-                        <page string="Gate Checklists">
+                        <page string="Gate Checklists" invisible="execution_mode == 'advisory_sessions'">
                             <field name="checklist_instance_ids">
                                 <list create="false" delete="false" open_form_view="1"
                                       decoration-success="status == 'pass'"
@@ -289,6 +311,21 @@
                                 </list>
                             </field>
                         </page>
+                        <page string="ToolLock Lite Sessions" invisible="execution_mode != 'advisory_sessions'">
+                            <field name="session_ids">
+                                <list create="false" delete="false" open_form_view="1"
+                                      decoration-success="state == 'accepted'">
+                                    <field name="sequence"/>
+                                    <field name="code"/>
+                                    <field name="name"/>
+                                    <field name="indicative_duration"/>
+                                    <field name="delivery_mode"/>
+                                    <field name="scheduled_on"/>
+                                    <field name="state" widget="badge"/>
+                                    <field name="framework_document_id"/>
+                                </list>
+                            </field>
+                        </page>
                         <page string="SourceBridge">
                             <field name="sourcebridge_engagement_ids"/>
                         </page>
@@ -296,6 +333,71 @@
                             <field name="snapshot_json" widget="json" readonly="1"/>
                         </page>
                     </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hjig_programme_run_session_list" model="ir.ui.view">
+        <field name="name">hjig.programme.run.session.list</field>
+        <field name="model">hjig.programme.run.session</field>
+        <field name="arch" type="xml">
+            <list create="false" delete="false" decoration-success="state == 'accepted'">
+                <field name="project_id"/>
+                <field name="sequence"/>
+                <field name="code"/>
+                <field name="name"/>
+                <field name="delivery_mode"/>
+                <field name="scheduled_on"/>
+                <field name="state" widget="badge"/>
+                <field name="owner_designation_id"/>
+                <field name="approver_designation_id"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_programme_run_session_form" model="ir.ui.view">
+        <field name="name">hjig.programme.run.session.form</field>
+        <field name="model">hjig.programme.run.session</field>
+        <field name="arch" type="xml">
+            <form string="ToolLock Lite Advisory Session" create="false" delete="false">
+                <header>
+                    <button name="action_mark_delivered" type="object" string="Record Delivery"
+                            class="btn-primary" invisible="state != 'planned'"/>
+                    <button name="action_accept" type="object" string="Accept Session"
+                            class="btn-primary" invisible="state != 'delivered'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="planned,delivered,accepted"/>
+                </header>
+                <sheet>
+                    <div class="oe_title"><h1><field name="code" readonly="1"/> — <field name="name" readonly="1"/></h1></div>
+                    <group>
+                        <group>
+                            <field name="run_id"/>
+                            <field name="project_id"/>
+                            <field name="indicative_duration"/>
+                            <field name="delivery_mode" readonly="state != 'planned'"/>
+                            <field name="scheduled_on" readonly="state != 'planned'"/>
+                        </group>
+                        <group>
+                            <field name="owner_designation_id"/>
+                            <field name="approver_designation_id"/>
+                            <field name="framework_artifact_id"/>
+                            <field name="stage_id"/>
+                            <field name="framework_document_id" readonly="state != 'planned'"
+                                   domain="[('project_id', '=', project_id), ('stage_id', '=', stage_id), ('artifact_master_id', '=', framework_artifact_id), ('status', '=', 'approved')]"/>
+                        </group>
+                    </group>
+                    <group string="Delivery Record">
+                        <field name="delivery_note" readonly="state != 'planned'"/>
+                        <field name="delivered_by_id"/>
+                        <field name="delivered_on"/>
+                    </group>
+                    <group string="Acceptance">
+                        <field name="acceptance_note" readonly="state != 'delivered'"/>
+                        <field name="accepted_by_id"/>
+                        <field name="accepted_on"/>
+                    </group>
                 </sheet>
                 <chatter/>
             </form>
@@ -372,6 +474,11 @@
         <field name="res_model">hjig.programme.checklist.instance</field>
         <field name="view_mode">list,form</field>
     </record>
+    <record id="action_hjig_programme_run_sessions" model="ir.actions.act_window">
+        <field name="name">ToolLock Lite Sessions</field>
+        <field name="res_model">hjig.programme.run.session</field>
+        <field name="view_mode">list,form</field>
+    </record>
 
     <record id="action_hjig_programme_templates" model="ir.actions.act_window">
         <field name="name">Programme Templates</field>
@@ -399,6 +506,8 @@
               parent="menu_hjig_programme_governance" action="action_hjig_programme_runs" sequence="30"/>
     <menuitem id="menu_hjig_checklist_instances" name="Gate Checklists"
               parent="menu_hjig_programme_governance" action="action_hjig_checklist_instances" sequence="35"/>
+    <menuitem id="menu_hjig_programme_run_sessions" name="ToolLock Lite Sessions"
+              parent="menu_hjig_programme_governance" action="action_hjig_programme_run_sessions" sequence="36"/>
 
     <record id="view_sale_order_form_hjig_programme" model="ir.ui.view">
         <field name="name">sale.order.form.hjig.programme</field>

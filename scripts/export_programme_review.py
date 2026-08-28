@@ -23,10 +23,12 @@ for version in versions.sorted(lambda item: item.template_id.code):
         "state": version.state,
         "dependency_review_status": version.dependency_review_status,
         "evidence_review_status": version.evidence_review_status,
+        "execution_mode": version.execution_mode,
         "gates": [],
         "activities": [],
         "dependency_rules": [],
         "artifact_rules": [],
+        "sessions": [],
     }
     for gate in version.gate_line_ids.sorted("sequence"):
         programme["gates"].append({
@@ -77,6 +79,8 @@ for version in versions.sorted(lambda item: item.template_id.code):
             "register_type": artifact.default_register_type,
             "document_class": artifact.default_document_class,
         })
+    for session in version.session_line_ids.sorted("sequence"):
+        programme["sessions"].append(session._snapshot_values())
     payload["programmes"].append(programme)
 
 with open(output_path, "w", encoding="utf-8") as review_file:

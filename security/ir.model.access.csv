@@ -71,6 +71,10 @@
 "access_hjig_programme_run_gate_manager","hjig.programme.run.gate manager","model_hjig_programme_run_gate","project.group_project_manager",1,1,1,1
 "access_hjig_programme_checklist_instance_user","programme checklist instance user","model_hjig_programme_checklist_instance","project.group_project_user",1,1,1,0
 "access_hjig_programme_checklist_instance_manager","programme checklist instance manager","model_hjig_programme_checklist_instance","project.group_project_manager",1,1,1,0
+"access_hjig_programme_template_session_user","programme advisory session template user","model_hjig_programme_template_session","project.group_project_user",1,0,0,0
+"access_hjig_programme_template_session_manager","programme advisory session template manager","model_hjig_programme_template_session","project.group_project_manager",1,1,1,1
+"access_hjig_programme_run_session_user","programme advisory session run user","model_hjig_programme_run_session","project.group_project_user",1,1,1,0
+"access_hjig_programme_run_session_manager","programme advisory session run manager","model_hjig_programme_run_session","project.group_project_manager",1,1,1,0
 "access_hjig_portfolio_guard_user","hjig.portfolio.guard user","model_hjig_portfolio_guard","project.group_project_user",1,0,0,0
 "access_hjig_portfolio_guard_manager","hjig.portfolio.guard manager","model_hjig_portfolio_guard","project.group_project_manager",1,1,1,1
 "access_hjig_sourcebridge_engagement_user","hjig.sourcebridge.engagement user","model_hjig_sourcebridge_engagement","project.group_project_user",1,1,1,0

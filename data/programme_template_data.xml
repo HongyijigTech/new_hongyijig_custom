@@ -33,8 +33,9 @@
     <record id="programme_toollock_lite" model="hjig.programme.template">
         <field name="code">TLL</field>
         <field name="name">ToolLock Lite</field>
+        <field name="execution_mode">advisory_sessions</field>
         <field name="owner_designation_id" ref="designation_project_manager"/>
         <field name="approver_designation_id" ref="designation_pmo_document_controller"/>
-        <field name="description">Lite supplier-governance programme. Legacy source: Project 5.</field>
+        <field name="description">Six-session advisory programme; no B-Series gates or execution monitoring. Legacy source: Project 5.</field>
     </record>
 </odoo>

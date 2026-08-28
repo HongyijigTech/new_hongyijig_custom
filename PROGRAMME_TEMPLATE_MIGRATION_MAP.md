@@ -41,7 +41,7 @@ All 408 tasks are manual legacy template tasks. None is currently linked to a go
 | Legacy stage | Count | Canonical stage |
 |---|---:|---|
 | IG-01 - Project Planning Gate | 12 | PA-00 (legacy alias IG-01) |
-| B1 - Design Only / Design Sign-Off | 10 | TG-01 as the programme's terminal gate |
+| B1 - Design Only / Design Sign-Off | 10 | LGD-SIGNOFF terminal milestone (not standard TG-01) |
 
 ### Project 3 - LaunchGuard Development
 
@@ -86,6 +86,13 @@ ToolLock Control intentionally excludes TG-08 and TG-09.
 | Session 5 | 2 | TLL-S05 |
 | Session 6 | 2 | TLL-S06 |
 
+ToolLock Lite is an advisory service, not a gate-governed B-Series execution programme. Its 12
+legacy task records are retained as immutable source references inside six advisory-session
+template records (two references per session). It generates no programme gates, project tasks,
+gate dependencies, or gate checklists. Each delivered session uses one approved blank controlled
+framework and requires designation-based acceptance. Tooling execution monitoring remains outside
+the ToolLock Lite scope.
+
 ## Canonical ownership decision
 
 Module-owned `hjig.*` models are the system of record. Studio `x_*` models remain read-only migration sources until their content and relationships have been reconciled and validated.
@@ -105,7 +112,8 @@ TG-09 is an execution gate. Full closure is TG-10. Lite closure is TG-10-LITE.
 
 No programme version may be approved until:
 
-1. every source task is mapped to a canonical stage and a stable activity code;
+1. every governed-programme source task is mapped to a canonical stage and stable activity code;
+   ToolLock Lite instead reconciles all 12 source references into exactly six session records;
 2. owner and approver designations are assigned;
 3. mandatory SOP/Form rules are selected for that programme version;
 4. dependencies and timing offsets are explicitly defined rather than inferred from task order;

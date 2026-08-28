@@ -1,6 +1,12 @@
 """Read-only post-deployment check for the B-Series staging implementation."""
 
-if env.cr.dbname != "HongyijigTech_10Feb":
+import os
+
+isolated_db = os.environ.get("HJIG_ISOLATED_TEST_DB")
+if env.cr.dbname != "HongyijigTech_10Feb" and not (
+    isolated_db == env.cr.dbname
+    and env.cr.dbname.startswith("hongyijig_bseries_v120_test_")
+):
     raise RuntimeError("This staging check is restricted to HongyijigTech_10Feb")
 
 expected_activity_counts = {
@@ -8,16 +14,16 @@ expected_activity_counts = {
     "LGD": 22,
     "LGV": 127,
     "TLC": 106,
-    "TLL": 12,
+    "TLL": 0,
 }
 expected_routes = {
     "LGC": ["PA-00", "TG-01", "TG-02", "TG-03", "TG-04", "TG-05", "TG-06", "TG-07", "TG-08", "TG-09", "TG-10"],
     "LGD": ["PA-00", "LGD-SIGNOFF"],
     "LGV": ["PA-00", "PRE-B2", "TG-02", "TG-03", "TG-04", "TG-05", "TG-06", "TG-07", "TG-08", "TG-09", "TG-10"],
     "TLC": ["PA-00", "PRE-B2", "TG-02", "TG-03", "TG-04", "TG-05", "TG-06", "TG-07", "TG-10-LITE"],
-    "TLL": ["TLL-S01", "TLL-S02", "TLL-S03", "TLL-S04", "TLL-S05", "TLL-S06"],
+    "TLL": [],
 }
-expected_checklist_counts = {"LGC": 17, "LGD": 17, "LGV": 16, "TLC": 16, "TLL": 0}
+expected_checklist_counts = {"LGC": 143, "LGD": 27, "LGV": 136, "TLC": 118, "TLL": 0}
 
 Version = env["hjig.programme.template.version"]
 Run = env["hjig.programme.run"]
@@ -38,6 +44,17 @@ for programme in programmes.sorted(lambda item: item.template_id.code):
         raise RuntimeError(f"{code} must remain a non-current draft pending governed review")
     if programme.dependency_review_status != "unreviewed" or programme.evidence_review_status != "unreviewed":
         raise RuntimeError(f"{code} review status changed without business approval")
+    if code == "TLL":
+        if programme.execution_mode != "advisory_sessions":
+            raise RuntimeError("TLL must use advisory-session execution")
+        if len(programme.session_line_ids) != 6:
+            raise RuntimeError("TLL must contain exactly six advisory sessions")
+        if sum(programme.session_line_ids.mapped("source_task_count")) != 12:
+            raise RuntimeError("TLL session trace must reconcile all 12 legacy tasks")
+        if programme.gate_line_ids or programme.dependency_rule_ids or programme.artifact_rule_ids:
+            raise RuntimeError("TLL must not contain B-Series gate controls")
+        print("STAGING_PROGRAMME_PASS", code, "ADVISORY_SESSIONS", 6, "LEGACY_REFERENCES", 12, "DRAFT_UNREVIEWED")
+        continue
     required_gates = programme.gate_line_ids.filtered("required")
     missing = required_gates.filtered(
         lambda gate: not programme.artifact_rule_ids.filtered(
@@ -53,6 +70,8 @@ for programme in programmes.sorted(lambda item: item.template_id.code):
             f"{code} authoritative checklist count mismatch: "
             f"expected {expected_checklist_counts[code]}, found {len(programme.checklist_item_ids)}"
         )
+    if programme.execution_mode != "governed_gates":
+        raise RuntimeError(f"{code} must remain gate-governed")
     mould_stages = programme.gate_line_ids.filtered(
         lambda gate: gate.stage_id.code in {"TG-02", "TG-03", "TG-04", "TG-05", "TG-06", "TG-07", "TG-08", "TG-09"}
     )

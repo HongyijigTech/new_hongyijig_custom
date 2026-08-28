@@ -83,6 +83,7 @@ ArtifactRule = env["hjig.programme.template.artifact"]
 Artifact = env["hjig.governance.artifact.master"]
 DependencyRule = env["hjig.programme.template.dependency.rule"]
 ChecklistItem = env["hjig.programme.template.checklist.item"]
+AdvisorySession = env["hjig.programme.template.session"]
 
 stage_by_code = {stage.code: stage for stage in Stage.search([])}
 designation_by_code = {designation.code: designation for designation in Designation.search([])}
@@ -91,6 +92,15 @@ master_by_code = {
 }
 
 MOULD_STAGE_CODES = {"TG-02", "TG-03", "TG-04", "TG-05", "TG-06", "TG-07", "TG-08", "TG-09"}
+
+TLL_SESSIONS = (
+    ("TLL-S01", 10, "SOR + BOP Collection Advisory", "1 full day", "FRM-TLL-001"),
+    ("TLL-S02", 20, "RFQ Framework Advisory", "Half day", "FRM-TLL-002"),
+    ("TLL-S03", 30, "Supplier Selection Methodology Advisory", "Half day", "FRM-TLL-003"),
+    ("TLL-S04", 40, "Pre-Tooling Governance Advisory", "Half day", "FRM-TLL-004"),
+    ("TLL-S05", 50, "Trial Sign-Off Advisory", "Half day", "FRM-TLL-005"),
+    ("TLL-S06", 60, "Dispatch Readiness Advisory", "Half day", "FRM-TLL-006"),
+)
 
 
 def gate_basis(stage_code):
@@ -529,6 +539,77 @@ for project_id, (programme_code, expected_count) in PROGRAMMES.items():
     version = Version.search(
         [("template_id", "=", template.id), ("version", "=", "1.0")], limit=1
     )
+    if programme_code == "TLL":
+        template.write({
+            "execution_mode": "advisory_sessions",
+            "description": "Six-session advisory programme; no B-Series gates or execution monitoring. Legacy source: Project 5.",
+        })
+        values = {
+            "legacy_source_database": payload["source_database"],
+            "legacy_source_project_id": project_id,
+            "legacy_source_task_count": expected_count,
+            "dependency_review_status": "unreviewed",
+            "evidence_review_status": "unreviewed",
+        }
+        if not version:
+            values.update({"template_id": template.id, "version": "1.0"})
+            version = Version.create(values)
+        else:
+            version.write(values)
+        if version.gate_line_ids:
+            version.dependency_rule_ids.unlink()
+            version.checklist_item_ids.unlink()
+            version.artifact_rule_ids.unlink()
+            version.activity_line_ids.unlink()
+            version.gate_line_ids.unlink()
+        grouped = {}
+        for task in tasks:
+            grouped.setdefault(canonical_stage(task["stage_name"]), []).append(task["id"])
+        expected_ids = {task["id"] for task in tasks}
+        existing_ids = {
+            int(source_id)
+            for session in version.session_line_ids
+            for source_id in (session.legacy_source_task_ids or "").split(",")
+            if source_id
+        }
+        if version.session_line_ids and existing_ids != expected_ids:
+            raise RuntimeError("Existing TLL v1.0 sessions do not reconcile to source")
+        for code, sequence, name, duration, artifact_code in TLL_SESSIONS:
+            source_ids = grouped.get(code, [])
+            if len(source_ids) != 2:
+                raise RuntimeError("%s must reconcile exactly two legacy task references" % code)
+            artifact = Artifact.search([("code", "=", artifact_code)], limit=1)
+            stage = Stage.search([("code", "=", code)], limit=1)
+            if not artifact:
+                raise RuntimeError("Missing governed ToolLock Lite framework %s" % artifact_code)
+            if not stage:
+                raise RuntimeError("Missing governed ToolLock Lite stage %s" % code)
+            values = {
+                "version_id": version.id,
+                "code": code,
+                "sequence": sequence,
+                "name": name,
+                "indicative_duration": duration,
+                "stage_id": stage.id,
+                "owner_designation_id": artifact.owner_designation_id.id,
+                "approver_designation_id": artifact.approver_designation_id.id,
+                "framework_artifact_id": artifact.id,
+                "legacy_source_task_ids": ",".join(map(str, source_ids)),
+                "source_task_count": len(source_ids),
+                "source_reference": "Hongyi_BSeries_Constitution_v2_5_v6_9",
+                "source_version": "v6.9",
+                "advisory_scope": "Advisory review using a blank controlled framework; tooling execution monitoring and filled proprietary templates are outside scope.",
+            }
+            session = version.session_line_ids.filtered(lambda item: item.code == code)[:1]
+            if session:
+                session.write(values)
+            else:
+                AdvisorySession.create(values)
+        print(
+            "PROGRAMME_RECONCILED", programme_code, "ADVISORY_SESSIONS",
+            len(version.session_line_ids), "LEGACY_REFERENCES", len(expected_ids), version.state,
+        )
+        continue
     if version and version.activity_line_ids:
         source_ids = set(version.activity_line_ids.mapped("legacy_source_task_id"))
         expected_ids = {task["id"] for task in tasks}
@@ -541,6 +622,8 @@ for project_id, (programme_code, expected_count) in PROGRAMMES.items():
             version, programme_code, task_payload_by_id
         )
         checklist_count = sync_ig01_checklist(version)
+        version._sync_authoritative_gate_checklists()
+        checklist_count = len(version.checklist_item_ids)
         print(
             "PROGRAMME_ALREADY_RECONCILED",
             programme_code,
@@ -613,6 +696,8 @@ for project_id, (programme_code, expected_count) in PROGRAMMES.items():
         version, programme_code, task_payload_by_id
     )
     checklist_count = sync_ig01_checklist(version)
+    version._sync_authoritative_gate_checklists()
+    checklist_count = len(version.checklist_item_ids)
     print(
         "PROGRAMME_RECONCILED",
         programme_code,
