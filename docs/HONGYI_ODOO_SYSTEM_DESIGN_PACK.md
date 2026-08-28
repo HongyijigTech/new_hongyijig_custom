@@ -74,11 +74,14 @@ Runtime adapters expose an installed record only when it has a compatible Projec
 |---|---|
 | Mould Planning | `x_mould`, `hjig.final.mould.plan`, `hjig.mould.register` |
 | Mould Part / Component | `x_mould_part`, `hjig.sourcebridge.component` where installed |
+| BOP | Controlled `hjig.project.document` using `FRM-004 BOP Lock Record`, linked to the existing BOP workbook and frozen through a `bop` baseline; no duplicate BOP-line model is created |
 | Risk | `hjig.project.risk`, `s.series.risk` |
 | Design Challenge / Issue | `hjig.project.issue` |
 | ECN | `hjig.project.ecn` |
 
 If a compatible carrier is absent from staging, the item is a deployment prerequisite—not permission to create a duplicate register silently.
+
+Read-only staging registry discovery on 29 August 2026 confirmed `x_mould`, `x_mould_part`, `hjig.final.mould.plan`, `hjig.mould.register`, `hjig.project.risk`, `s.series.risk`, `hjig.project.issue`, `hjig.project.ecn` and `hjig.sourcebridge.component`. No native BOP model was present, so the controlled-document-and-baseline route above is the required staging implementation.
 
 ## 6. SOR operating flow
 

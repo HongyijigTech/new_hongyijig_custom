@@ -179,3 +179,24 @@ class TestProjectDocumentGovernance(TransactionCase):
             "Final Customer Acceptance", "Lessons Learned Register",
         }
         self.assertFalse(required_forms - set(form_by_name))
+
+    def test_bop_uses_controlled_document_and_baseline_without_duplicate_model(self):
+        bop_master = self.env.ref("new_hongyijig_custom.artifact_frm_004")
+        bop_document = self.env["hjig.project.document"].create({
+            "project_id": self.project.id,
+            "artifact_master_id": bop_master.id,
+            "stage_id": self.env.ref("new_hongyijig_custom.stage_tg01").id,
+            "revision": "BOP-R00",
+            "drive_url": "https://docs.google.com/spreadsheets/d/controlled-bop-record",
+        })
+        bop_baseline = self.env["hjig.baseline"].create({
+            "project_id": self.project.id,
+            "target_ref": "hjig.project.document,%s" % bop_document.id,
+            "baseline_type": "bop",
+            "revision": "BOP-R00",
+            "effective_date": "2026-08-29",
+            "approval_authority_designation_id": self.approver_designation.id,
+        })
+        self.assertEqual(bop_document.artifact_master_id.code, "FRM-004")
+        self.assertEqual(bop_baseline.target_ref, bop_document)
+        self.assertEqual(bop_baseline.baseline_type, "bop")
