@@ -4,8 +4,14 @@ Run through ``odoo-bin shell``.  The transaction is always rolled back so the
 review flags used for validation never become business data.
 """
 
+import os
+
 database_name = env.cr.dbname
-if "BSeries_Test" not in database_name:
+isolated_db = os.environ.get("HJIG_ISOLATED_TEST_DB")
+if not (
+    isolated_db == database_name
+    and database_name.startswith("hongyijig_bseries_v127_test_")
+):
     raise RuntimeError("Programme draft validation is permitted only in an isolated B-Series test database")
 
 Version = env["hjig.programme.template.version"]
