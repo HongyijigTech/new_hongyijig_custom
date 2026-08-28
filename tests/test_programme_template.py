@@ -1,6 +1,11 @@
 from odoo.exceptions import UserError, ValidationError
 from odoo.tests import TransactionCase, tagged
 
+from ..models.programme_gate_checklists import (
+    GATE_FORM_EXIT_ITEMS,
+    _explicit_evidence_artifact_code,
+)
+
 
 @tagged("post_install", "-at_install")
 class TestProgrammeTemplateGovernance(TransactionCase):
@@ -549,3 +554,19 @@ class TestProgrammeTemplateGovernance(TransactionCase):
         run.action_generate_execution()
         self.assertEqual(run.state, "generated")
         self.assertFalse(run.task_ids)
+
+    def test_explicit_checklist_evidence_mapping_is_stage_valid(self):
+        Artifact = self.env["hjig.governance.artifact.master"]
+        Stage = self.env["hjig.launchguard.stage"]
+        for stage_code, _row_number, text in GATE_FORM_EXIT_ITEMS:
+            artifact_code = _explicit_evidence_artifact_code(stage_code, text)
+            if not artifact_code:
+                continue
+            artifact = Artifact.search([("code", "=", artifact_code)], limit=1)
+            stage = Stage.search([("code", "=", stage_code)], limit=1)
+            self.assertTrue(artifact, "%s is not a governed artifact" % artifact_code)
+            self.assertIn(
+                stage,
+                artifact.applicable_stage_ids,
+                "%s is not valid for %s" % (artifact_code, stage_code),
+            )

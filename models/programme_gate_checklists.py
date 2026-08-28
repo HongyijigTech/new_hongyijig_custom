@@ -172,6 +172,44 @@ PROJECT_SCOPE_MARKERS = (
 )
 
 
+EXPLICIT_EVIDENCE_ARTIFACT_RULES = (
+    (("LESSONS LEARNED",), "FRM-023"),
+    (("RISK REGISTER",), "FRM-006"),
+    (("ECN",), "FRM-010"),
+    (("VISUAL INSPECTION",), "FRM-011"),
+    (("ASSEMBLY INSPECTION",), "FRM-012"),
+    (("DIMENSIONAL INSPECTION",), "FRM-013"),
+    (("CORRECTIVE ACTION PLAN",), "FRM-036"),
+    (("DFM SIGN-OFF", "DFM SIGN OFF"), "FRM-030"),
+    (("MOLDFLOW SIGN-OFF", "MOLDFLOW SIGN OFF"), "FRM-031"),
+    (("TOOL DESIGN LAYOUT",), "FRM-032"),
+    (("WEEKLY MANUFACTURING REPORT",), "FRM-034"),
+    (("DISPATCH READINESS",), "FRM-016"),
+    (("PACKING LIST",), "FRM-038"),
+    (("HBL", "BILL OF LADING", "B/L", "CERTIFICATE OF ORIGIN"), "FRM-040"),
+    (("BOE", "BILL OF ENTRY", "CUSTOM CLEARANCE"), "FRM-041"),
+    (("DELIVERY CONFIRMATION", "MOULDS DELIVERED TO CUSTOMER SITE"), "FRM-019"),
+    (("MOULD DELIVERY VERIFICATION",), "FRM-020"),
+    (("MOULD TRIAL WITNESSED",), "FRM-021"),
+    (("ISSUES REPORT",), "FRM-042"),
+)
+
+
+def _explicit_evidence_artifact_code(stage_code, text):
+    """Return a form only when the checklist text explicitly identifies it."""
+    upper = (text or "").upper()
+    for markers, artifact_code in EXPLICIT_EVIDENCE_ARTIFACT_RULES:
+        if any(marker in upper for marker in markers):
+            return artifact_code
+    if stage_code == "TG-06" and "GOLDEN SAMPLE" in upper:
+        return "FRM-015"
+    if stage_code == "TG-09" and "FINAL SIGN-OFF" in upper:
+        return "FRM-022"
+    if stage_code in ("TG-10", "TG-10-LITE"):
+        return "FRM-043"
+    return False
+
+
 def _subhead(text):
     upper = text.upper()
     if any(word in upper for word in ("CM-", "PAYMENT", "COMMERCIAL", "DUTY", "GST", "PROFITABILITY")):
@@ -208,7 +246,9 @@ class HjigProgrammeTemplateVersion(models.Model):
     def _sync_authoritative_gate_checklists(self):
         Checklist = self.env["hjig.programme.template.checklist.item"]
         Designation = self.env["hjig.governance.designation"]
+        Artifact = self.env["hjig.governance.artifact.master"]
         designation_by_code = {item.code: item for item in Designation.search([])}
+        artifact_by_code = {item.code: item for item in Artifact.search([])}
         rows_by_stage = {}
         for stage_code, row_number, text in GATE_FORM_EXIT_ITEMS:
             rows_by_stage.setdefault(stage_code, []).append((row_number, text))
@@ -245,9 +285,12 @@ class HjigProgrammeTemplateVersion(models.Model):
                     if owner == approver:
                         owner = designation_by_code[owner_code]
                         approver = designation_by_code[approver_code]
-                    artifact = activity.required_artifact_ids.filtered(
-                        lambda item: gate.stage_id in item.applicable_stage_ids
-                    )[:1] if activity else False
+                    explicit_artifact_code = _explicit_evidence_artifact_code(stage_code, text)
+                    artifact = artifact_by_code.get(explicit_artifact_code) if explicit_artifact_code else False
+                    if not artifact and activity:
+                        artifact = activity.required_artifact_ids.filtered(
+                            lambda item: gate.stage_id in item.applicable_stage_ids
+                        )[:1]
                     upper = text.upper()
                     execution_basis = (
                         "project"
