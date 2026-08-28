@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo noupdate="1">
+    <record id="seq_hjig_commercial_link" model="ir.sequence">
+        <field name="name">Hongyi Project Commercial Link</field>
+        <field name="code">hjig.commercial.link</field>
+        <field name="prefix">COM-%(year)s-</field>
+        <field name="padding">5</field>
+        <field name="company_id" eval="False"/>
+    </record>
+</odoo>

@@ -113,6 +113,9 @@
                         <group><field name="project_id"/><field name="target_ref"/><field name="approval_type"/><field name="authority_designation_id"/></group>
                         <group><field name="requested_by_id"/><field name="requested_date"/><field name="approver_id"/><field name="decision_date"/></group>
                     </group>
+                    <group string="Submission Snapshot" invisible="not request_snapshot_hash">
+                        <field name="request_snapshot_hash"/><field name="request_snapshot" groups="new_hongyijig_custom.group_hjig_governance_approver,project.group_project_manager"/>
+                    </group>
                     <field name="decision_reason" placeholder="Required when rejecting"/>
                 </sheet>
                 <chatter/>

@@ -50,6 +50,16 @@ class TestChecklistGate(TransactionCase):
         with self.assertRaises(ValidationError):
             checklist.action_mark_ready()
 
+    def test_operating_catalogue_covers_every_governance_stage(self):
+        expected_codes = {
+            "PA-00-READINESS", "TG-01-READINESS", "TG-02-READINESS", "TG-03-READINESS",
+            "TG-04-READINESS", "TG-05-READINESS", "TG-06-READINESS", "TG-07-READINESS",
+            "TG-08-READINESS", "TG-09-READINESS",
+        }
+        templates = self.env["hjig.checklist.template"].search([("code", "in", list(expected_codes))])
+        self.assertEqual(set(templates.mapped("code")), expected_codes)
+        self.assertTrue(all(template.item_ids for template in templates))
+
     def test_gate_go_requires_ready_checklist_and_human_approval(self):
         evidence = self.env["hjig.evidence.link"].create({
             "project_id": self.project.id, "target_ref": self._target(),

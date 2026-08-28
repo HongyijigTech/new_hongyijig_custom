@@ -49,3 +49,5 @@
 "access_hjig_knowledge_item_manager","hjig.knowledge.item manager","model_hjig_knowledge_item","project.group_project_manager",1,1,1,0
 "access_hjig_ai_log_user","hjig.ai.assistance.log user","model_hjig_ai_assistance_log","project.group_project_user",1,0,0,0
 "access_hjig_ai_log_manager","hjig.ai.assistance.log manager","model_hjig_ai_assistance_log","project.group_project_manager",1,0,0,0
+"access_hjig_commercial_link_user","hjig.commercial.link user","model_hjig_commercial_link","new_hongyijig_custom.group_hjig_commercial_user",1,1,1,0
+"access_hjig_commercial_submission_user","hjig.commercial.submission user","model_hjig_commercial_submission","new_hongyijig_custom.group_hjig_commercial_user",1,0,0,0

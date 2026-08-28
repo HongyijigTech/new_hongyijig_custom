@@ -43,7 +43,7 @@ class HjigTargetMixin(models.AbstractModel):
     @api.model
     def _selection_target_model(self):
         """Modules extend this method when they add a governed operational model."""
-        return [
+        targets = [
             ("project.project", "Project"),
             ("project.task", "Project Task"),
             ("hjig.project.document", "Controlled Project Document"),
@@ -51,12 +51,42 @@ class HjigTargetMixin(models.AbstractModel):
             ("hjig.evidence.link", "Evidence"),
             ("hjig.approval", "Controlled Approval"),
         ]
+        # These records already exist in some Hongyi databases as governed or
+        # Studio-backed models.  Expose them when present instead of creating
+        # replacement Risk, ECN, Mould Planning, Part, or Mould Register models.
+        adapters = [
+            ("x_mould", "Project Mould Planning Form"),
+            ("x_mould_part", "Mould Planning Component / Part"),
+            ("hjig.final.mould.plan", "Final Mould Plan"),
+            ("hjig.mould.register", "Project Mould Register"),
+            ("hjig.project.risk", "Project Risk Register"),
+            ("s.series.risk", "Risk Register"),
+            ("hjig.project.issue", "Project Issue / Design Challenge Register"),
+            ("hjig.project.ecn", "Engineering Change Notice Register"),
+        ]
+        compatible_adapters = []
+        for model, label in adapters:
+            if model not in self.env.registry:
+                continue
+            candidate = self.env[model]
+            project_field = candidate._fields.get("project_id") or candidate._fields.get("x_project_id")
+            if (
+                project_field
+                and project_field.type == "many2one"
+                and project_field.comodel_name == "project.project"
+            ):
+                compatible_adapters.append((model, label))
+        return targets + compatible_adapters
 
     def _check_target_project(self, target_record, project):
         if target_record._name == "project.project":
             target_project = target_record
         else:
-            target_project = target_record.project_id if "project_id" in target_record._fields else False
+            target_project = (
+                target_record.project_id if "project_id" in target_record._fields
+                else target_record.x_project_id if "x_project_id" in target_record._fields
+                else False
+            )
         if not target_project or target_project != project:
             raise ValidationError(_("The governed target must belong to the selected project."))
 
@@ -356,6 +386,11 @@ class HjigApproval(models.Model):
     )
     requested_by_id = fields.Many2one("res.users", required=True, readonly=True, copy=False)
     requested_date = fields.Datetime(default=fields.Datetime.now, required=True, readonly=True, copy=False)
+    request_snapshot_hash = fields.Char(readonly=True, copy=False, index=True)
+    request_snapshot = fields.Text(
+        readonly=True, copy=False,
+        groups="new_hongyijig_custom.group_hjig_governance_approver,project.group_project_manager",
+    )
     state = fields.Selection(
         [("pending", "Pending"), ("approved", "Approved"), ("rejected", "Rejected"), ("cancelled", "Cancelled")],
         default="pending",
@@ -386,13 +421,16 @@ class HjigApproval(models.Model):
             approval._check_target_project(approval.target_ref, approval.project_id)
 
     def write(self, vals):
-        workflow_fields = {"state", "approver_id", "decision_date", "requested_by_id", "requested_date"}
+        workflow_fields = {
+            "state", "approver_id", "decision_date", "requested_by_id", "requested_date",
+            "request_snapshot_hash", "request_snapshot",
+        }
         if workflow_fields.intersection(vals) and not is_workflow_context(self.env):
             raise ValidationError(_("Approval audit fields may only change through decision actions."))
         if any(record.state != "pending" for record in self):
             protected = {
                 "project_id", "target_ref", "approval_type", "authority_designation_id",
-                "requested_by_id", "requested_date", "decision_reason",
+                "requested_by_id", "requested_date", "request_snapshot_hash", "request_snapshot", "decision_reason",
             }
             if protected.intersection(vals):
                 raise ValidationError(_("A completed approval is read-only."))
@@ -402,6 +440,16 @@ class HjigApproval(models.Model):
         if not self.env.user.has_group("new_hongyijig_custom.group_hjig_governance_approver"):
             raise UserError(_("Only authorised Hongyi Governance Approvers may decide this request."))
         for approval in self:
+            target = approval.sudo().target_ref
+            if (
+                approval.approval_type == "commercial"
+                and target
+                and target._name == "hjig.commercial.link"
+                and not self.env.user.has_group("new_hongyijig_custom.group_hjig_commercial_user")
+            ):
+                raise UserError(_(
+                    "Commercial decisions require Hongyi Commercial Records access so the approver can inspect the immutable submission snapshot."
+                ))
             if approval.authority_designation_id and self.env.user not in approval.authority_designation_id.holder_ids:
                 raise UserError(_("You do not hold the required approval designation."))
             if approval.requested_by_id == self.env.user:
