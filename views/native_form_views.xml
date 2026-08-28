@@ -106,6 +106,7 @@
         <field name="model">x_mould_part</field>
         <field name="arch" type="xml">
             <list string="Component / Part Planning" editable="bottom">
+                <field name="x_sequence" widget="handle"/>
                 <field name="x_part_number"/>
                 <field name="x_name"/>
                 <field name="x_part_category"/>
@@ -113,8 +114,9 @@
                 <field name="x_part_material" optional="hide"/>
                 <field name="x_part_weight_grams"/>
                 <field name="x_qps"/>
-                <field name="x_mould_configuration"/>
-                <field name="x_cavitation"/>
+                <field name="x_cavity_plan" optional="show"/>
+                <field name="x_visual_inspection_applicability" optional="show"/>
+                <field name="x_dimensional_inspection_applicability" optional="show"/>
                 <field name="x_assumption_status"/>
                 <field name="x_completion_percent" widget="progressbar"/>
             </list>
@@ -138,6 +140,7 @@
                             <field name="x_source_version"/>
                         </group>
                         <group string="Planning Control">
+                            <field name="x_sequence"/>
                             <field name="x_assumption_status"/>
                             <field name="x_completion_percent" widget="progressbar" readonly="1"/>
                             <field name="x_missing_fields" readonly="1"/>
@@ -167,8 +170,9 @@
                         <page string="Mould Configuration">
                             <group>
                                 <group>
-                                    <field name="x_mould_configuration"/>
-                                    <field name="x_cavitation"/>
+                                    <field name="x_cavity_plan"/>
+                                    <field name="x_mould_configuration" invisible="1"/>
+                                    <field name="x_cavitation" invisible="1"/>
                                     <field name="x_mould_base_steel_id" options="{'no_create': True, 'no_create_edit': True}"/>
                                     <field name="x_mould_base_steel_grade" readonly="1"/>
                                 </group>
@@ -178,6 +182,12 @@
                                     <field name="x_gate_type" readonly="1"/>
                                     <field name="x_gate_specifications"/>
                                 </group>
+                            </group>
+                        </page>
+                        <page string="Inspection Applicability">
+                            <group>
+                                <field name="x_visual_inspection_applicability"/>
+                                <field name="x_dimensional_inspection_applicability"/>
                             </group>
                         </page>
                         <page string="Core &amp; Cavity Steel">
@@ -212,6 +222,8 @@
                 <field name="x_name"/>
                 <field name="x_project_id"/>
                 <field name="x_plan_revision"/>
+                <field name="x_mould_configuration"/>
+                <field name="x_cavitation"/>
                 <field name="x_part_count"/>
                 <field name="x_completion_percent" widget="progressbar"/>
                 <field name="x_workflow_state" widget="badge"/>
@@ -240,7 +252,8 @@
                             <field name="x_mould_description"/>
                             <field name="x_template_id"/>
                             <field name="x_plan_revision"/>
-                            <field name="x_cavitation"/>
+                            <field name="x_mould_configuration"/>
+                            <field name="x_cavitation" readonly="x_mould_configuration != 'multi'"/>
                         </group>
                         <group string="Governed Authority">
                             <field name="x_owner_designation_id"/>
@@ -270,6 +283,49 @@
     <record id="action_hjig_mould_plan" model="ir.actions.act_window">
         <field name="name">Mould Planning Forms</field>
         <field name="res_model">x_mould</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="view_hjig_assembly_list" model="ir.ui.view">
+        <field name="name">hjig.assembly.list</field>
+        <field name="model">hjig.assembly</field>
+        <field name="arch" type="xml">
+            <list string="Project Assemblies" default_order="project_id, code">
+                <field name="code"/>
+                <field name="name"/>
+                <field name="project_id"/>
+                <field name="part_ids" widget="many2many_tags"/>
+                <field name="inspection_applicability"/>
+                <field name="active" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_assembly_form" model="ir.ui.view">
+        <field name="name">hjig.assembly.form</field>
+        <field name="model">hjig.assembly</field>
+        <field name="arch" type="xml">
+            <form string="Project Assembly">
+                <sheet>
+                    <div class="oe_title"><h1><field name="name" placeholder="Assembly Name"/></h1></div>
+                    <group>
+                        <field name="code"/>
+                        <field name="project_id"/>
+                        <field name="inspection_applicability"/>
+                        <field name="active"/>
+                    </group>
+                    <group string="Parts Involved">
+                        <field name="part_ids" widget="many2many_tags" domain="[('x_project_id', '=', project_id)]"/>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_hjig_assembly" model="ir.actions.act_window">
+        <field name="name">Project Assemblies</field>
+        <field name="res_model">hjig.assembly</field>
         <field name="view_mode">list,form</field>
     </record>
 
@@ -317,6 +373,7 @@
                     <group>
                         <group>
                             <field name="dimension_number"/>
+                            <field name="critical_dimension"/>
                             <field name="drawing_dimension_mm"/>
                             <field name="tolerance_minus_mm"/>
                             <field name="tolerance_plus_mm"/>
@@ -353,6 +410,7 @@
                 <field name="report_type"/>
                 <field name="mould_id"/>
                 <field name="part_id"/>
+                <field name="assembly_id" optional="show"/>
                 <field name="assembly_name" optional="show"/>
                 <field name="revision"/>
                 <field name="report_date"/>
@@ -383,12 +441,13 @@
                             <field name="revision"/>
                             <field name="report_date"/>
                             <field name="report_status"/>
-                            <field name="overall_status" widget="badge" readonly="1" invisible="report_type == 'dimensional'"/>
+                            <field name="overall_status" widget="badge" readonly="1"/>
                         </group>
                         <group string="Subject and Authority">
                             <field name="mould_id" domain="[('x_project_id', '=', project_id)]"/>
                             <field name="part_id" domain="[('x_project_id', '=', project_id)]" invisible="report_type == 'assembly'"/>
-                            <field name="assembly_name" invisible="report_type != 'assembly'"/>
+                            <field name="assembly_id" domain="[('project_id', '=', project_id)]" invisible="report_type != 'assembly'"/>
+                            <field name="assembly_name" readonly="1" invisible="report_type != 'assembly'"/>
                             <field name="owner_designation_id"/>
                             <field name="approver_designation_id"/>
                             <field name="submitted_by_id"/>
@@ -415,6 +474,7 @@
                                 <list>
                                     <field name="sequence" widget="handle"/>
                                     <field name="dimension_number"/>
+                                    <field name="critical_dimension"/>
                                     <field name="drawing_dimension_mm"/>
                                     <field name="tolerance_minus_mm"/>
                                     <field name="tolerance_plus_mm"/>
@@ -443,13 +503,15 @@
               parent="project.menu_main_pm" sequence="86" groups="project.group_project_user"/>
     <menuitem id="menu_hjig_mould_plans" name="Mould Planning Forms"
               parent="menu_hjig_native_project_forms" action="action_hjig_mould_plan" sequence="10"/>
+    <menuitem id="menu_hjig_assemblies" name="Project Assemblies"
+              parent="menu_hjig_native_project_forms" action="action_hjig_assembly" sequence="20"/>
     <menuitem id="menu_hjig_inspection_reports" name="Inspection Reports"
-              parent="menu_hjig_native_project_forms" action="action_hjig_inspection_report" sequence="20"/>
+              parent="menu_hjig_native_project_forms" action="action_hjig_inspection_report" sequence="30"/>
     <menuitem id="menu_hjig_native_form_templates" name="Form Templates"
-              parent="menu_hjig_native_project_forms" action="action_hjig_native_form_template" sequence="30"
+              parent="menu_hjig_native_project_forms" action="action_hjig_native_form_template" sequence="40"
               groups="project.group_project_manager"/>
     <menuitem id="menu_hjig_inspection_checkpoint_master" name="Inspection Checkpoint Master"
-              parent="menu_hjig_native_project_forms" action="action_hjig_inspection_checkpoint_master" sequence="40"
+              parent="menu_hjig_native_project_forms" action="action_hjig_inspection_checkpoint_master" sequence="50"
               groups="project.group_project_manager"/>
 
     <record id="view_project_form_hjig_native_forms" model="ir.ui.view">

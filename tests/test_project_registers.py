@@ -50,6 +50,8 @@ class TestProjectRegisters(TransactionCase):
             "x_surface_grade_code": "A2", "x_part_material": "ABS",
             "x_customer_shrinkage": 0.5, "x_part_weight_grams": 120.0, "x_qps": 1,
             "x_mould_configuration": "single", "x_cavitation": "1*1",
+            "x_visual_inspection_applicability": "required_critical",
+            "x_dimensional_inspection_applicability": "required",
             "x_mould_base_steel_grade": "P20", "x_runner_type": "cold", "x_gate_type": "Edge Gate",
         })
         mould.with_user(self.owner).action_submit_review()

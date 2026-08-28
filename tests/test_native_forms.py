@@ -99,8 +99,8 @@ class TestNativeProjectForms(TransactionCase):
                 "x_customer_shrinkage": 0.5,
                 "x_part_weight_grams": 125.0,
                 "x_qps": 1,
-                "x_mould_configuration": "single",
-                "x_cavitation": "1+1",
+                "x_visual_inspection_applicability": "required_critical",
+                "x_dimensional_inspection_applicability": "required",
                 "x_mould_base_steel_grade": "P20",
                 "x_runner_type": "cold",
                 "x_gate_type": "Edge Gate",
@@ -166,11 +166,18 @@ class TestNativeProjectForms(TransactionCase):
 
     def test_assembly_report_auto_generates_baseline_and_enforces_phase_order(self):
         mould, part = self._create_mould()
+        assembly = self.env["hjig.assembly"].create({
+            "name": "Test Assembly",
+            "code": "AP1",
+            "project_id": self.project.id,
+            "part_ids": [(6, 0, [part.id])],
+            "inspection_applicability": "required",
+        })
         report = self.env["hjig.inspection.report"].create({
             "project_id": self.project.id,
             "template_id": self.assembly_template.id,
             "mould_id": mould.id,
-            "assembly_name": "AP1",
+            "assembly_id": assembly.id,
             "revision": "R00",
         })
         self.assertEqual(len(report.point_ids), 33)
@@ -235,8 +242,8 @@ class TestNativeProjectForms(TransactionCase):
             "x_customer_shrinkage": 0.5,
             "x_part_weight_grams": 125.0,
             "x_qps": 1,
-            "x_mould_configuration": "single",
-            "x_cavitation": "1+1",
+            "x_visual_inspection_applicability": "required_noncritical",
+            "x_dimensional_inspection_applicability": "required",
             "x_mould_base_steel_id": steel.id,
             "x_runner_type": "cold",
             "x_gate_type_id": gate.id,
@@ -268,3 +275,116 @@ class TestNativeProjectForms(TransactionCase):
             "method_master_id": method.id,
         })
         self.assertEqual(line.method_used, "digital_calliper")
+
+    def test_governed_cavitation_follows_mould_configuration(self):
+        single, _part = self._create_mould()
+        self.assertEqual(single.x_cavitation, "1")
+        with self.assertRaises(ValidationError):
+            single.x_cavitation = "1*2"
+
+        family = self.env["x_mould"].create({
+            "x_name": "Family Mould",
+            "x_project_id": self.project.id,
+            "x_mould_number": "TM-FAMILY",
+            "x_mould_configuration": "family",
+            "x_template_id": self.mould_template.id,
+        })
+        part_1 = self.env["x_mould_part"].create({
+            "x_mould_id": family.id,
+            "x_name": "First",
+            "x_part_number": "F-001",
+            "x_sequence": 10,
+            "x_cavity_plan": 1,
+        })
+        part_2 = self.env["x_mould_part"].create({
+            "x_mould_id": family.id,
+            "x_name": "Second",
+            "x_part_number": "F-002",
+            "x_sequence": 20,
+            "x_cavity_plan": 4,
+        })
+        self.assertEqual(family.x_cavitation, "1+4")
+        part_2.x_cavity_plan = 2
+        self.assertEqual(family.x_cavitation, "1+2")
+        with self.assertRaises(ValidationError):
+            family.x_cavitation = "9+9"
+        part_1.unlink()
+        self.assertEqual(family.x_cavitation, "2")
+
+        multi = self.env["x_mould"].create({
+            "x_name": "Multi Mould",
+            "x_project_id": self.project.id,
+            "x_mould_number": "TM-MULTI",
+            "x_mould_configuration": "multi",
+            "x_cavitation": "1*2",
+            "x_template_id": self.mould_template.id,
+        })
+        self.assertEqual(multi.x_cavitation, "1*2")
+        multi.x_cavitation = "1*4"
+        self.assertEqual(multi.x_cavitation, "1*4")
+
+    def test_inspection_applicability_blocks_not_required_sessions(self):
+        mould, part = self._create_mould()
+        part.x_visual_inspection_applicability = "not_required"
+        with self.assertRaises(ValidationError):
+            self.env["hjig.inspection.report"].create({
+                "project_id": self.project.id,
+                "template_id": self.visual_template.id,
+                "mould_id": mould.id,
+                "part_id": part.id,
+                "revision": "R-NR",
+            })
+        part.x_dimensional_inspection_applicability = "not_required"
+        with self.assertRaises(ValidationError):
+            self.env["hjig.inspection.report"].create({
+                "project_id": self.project.id,
+                "template_id": self.dimensional_template.id,
+                "mould_id": mould.id,
+                "part_id": part.id,
+                "revision": "R-NR",
+            })
+
+    def test_critical_dimensions_block_submission_but_noncritical_ng_does_not(self):
+        mould, part = self._create_mould()
+        report = self.env["hjig.inspection.report"].create({
+            "project_id": self.project.id,
+            "template_id": self.dimensional_template.id,
+            "mould_id": mould.id,
+            "part_id": part.id,
+            "revision": "R-CRIT",
+        })
+        method = self.env.ref("new_hongyijig_custom.inspection_method_001")
+        critical = self.env["hjig.dimensional.line"].create({
+            "report_id": report.id,
+            "dimension_number": "CRIT-1",
+            "critical_dimension": True,
+            "drawing_dimension_mm": 10.0,
+            "tolerance_minus_mm": 0.1,
+            "tolerance_plus_mm": 0.1,
+            "method_master_id": method.id,
+        })
+        noncritical = self.env["hjig.dimensional.line"].create({
+            "report_id": report.id,
+            "dimension_number": "NONCRIT-1",
+            "drawing_dimension_mm": 20.0,
+            "tolerance_minus_mm": 0.1,
+            "tolerance_plus_mm": 0.1,
+            "method_master_id": method.id,
+        })
+        critical_result = self.env["hjig.dimensional.measurement"].create({
+            "dimension_line_id": critical.id,
+            "trial_stage": "t0",
+            "cavity_number": 1,
+            "actual_dimension_mm": 10.5,
+        })
+        self.env["hjig.dimensional.measurement"].create({
+            "dimension_line_id": noncritical.id,
+            "trial_stage": "t0",
+            "cavity_number": 1,
+            "actual_dimension_mm": 20.5,
+        })
+        with self.assertRaises(ValidationError):
+            report.with_user(self.owner).action_submit_review()
+        critical_result.actual_dimension_mm = 10.0
+        report.with_user(self.owner).action_submit_review()
+        self.assertEqual(report.workflow_state, "review")

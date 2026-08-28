@@ -167,7 +167,14 @@ class HjigMould(models.Model):
         tracking=True,
     )
     x_mould_description = fields.Char(string="Mould Name / Description", tracking=True)
-    x_cavitation = fields.Char(string="Cavitation", tracking=True)
+    x_mould_configuration = fields.Selection(
+        [("single", "Single Cavity"), ("multi", "Multi Cavity"), ("family", "Family Mould")],
+        string="Mould Configuration",
+        required=True,
+        default="single",
+        tracking=True,
+    )
+    x_cavitation = fields.Char(string="Cavitation", default="1", tracking=True)
     x_mould_planning_status = fields.Selection(
         [("tentative", "Tentative"), ("final_locked", "Final - Locked")],
         string="Mould Planning Status",
@@ -221,20 +228,56 @@ class HjigMould(models.Model):
         "The same mould number and plan revision already exists in this project.",
     )
 
-    @api.depends("x_part_ids", "x_part_ids.x_completion_percent", "x_part_ids.x_missing_fields")
+    @api.depends(
+        "x_mould_configuration", "x_cavitation",
+        "x_part_ids", "x_part_ids.x_completion_percent", "x_part_ids.x_missing_fields",
+    )
     def _compute_part_summary(self):
         for mould in self:
             mould.x_part_count = len(mould.x_part_ids)
+            header_missing = []
+            if not mould.x_mould_configuration:
+                header_missing.append(_("Mould Configuration"))
+            if not mould.x_cavitation:
+                header_missing.append(_("Cavitation"))
             if not mould.x_part_ids:
-                mould.x_completion_percent = 0.0
-                mould.x_missing_fields = _("At least one component / part is required.")
-                continue
-            mould.x_completion_percent = sum(mould.x_part_ids.mapped("x_completion_percent")) / len(mould.x_part_ids)
+                header_missing.append(_("At least one component / part is required"))
+            part_completion = (
+                sum(mould.x_part_ids.mapped("x_completion_percent")) / len(mould.x_part_ids)
+                if mould.x_part_ids else 0.0
+            )
+            header_completion = 100.0 * (
+                2 - len([item for item in header_missing if item != _("At least one component / part is required")])
+            ) / 2
+            mould.x_completion_percent = (header_completion + part_completion) / 2 if mould.x_part_ids else 0.0
             incomplete = mould.x_part_ids.filtered(lambda part: part.x_missing_fields)
-            mould.x_missing_fields = "\n".join(
+            part_missing = [
                 "%s: %s" % (part.x_part_number or part.x_name, part.x_missing_fields)
                 for part in incomplete
-            )
+            ]
+            mould.x_missing_fields = "\n".join(header_missing + part_missing)
+
+    def _sync_governed_cavitation(self):
+        for mould in self:
+            expected = False
+            if mould.x_mould_configuration == "single":
+                expected = "1"
+            elif mould.x_mould_configuration == "family":
+                plans = mould.x_part_ids.sorted(lambda part: (part.x_sequence, part.id)).mapped("x_cavity_plan")
+                expected = "+".join(str(plan) for plan in plans if plan > 0) or False
+            if mould.x_mould_configuration in ("single", "family") and mould.x_cavitation != expected:
+                mould.with_context(allow_governed_cavitation=True).write({"x_cavitation": expected})
+
+    @api.onchange("x_mould_configuration", "x_part_ids", "x_part_ids.x_cavity_plan", "x_part_ids.x_sequence")
+    def _onchange_governed_cavitation(self):
+        for mould in self:
+            if mould.x_mould_configuration == "single":
+                mould.x_cavitation = "1"
+            elif mould.x_mould_configuration == "family":
+                plans = mould.x_part_ids.sorted(lambda part: (part.x_sequence, part.id)).mapped("x_cavity_plan")
+                mould.x_cavitation = "+".join(str(plan) for plan in plans if plan > 0) or False
+            elif mould._origin.x_mould_configuration in ("single", "family"):
+                mould.x_cavitation = False
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -242,13 +285,20 @@ class HjigMould(models.Model):
         for vals in vals_list:
             vals["x_workflow_state"] = "draft"
             vals["x_mould_planning_status"] = "tentative"
+            vals.setdefault("x_mould_configuration", "single")
+            if vals["x_mould_configuration"] == "single":
+                vals["x_cavitation"] = "1"
+            elif vals["x_mould_configuration"] == "family":
+                vals["x_cavitation"] = False
             vals.setdefault("x_template_id", template.id if template else False)
             if template:
                 vals.setdefault("x_owner_designation_id", template.artifact_master_id.owner_designation_id.id)
                 vals.setdefault("x_approver_designation_id", template.artifact_master_id.approver_designation_id.id)
             if not vals.get("x_mould_number"):
                 vals["x_mould_number"] = self.env["ir.sequence"].next_by_code("hjig.mould") or _("New")
-        return super().create(vals_list)
+        moulds = super().create(vals_list)
+        moulds._sync_governed_cavitation()
+        return moulds
 
     def write(self, vals):
         locked_fields = set(self._fields) - {"message_follower_ids", "message_ids", "activity_ids"}
@@ -258,7 +308,15 @@ class HjigMould(models.Model):
         if "x_workflow_state" in vals and not self.env.context.get("allow_native_form_workflow"):
             if any(item.x_workflow_state != vals["x_workflow_state"] for item in self):
                 raise ValidationError(_("Use the controlled workflow buttons to change status."))
-        return super().write(vals)
+        if "x_cavitation" in vals and not self.env.context.get("allow_governed_cavitation"):
+            for mould in self:
+                configuration = vals.get("x_mould_configuration", mould.x_mould_configuration)
+                if configuration != "multi" and vals["x_cavitation"] != mould.x_cavitation:
+                    raise ValidationError(_("Cavitation is automatic for Single Cavity and Family Mould configurations."))
+        result = super().write(vals)
+        if "x_mould_configuration" in vals:
+            self._sync_governed_cavitation()
+        return result
 
     def unlink(self):
         if any(item.x_workflow_state != "draft" for item in self):
@@ -304,12 +362,13 @@ class HjigMouldPart(models.Model):
     _description = "Mould Planning Component / Part"
     _inherit = ["mail.thread", "mail.activity.mixin"]
     _rec_name = "x_name"
-    _order = "x_mould_id, x_part_number, id"
+    _order = "x_mould_id, x_sequence, id"
 
     x_name = fields.Char(string="Name", required=True, tracking=True)
     x_active = fields.Boolean(string="Active", default=True)
     x_mould_id = fields.Many2one("x_mould", string="Mould", required=True, ondelete="restrict", index=True)
     x_project_id = fields.Many2one(related="x_mould_id.x_project_id", store=True, index=True)
+    x_sequence = fields.Integer(string="Part Sequence", default=10, required=True, tracking=True)
     x_part_number = fields.Char(string="Part Number / Identifier", required=True, tracking=True)
     x_material_reference = fields.Char(string="Material Reference")
     x_source_version = fields.Char(string="Source / Version Traceability")
@@ -355,6 +414,21 @@ class HjigMouldPart(models.Model):
         tracking=True,
     )
     x_cavitation = fields.Char(string="Cavitation", tracking=True)
+    x_cavity_plan = fields.Integer(string="Cavity Plan for Family Mould", tracking=True)
+    x_visual_inspection_applicability = fields.Selection(
+        [
+            ("not_required", "Not Required"),
+            ("required_noncritical", "Required - Non-Critical"),
+            ("required_critical", "Required - Critical"),
+        ],
+        string="Visual Inspection Applicability",
+        tracking=True,
+    )
+    x_dimensional_inspection_applicability = fields.Selection(
+        [("not_required", "Not Required"), ("required", "Required")],
+        string="Dimensional Inspection Applicability",
+        tracking=True,
+    )
     x_mould_base_steel_grade = fields.Selection(
         [(value, value) for value in ("P20", "718H", "NAK80", "S136", "H13", "8407", "Customer Specified")],
         tracking=True,
@@ -461,7 +535,8 @@ class HjigMouldPart(models.Model):
     @api.depends(
         "x_name", "x_part_number", "x_part_category", "x_surface_finish_type",
         "x_surface_finish_id", "x_surface_grade_code", "x_material_master_id", "x_part_material", "x_customer_shrinkage",
-        "x_part_weight_grams", "x_qps", "x_mould_configuration", "x_cavitation",
+        "x_part_weight_grams", "x_qps", "x_mould_id.x_mould_configuration", "x_cavity_plan",
+        "x_visual_inspection_applicability", "x_dimensional_inspection_applicability",
         "x_mould_base_steel_id", "x_mould_base_steel_grade", "x_runner_type", "x_gate_type_id", "x_gate_type",
     )
     def _compute_completeness(self):
@@ -471,19 +546,23 @@ class HjigMouldPart(models.Model):
             (("x_surface_finish_id", "x_surface_grade_code"), _("Surface Grade / Code")),
             (("x_material_master_id", "x_part_material"), _("Part Material")),
             ("x_customer_shrinkage", _("Customer Shrinkage %")), ("x_part_weight_grams", _("Part Weight")),
-            ("x_qps", _("QPS")), ("x_mould_configuration", _("Mould Configuration")),
-            ("x_cavitation", _("Cavitation")),
+            ("x_qps", _("QPS")),
+            ("x_visual_inspection_applicability", _("Visual Inspection Applicability")),
+            ("x_dimensional_inspection_applicability", _("Dimensional Inspection Applicability")),
             (("x_mould_base_steel_id", "x_mould_base_steel_grade"), _("Mould Base Steel")),
             ("x_runner_type", _("Runner Type")), (("x_gate_type_id", "x_gate_type"), _("Gate Type")),
         ]
         for part in self:
+            part_required = list(required)
+            if part.x_mould_id.x_mould_configuration == "family":
+                part_required.append(("x_cavity_plan", _("Cavity Plan for Family Mould")))
             missing = []
-            for field_names, label in required:
+            for field_names, label in part_required:
                 field_names = (field_names,) if isinstance(field_names, str) else field_names
                 if not any(part[field_name] for field_name in field_names):
                     missing.append(label)
             part.x_missing_fields = ", ".join(missing)
-            part.x_completion_percent = 100.0 * (len(required) - len(missing)) / len(required)
+            part.x_completion_percent = 100.0 * (len(part_required) - len(missing)) / len(part_required)
 
     @api.onchange("x_surface_finish_type")
     def _onchange_surface_finish_type(self):
@@ -564,24 +643,76 @@ class HjigMouldPart(models.Model):
             mould = self.env["x_mould"].browse(vals.get("x_mould_id")).exists()
             if mould and mould.x_workflow_state != "draft":
                 raise ValidationError(_("Components may only be added while the mould plan is Draft."))
-        return super().create(vals_list)
+        parts = super().create(vals_list)
+        parts.mapped("x_mould_id")._sync_governed_cavitation()
+        return parts
 
-    @api.constrains("x_customer_shrinkage", "x_part_weight_grams", "x_qps")
+    @api.constrains("x_customer_shrinkage", "x_part_weight_grams", "x_qps", "x_cavity_plan")
     def _check_positive_values(self):
         for part in self:
             if part.x_customer_shrinkage < 0 or part.x_customer_shrinkage > 100:
                 raise ValidationError(_("Customer Shrinkage must be between 0 and 100 percent."))
             if part.x_part_weight_grams < 0 or part.x_qps < 0:
                 raise ValidationError(_("Part Weight and QPS cannot be negative."))
+            if part.x_cavity_plan < 0:
+                raise ValidationError(_("Cavity Plan cannot be negative."))
 
     def write(self, vals):
         if any(part.x_mould_id.x_workflow_state in ("approved", "superseded") for part in self):
             raise ValidationError(_("Components of an approved or superseded mould plan are read-only."))
-        return super().write(self._reference_snapshot_values(vals))
+        moulds = self.mapped("x_mould_id")
+        result = super().write(self._reference_snapshot_values(vals))
+        if {"x_cavity_plan", "x_sequence", "x_mould_id"}.intersection(vals):
+            (moulds | self.mapped("x_mould_id"))._sync_governed_cavitation()
+        return result
 
     def unlink(self):
         if any(part.x_mould_id.x_workflow_state != "draft" for part in self):
             raise UserError(_("Components may only be deleted while the mould plan is Draft."))
+        moulds = self.mapped("x_mould_id")
+        result = super().unlink()
+        moulds._sync_governed_cavitation()
+        return result
+
+
+class HjigAssembly(models.Model):
+    _name = "hjig.assembly"
+    _description = "Project Assembly"
+    _inherit = ["mail.thread", "mail.activity.mixin"]
+    _order = "project_id, code, id"
+
+    name = fields.Char(string="Assembly Name", required=True, tracking=True)
+    code = fields.Char(string="Assembly Code", required=True, tracking=True, index=True)
+    project_id = fields.Many2one("project.project", required=True, ondelete="restrict", index=True, tracking=True)
+    part_ids = fields.Many2many("x_mould_part", string="Parts Involved", tracking=True)
+    inspection_applicability = fields.Selection(
+        [("not_required", "Not Required"), ("required", "Required")],
+        string="Assembly Inspection Applicability",
+        required=True,
+        tracking=True,
+    )
+    active = fields.Boolean(default=True, tracking=True)
+
+    _project_assembly_code_unique = models.Constraint(
+        "UNIQUE(project_id, code)",
+        "Assembly Code must be unique within the project.",
+    )
+
+    @api.constrains("project_id", "part_ids")
+    def _check_part_projects(self):
+        for assembly in self:
+            if assembly.part_ids.filtered(lambda part: part.x_project_id != assembly.project_id):
+                raise ValidationError(_("Every Part in an Assembly must belong to the same project."))
+
+    def write(self, vals):
+        governed = {"name", "code", "project_id", "part_ids", "inspection_applicability"}
+        if governed.intersection(vals) and self.env["hjig.inspection.report"].search_count([("assembly_id", "in", self.ids)]):
+            raise ValidationError(_("An Assembly already used by an inspection report cannot be rewritten."))
+        return super().write(vals)
+
+    def unlink(self):
+        if self.env["hjig.inspection.report"].search_count([("assembly_id", "in", self.ids)]):
+            raise UserError(_("An Assembly used by an inspection report cannot be deleted. Archive it instead."))
         return super().unlink()
 
 
@@ -604,6 +735,7 @@ class HjigInspectionReport(models.Model):
     )
     mould_id = fields.Many2one("x_mould", ondelete="restrict", tracking=True)
     part_id = fields.Many2one("x_mould_part", ondelete="restrict", tracking=True)
+    assembly_id = fields.Many2one("hjig.assembly", ondelete="restrict", tracking=True)
     assembly_name = fields.Char(tracking=True)
     report_date = fields.Date(default=fields.Date.context_today, required=True, tracking=True)
     revision = fields.Char(default="R00", required=True, tracking=True)
@@ -639,6 +771,10 @@ class HjigInspectionReport(models.Model):
         "UNIQUE(project_id, report_type, mould_id, part_id, revision)",
         "The same inspection report revision already exists for this project, mould and part.",
     )
+    _project_assembly_report_revision_unique = models.Constraint(
+        "UNIQUE(project_id, report_type, assembly_id, revision)",
+        "The same Assembly Inspection report revision already exists for this project and assembly.",
+    )
 
     @api.onchange("template_id")
     def _onchange_template_id(self):
@@ -656,6 +792,24 @@ class HjigInspectionReport(models.Model):
             if template.form_kind == "mould_plan":
                 raise ValidationError(_("Mould Planning templates cannot create an Inspection Report."))
             vals["report_type"] = template.form_kind
+            part = self.env["x_mould_part"].browse(vals.get("part_id")).exists()
+            assembly = self.env["hjig.assembly"].browse(vals.get("assembly_id")).exists()
+            if template.form_kind == "visual":
+                if not part or not part.x_visual_inspection_applicability:
+                    raise ValidationError(_("Set Visual Inspection Applicability on the selected Part first."))
+                if part.x_visual_inspection_applicability == "not_required":
+                    raise ValidationError(_("A Visual Inspection report cannot be created for a Not Required Part."))
+            if template.form_kind == "dimensional":
+                if not part or not part.x_dimensional_inspection_applicability:
+                    raise ValidationError(_("Set Dimensional Inspection Applicability on the selected Part first."))
+                if part.x_dimensional_inspection_applicability == "not_required":
+                    raise ValidationError(_("A Dimensional Inspection report cannot be created for a Not Required Part."))
+            if template.form_kind == "assembly":
+                if not assembly:
+                    raise ValidationError(_("Select a governed Assembly before creating an Assembly Inspection report."))
+                if assembly.inspection_applicability == "not_required":
+                    raise ValidationError(_("An Assembly Inspection report cannot be created for a Not Required Assembly."))
+                vals["assembly_name"] = assembly.code
             vals.setdefault("owner_designation_id", template.artifact_master_id.owner_designation_id.id)
             vals.setdefault("approver_designation_id", template.artifact_master_id.approver_designation_id.id)
             if vals.get("report_number", _("New")) == _("New"):
@@ -680,14 +834,30 @@ class HjigInspectionReport(models.Model):
                 "sequence": checkpoint.sequence,
                 "description": checkpoint.checkpoint_text,
                 "not_required": checkpoint.default_not_required,
+                "involved_part_ids": [(6, 0, report.assembly_id.part_ids.ids)]
+                if report.report_type == "assembly" else False,
             } for checkpoint in checkpoints])
         return reports
 
-    @api.depends("point_ids.not_required", "point_ids.trial_result_ids.status")
+    @api.depends(
+        "point_ids.not_required", "point_ids.trial_result_ids.status",
+        "dimension_line_ids.critical_dimension", "dimension_line_ids.measurement_ids.measurement_taken",
+        "dimension_line_ids.measurement_ids.result",
+    )
     def _compute_overall_status(self):
         for report in self:
             if report.report_type == "dimensional":
-                report.overall_status = "pending"
+                measurements = report.dimension_line_ids.measurement_ids
+                if (
+                    not report.dimension_line_ids
+                    or any(not line.measurement_ids for line in report.dimension_line_ids)
+                    or measurements.filtered(lambda measurement: not measurement.measurement_taken)
+                ):
+                    report.overall_status = "pending"
+                elif measurements.filtered(lambda measurement: measurement.result == "ng"):
+                    report.overall_status = "fail"
+                else:
+                    report.overall_status = "pass"
                 continue
             results = report.point_ids.filtered(lambda point: not point.not_required).trial_result_ids
             if not results or results.filtered(lambda result: result.status == "pending"):
@@ -697,7 +867,7 @@ class HjigInspectionReport(models.Model):
             else:
                 report.overall_status = "pass"
 
-    @api.constrains("template_id", "report_type", "mould_id", "part_id", "assembly_name")
+    @api.constrains("template_id", "report_type", "mould_id", "part_id", "assembly_id", "assembly_name")
     def _check_report_structure(self):
         for report in self:
             if report.template_id.form_kind != report.report_type:
@@ -706,10 +876,20 @@ class HjigInspectionReport(models.Model):
                 raise ValidationError(_("The selected mould belongs to a different project."))
             if report.part_id and report.part_id.x_project_id != report.project_id:
                 raise ValidationError(_("The selected part belongs to a different project."))
+            if report.assembly_id and report.assembly_id.project_id != report.project_id:
+                raise ValidationError(_("The selected Assembly belongs to a different project."))
             if report.report_type in ("visual", "dimensional") and not report.part_id:
                 raise ValidationError(_("Part Visual and Dimensional reports require a Part."))
-            if report.report_type == "assembly" and not report.assembly_name:
-                raise ValidationError(_("Assembly Inspection reports require an Assembly Name."))
+            if report.report_type == "visual" and report.part_id.x_visual_inspection_applicability not in (
+                "required_noncritical", "required_critical"
+            ):
+                raise ValidationError(_("Visual Inspection is not applicable to the selected Part."))
+            if report.report_type == "dimensional" and report.part_id.x_dimensional_inspection_applicability != "required":
+                raise ValidationError(_("Dimensional Inspection is not applicable to the selected Part."))
+            if report.report_type == "assembly" and not (report.assembly_id or report.assembly_name):
+                raise ValidationError(_("Assembly Inspection reports require an Assembly."))
+            if report.assembly_id and report.assembly_id.inspection_applicability != "required":
+                raise ValidationError(_("Assembly Inspection is not applicable to the selected Assembly."))
 
     def write(self, vals):
         if vals.get("template_id"):
@@ -745,16 +925,31 @@ class HjigInspectionReport(models.Model):
                 raise ValidationError(_("Add at least one dimensional inspection line."))
             if report.report_type != "dimensional" and not report.point_ids:
                 raise ValidationError(_("Add at least one inspection point."))
-            if report.report_type != "dimensional" and report.point_ids.filtered(
-                lambda point: not point.not_required
-            ).trial_result_ids.filtered(
-                lambda result: result.status in ("pending", "fail")
-            ):
-                raise ValidationError(_("Every applicable checkpoint must be Pass before submission."))
+            if report.report_type != "dimensional":
+                results = report.point_ids.filtered(lambda point: not point.not_required).trial_result_ids
+                if results.filtered(lambda result: result.status == "pending"):
+                    raise ValidationError(_("Every applicable checkpoint must be evaluated before submission."))
+                critical_visual = (
+                    report.report_type == "visual"
+                    and report.part_id.x_visual_inspection_applicability == "required_critical"
+                )
+                if (report.report_type == "assembly" or critical_visual) and results.filtered(
+                    lambda result: result.status == "fail"
+                ):
+                    raise ValidationError(_("Every gate-blocking checkpoint must be Pass before submission."))
             if report.report_type == "dimensional" and any(
                 not line.measurement_ids for line in report.dimension_line_ids
             ):
                 raise ValidationError(_("Every dimensional line requires at least one cavity measurement."))
+            if report.report_type == "dimensional" and report.dimension_line_ids.measurement_ids.filtered(
+                lambda measurement: not measurement.measurement_taken
+            ):
+                raise ValidationError(_("Every recorded dimensional measurement must be completed before submission."))
+            if report.report_type == "dimensional" and report.dimension_line_ids.filtered(
+                lambda line: line.critical_dimension
+                and line.measurement_ids.filtered(lambda measurement: measurement.result != "go")
+            ):
+                raise ValidationError(_("Every Critical Dimension must be GO before submission."))
             report.with_context(allow_native_form_workflow=True).write({
                 "workflow_state": "review",
                 "report_status": "complete_submitted",
@@ -936,6 +1131,7 @@ class HjigDimensionalLine(models.Model):
     project_id = fields.Many2one(related="report_id.project_id", store=True, index=True)
     sequence = fields.Integer(default=10)
     dimension_number = fields.Char(required=True)
+    critical_dimension = fields.Boolean(string="Critical Dimension")
     drawing_dimension_mm = fields.Float(required=True, digits=(16, 4))
     tolerance_minus_mm = fields.Float(required=True, digits=(16, 4))
     tolerance_plus_mm = fields.Float(required=True, digits=(16, 4))
