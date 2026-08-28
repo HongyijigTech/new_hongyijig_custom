@@ -1,4 +1,4 @@
-from odoo.exceptions import ValidationError
+from odoo.exceptions import UserError, ValidationError
 from odoo.tests import TransactionCase, tagged
 
 
@@ -43,9 +43,11 @@ class TestNativeProjectForms(TransactionCase):
         })
         cls.mould_artifact = cls._artifact("NATIVE-TEST-MPL", "Test Mould Plan")
         cls.visual_artifact = cls._artifact("NATIVE-TEST-VIR", "Test Visual Report")
+        cls.assembly_artifact = cls._artifact("NATIVE-TEST-AIR", "Test Assembly Report")
         cls.dimensional_artifact = cls._artifact("NATIVE-TEST-DIR", "Test Dimensional Report")
         cls.mould_template = cls._template("NATIVE-TPL-MPL", "mould_plan", cls.mould_artifact)
         cls.visual_template = cls._template("NATIVE-TPL-VIR", "visual", cls.visual_artifact)
+        cls.assembly_template = cls._template("NATIVE-TPL-AIR", "assembly", cls.assembly_artifact)
         cls.dimensional_template = cls._template("NATIVE-TPL-DIR", "dimensional", cls.dimensional_artifact)
 
     @classmethod
@@ -133,7 +135,7 @@ class TestNativeProjectForms(TransactionCase):
         with self.assertRaises(ValidationError):
             mould.with_user(self.owner).action_submit_review()
 
-    def test_visual_point_creates_four_controlled_trial_rows(self):
+    def test_visual_report_auto_generates_approved_checkpoint_baseline(self):
         mould, part = self._create_mould()
         report = self.env["hjig.inspection.report"].create({
             "project_id": self.project.id,
@@ -143,15 +145,48 @@ class TestNativeProjectForms(TransactionCase):
             "revision": "R00",
             "effective_date": "2026-08-27",
         })
-        point = self.env["hjig.inspection.point"].create({
-            "report_id": report.id,
-            "description": "No sink marks on Class-A surface",
-        })
-        self.assertEqual(set(point.trial_result_ids.mapped("trial_stage")), {"t0", "t1", "t2", "final"})
-        point.trial_result_ids.write({"status": "na"})
+        self.assertEqual(len(report.point_ids), 41)
+        self.assertEqual(report.point_ids[0].description, "Check for scratches, scuffs, and drag marks, even using magnification if necessary.")
+        self.assertEqual(set(report.point_ids[0].trial_result_ids.mapped("trial_stage")), {"t0", "t1", "t2", "t3", "t4", "final"})
+        self.assertEqual(report.overall_status, "pending")
+        controlled_point = report.point_ids[0]
+        with self.assertRaises(ValidationError):
+            controlled_point.description = "Rewritten checkpoint"
+        with self.assertRaises(UserError):
+            controlled_point.unlink()
+        controlled_point.not_required = True
+        self.assertEqual(set(controlled_point.trial_result_ids.mapped("status")), {"na"})
+        controlled_point.not_required = False
+        self.assertEqual(set(controlled_point.trial_result_ids.mapped("status")), {"pending"})
+        report.point_ids.trial_result_ids.write({"status": "pass"})
+        self.assertEqual(report.overall_status, "pass")
         report.with_user(self.owner).action_submit_review()
         report.with_user(self.approver).action_approve()
         self.assertEqual(report.workflow_state, "approved")
+
+    def test_assembly_report_auto_generates_baseline_and_enforces_phase_order(self):
+        mould, part = self._create_mould()
+        report = self.env["hjig.inspection.report"].create({
+            "project_id": self.project.id,
+            "template_id": self.assembly_template.id,
+            "mould_id": mould.id,
+            "assembly_name": "AP1",
+            "revision": "R00",
+        })
+        self.assertEqual(len(report.point_ids), 33)
+        self.assertEqual(len(report.point_ids.filtered(lambda item: item.phase == "during")), 14)
+        self.assertEqual(len(report.point_ids.filtered(lambda item: item.phase == "after")), 19)
+        after_t0 = report.point_ids.filtered(lambda item: item.sequence == 15).trial_result_ids.filtered(
+            lambda item: item.trial_stage == "t0"
+        )
+        with self.assertRaises(ValidationError):
+            after_t0.status = "pass"
+        during_t0 = report.point_ids.filtered(lambda item: item.phase == "during").trial_result_ids.filtered(
+            lambda item: item.trial_stage == "t0"
+        )
+        during_t0.write({"status": "pass"})
+        after_t0.status = "pass"
+        self.assertEqual(after_t0.status, "pass")
 
     def test_dimensional_limits_and_go_ng_are_automatic(self):
         mould, part = self._create_mould()

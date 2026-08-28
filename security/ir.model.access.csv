@@ -13,6 +13,8 @@
 "access_hjig_artifact_master_controller","hjig.governance.artifact.master controller","model_hjig_governance_artifact_master","new_hongyijig_custom.group_hjig_document_controller",1,0,0,0
 "access_hjig_native_form_template_user","hjig.native.form.template user","model_hjig_native_form_template","project.group_project_user",1,0,0,0
 "access_hjig_native_form_template_manager","hjig.native.form.template manager","model_hjig_native_form_template","project.group_project_manager",1,1,1,1
+"access_hjig_inspection_checkpoint_user","inspection checkpoint master user","model_hjig_inspection_checkpoint_master","project.group_project_user",1,0,0,0
+"access_hjig_inspection_checkpoint_manager","inspection checkpoint master manager","model_hjig_inspection_checkpoint_master","project.group_project_manager",1,1,1,0
 "access_x_mould_user","x.mould project user","model_x_mould","project.group_project_user",1,1,1,0
 "access_x_mould_manager","x.mould project manager","model_x_mould","project.group_project_manager",1,1,1,1
 "access_x_mould_part_user","x.mould.part project user","model_x_mould_part","project.group_project_user",1,1,1,0

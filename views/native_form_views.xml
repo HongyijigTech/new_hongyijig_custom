@@ -51,6 +51,56 @@
         <field name="view_mode">list,form</field>
     </record>
 
+    <record id="view_hjig_inspection_checkpoint_master_list" model="ir.ui.view">
+        <field name="name">hjig.inspection.checkpoint.master.list</field>
+        <field name="model">hjig.inspection.checkpoint.master</field>
+        <field name="arch" type="xml">
+            <list string="Controlled Inspection Checkpoints" default_order="form_kind, sequence">
+                <field name="form_kind"/>
+                <field name="sequence"/>
+                <field name="phase" optional="show"/>
+                <field name="category"/>
+                <field name="checkpoint_text"/>
+                <field name="default_not_required" optional="hide"/>
+                <field name="source_specification" optional="show"/>
+                <field name="source_url" widget="url" optional="hide"/>
+                <field name="active" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_inspection_checkpoint_master_form" model="ir.ui.view">
+        <field name="name">hjig.inspection.checkpoint.master.form</field>
+        <field name="model">hjig.inspection.checkpoint.master</field>
+        <field name="arch" type="xml">
+            <form string="Controlled Inspection Checkpoint">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="form_kind"/>
+                            <field name="sequence"/>
+                            <field name="phase" invisible="form_kind != 'assembly'"/>
+                            <field name="category"/>
+                        </group>
+                        <group>
+                            <field name="source_specification"/>
+                            <field name="source_url" widget="url"/>
+                            <field name="default_not_required"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <group string="Approved Checkpoint Text"><field name="checkpoint_text" nolabel="1"/></group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_hjig_inspection_checkpoint_master" model="ir.actions.act_window">
+        <field name="name">Inspection Checkpoint Master</field>
+        <field name="res_model">hjig.inspection.checkpoint.master</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
     <record id="view_x_mould_part_list" model="ir.ui.view">
         <field name="name">x.mould.part.native.list</field>
         <field name="model">x_mould_part</field>
@@ -233,12 +283,17 @@
                         <group>
                             <field name="point_number"/>
                             <field name="sequence"/>
-                            <field name="description"/>
+                            <field name="checkpoint_master_id" invisible="1"/>
+                            <field name="category" readonly="1"/>
+                            <field name="phase" readonly="1" invisible="report_type != 'assembly'"/>
+                            <field name="not_required"/>
+                            <field name="description" readonly="checkpoint_master_id"/>
                             <field name="involved_part_ids" widget="many2many_tags" domain="[('x_project_id', '=', project_id)]"/>
                         </group>
                         <group><field name="picture" widget="image"/></group>
                     </group>
                     <field name="project_id" invisible="1"/>
+                    <field name="report_type" invisible="1"/>
                     <field name="trial_result_ids">
                         <list editable="bottom" create="false" delete="false">
                             <field name="trial_stage"/>
@@ -302,6 +357,7 @@
                 <field name="revision"/>
                 <field name="report_date"/>
                 <field name="workflow_state" widget="badge"/>
+                <field name="overall_status" widget="badge" optional="show"/>
             </list>
         </field>
     </record>
@@ -327,6 +383,7 @@
                             <field name="revision"/>
                             <field name="report_date"/>
                             <field name="report_status"/>
+                            <field name="overall_status" widget="badge" readonly="1" invisible="report_type == 'dimensional'"/>
                         </group>
                         <group string="Subject and Authority">
                             <field name="mould_id" domain="[('x_project_id', '=', project_id)]"/>
@@ -345,6 +402,9 @@
                                 <list>
                                     <field name="sequence" widget="handle"/>
                                     <field name="point_number"/>
+                                    <field name="category"/>
+                                    <field name="phase" optional="show"/>
+                                    <field name="not_required"/>
                                     <field name="description"/>
                                     <field name="involved_part_ids" widget="many2many_tags" optional="show"/>
                                 </list>
@@ -387,6 +447,9 @@
               parent="menu_hjig_native_project_forms" action="action_hjig_inspection_report" sequence="20"/>
     <menuitem id="menu_hjig_native_form_templates" name="Form Templates"
               parent="menu_hjig_native_project_forms" action="action_hjig_native_form_template" sequence="30"
+              groups="project.group_project_manager"/>
+    <menuitem id="menu_hjig_inspection_checkpoint_master" name="Inspection Checkpoint Master"
+              parent="menu_hjig_native_project_forms" action="action_hjig_inspection_checkpoint_master" sequence="40"
               groups="project.group_project_manager"/>
 
     <record id="view_project_form_hjig_native_forms" model="ir.ui.view">

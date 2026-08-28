@@ -1,0 +1,75 @@
+id,form_kind,sequence,phase,category,checkpoint_text,default_not_required,source_specification,active
+visual_checkpoint_001,visual,1,,Surface/Cosmetic Defects,"Check for scratches, scuffs, and drag marks, even using magnification if necessary.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_002,visual,2,,Surface/Cosmetic Defects,"Assess sink marks for their depth and frequency.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_003,visual,3,,Surface/Cosmetic Defects,"Identify flow lines and weld lines and note their impact on appearance or integrity.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_004,visual,4,,Surface/Cosmetic Defects,"Look for burn marks and discoloration, especially near gates and edges.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_005,visual,5,,Surface/Cosmetic Defects,"Verify uniform gloss or matte finish across the entire part.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_006,visual,6,,Surface/Cosmetic Defects,"Ensure no foreign particles (dust, debris) are embedded in or adhering to surfaces.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_007,visual,7,,Surface/Cosmetic Defects,"Confirm no blotches or cloudiness affecting even coloration.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_008,visual,8,,Surface/Cosmetic Defects,"Check for flash around holes, slots, and external contours that might hinder assembly.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_009,visual,9,,Surface/Cosmetic Defects,"Ensure no visible trimming or cutting marks on external surfaces.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_010,visual,10,,Edges and Parting Lines,"Parting lines should be clean, well-defined, with no excess material.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_011,visual,11,,Edges and Parting Lines,"Inspect all edges for burrs or roughness that pose safety risks or interfere with fit.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_012,visual,12,,Edges and Parting Lines,"Confirm edges match design intent (sharp or rounded as specified).",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_013,visual,13,,Edges and Parting Lines,"Look for cracks and fractures; gently flex the part if safe to detect hidden weaknesses.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_014,visual,14,,Structural Integrity,"Identify voids or air bubbles that may compromise structural strength.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_015,visual,15,,Structural Integrity,"Check thick-walled areas for shrinkage-related defects or inconsistent density.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_016,visual,16,,Structural Integrity,"Look for signs of delamination (layered or peeling surfaces) indicating poor bonding.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_017,visual,17,,Structural Integrity,"Ensure the part is not unexpectedly brittle or overly rigid.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_018,visual,18,,Colour and Texture,"Compare color against approved samples or specified standards.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_019,visual,19,,Colour and Texture,"Check for uniform color distribution, avoiding gradients or patches.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_020,visual,20,,Colour and Texture,"Inspect texture patterns (e.g., leather grain, haircell) for uniform depth and spacing.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_021,visual,21,,Colour and Texture,"Verify consistent gloss or matte level throughout the part.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_022,visual,22,,Colour and Texture,"Note any streaks or swirls that may indicate poor material mixing.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_023,visual,23,,Gate-Runner-Sprue Area,"Ensure gate vestiges are properly trimmed and flush with the surface as per design.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_024,visual,24,,Gate-Runner-Sprue Area,"Check that runner and sprue cut-off points are free of excessive material.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_025,visual,25,,Gate-Runner-Sprue Area,"Confirm no sink marks or voids caused by material removal at these areas.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_026,visual,26,,Gate-Runner-Sprue Area,"Inspect for stress whitening or micro-cracks around the gate/runner/sprue regions.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_027,visual,27,,Ejection Marks,"Pin marks should be minimal, shallow, and evenly distributed.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_028,visual,28,,Ejection Marks,"Confirm no surface distortion or loss of functionality due to ejection forces.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_029,visual,29,,Ejection Marks,"Look for stress whitening or indentations from ejection pins.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_030,visual,30,,Ejection Marks,"Ensure no gouges or raised areas caused by incorrect ejection.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_031,visual,31,,Warpage and Flatness,"Place the part on a flat surface to detect bending, twisting, or warping.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_032,visual,32,,Warpage and Flatness,"Check critical planes and reference features for straightness and stability.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_033,visual,33,,Warpage and Flatness,"Verify thickness uniformity to prevent localized warpage.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_034,visual,34,,Warpage and Flatness,"Pay close attention to complex geometries (ribs, bosses) prone to distortion.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_035,visual,35,,Functional Features,"Inspect holes and slots for correct size, shape, and freedom from blockages.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_036,visual,36,,Functional Features,"Verify threads are clean, well-formed, and allow easy engagement.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_037,visual,37,,Functional Features,"Test snap-fits, latches for proper function without damage.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_038,visual,38,,Functional Features,"Ensure bosses and ribs are correctly formed and positioned for assembly or support.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_039,visual,39,,Functional Features,"If feasible, perform a dry-fit with mating parts to confirm correct alignment.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_040,visual,40,,Marking and Engraving,"Ensure text, logos, part numbers, and symbols are legible, correctly spelled, and properly oriented.",False,Visual Inspection Report Specification v4,True
+visual_checkpoint_041,visual,41,,Marking and Engraving,"Check that engraved or embossed features have uniform depth and clarity.",False,Visual Inspection Report Specification v4,True
+assembly_checkpoint_001,assembly,1,during,Fit and Alignment,"No forcing parts. They should fit smoothly without bending or leaving large gaps.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_002,assembly,2,during,Fit and Alignment,"Align holes, pegs, marks, and reference features correctly. Ensure each part faces the right direction.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_003,assembly,3,during,Fit and Alignment,"Brackets and mounts must hold components securely at the correct angles.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_004,assembly,4,during,Fasteners,"Use the correct type, size, and length of screws, bolts, or rivets.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_005,assembly,5,during,Fasteners,"Tighten fasteners to the recommended torque - neither too loose nor too tight.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_006,assembly,6,during,Fasteners,"Snap-fits and clips should click smoothly into place without cracking.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_007,assembly,7,during,Fasteners,"Apply adhesives, tapes, or sealants evenly, without excess material blocking movement or appearing on visible surfaces.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_008,assembly,8,during,Fasteners,"Hinges, sliders, and pivots must move freely. Lubricate if required.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_009,assembly,9,during,Wiring,"Keep wiring neat, without tangles, pinching, or contact with sharp edges.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_010,assembly,10,during,Wiring,"Ensure all connectors are fully plugged in and locked, with no loose wires.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_011,assembly,11,during,Wiring,"Leave some slack so wires aren't stretched. Use strain relief where needed.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_012,assembly,12,during,Moving Parts (During Assembly),"Test doors, knobs, lids, hinges, and switches as you install them. They should operate smoothly and return to their original positions.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_013,assembly,13,during,Moving Parts (During Assembly),"No interference: Moving parts must not rub or collide with other components.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_014,assembly,14,during,Debris,"Ensure no stray tools, screws, washers, or debris remain inside the product.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_015,assembly,15,after,Functional Test,"If the product is powered, do a brief test: Lights on? Motor runs quietly? Display works?",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_016,assembly,16,after,Functional Test,"Operate controls (buttons, switches, knobs) again with everything assembled. They should still feel solid and respond correctly.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_017,assembly,17,after,Cosmetic and Finish,"Check all visible surfaces for a consistent finish (color, texture, gloss). No major scratches, dents, or paint chips.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_018,assembly,18,after,Cosmetic and Finish,"Wipe off dust, fingerprints, or smudges.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_019,assembly,19,after,Cosmetic and Finish,"Logos, labels, and stickers should be straight, correctly placed, and not peeling.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_020,assembly,20,after,Cosmetic and Finish,"Panels and edges should line up evenly, with no large gaps.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_021,assembly,21,after,Dimensional,"If size matters (e.g., fitting into a certain space), measure with a ruler or caliper to confirm correct dimensions.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_022,assembly,22,after,BOM Completeness,"All parts listed in the BOM must be present and accounted for.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_023,assembly,23,after,BOM Completeness,"Include any optional or customer-specific extras (filters, cables, attachments) as required.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_024,assembly,24,after,Safety,"Test child locks, emergency stops, or other safety features to ensure they engage and release properly.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_025,assembly,25,after,Noise and Vibration,"Listen for unusual rattles, squeaks, or grinding. The product should run smoothly and quietly.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_026,assembly,26,after,Noise and Vibration,"If mild vibration is expected, it should be within normal limits and not indicate something off-balance.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_027,assembly,27,after,Handling and Environmental,"Gently tilt or move the product to ensure nothing loosens or rattles.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_028,assembly,28,after,Handling and Environmental,"If conditions like temperature/humidity matter, ensure product can operate under these normal conditions.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_029,assembly,29,after,Packaging,"If ready to pack, ensure the product is protected with foam inserts, bubble wrap, or other cushioning.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_030,assembly,30,after,Packaging,"Include user manuals, warranty cards, compliance labels, and any required documentation.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_031,assembly,31,after,Packaging,"Check external packaging labels, barcodes, and shipping marks for accuracy.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_032,assembly,32,after,Final Sign-off,"Note down any issues and how they were fixed. If something remains unresolved, report it to the appropriate team.",False,Assembly Inspection Report Specification v2,True
+assembly_checkpoint_033,assembly,33,after,Final Sign-off,"Sign off the checklist once confident everything meets the required standards. Keep the completed checklist for quality records.",False,Assembly Inspection Report Specification v2,True

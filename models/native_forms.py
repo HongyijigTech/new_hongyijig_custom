@@ -7,6 +7,8 @@ TRIAL_STAGES = [
     ("t0", "T0"),
     ("t1", "T1"),
     ("t2", "T2"),
+    ("t3", "T3"),
+    ("t4", "T4"),
     ("final", "Final Trial"),
 ]
 
@@ -76,6 +78,67 @@ class HjigNativeFormTemplate(models.Model):
             )
         return super().write(vals)
 
+
+class HjigInspectionCheckpointMaster(models.Model):
+    _name = "hjig.inspection.checkpoint.master"
+    _description = "Controlled Inspection Checkpoint Master"
+    _order = "form_kind, sequence, id"
+
+    form_kind = fields.Selection(
+        [("visual", "Part Visual Inspection"), ("assembly", "Assembly Inspection")],
+        required=True,
+        index=True,
+    )
+    sequence = fields.Integer(required=True)
+    phase = fields.Selection(
+        [("during", "During Assembly"), ("after", "After Assembly Complete")],
+        help="Used only by Assembly Inspection. Visual checkpoints have no phase gate.",
+    )
+    category = fields.Char(required=True)
+    checkpoint_text = fields.Text(required=True)
+    default_not_required = fields.Boolean()
+    source_specification = fields.Char(required=True, readonly=True)
+    source_url = fields.Char(required=True, readonly=True)
+    active = fields.Boolean(default=True)
+
+    _kind_sequence_unique = models.Constraint(
+        "UNIQUE(form_kind, sequence)",
+        "Checkpoint sequence must be unique within each inspection form.",
+    )
+
+    @api.constrains("form_kind", "phase", "sequence")
+    def _check_checkpoint_master(self):
+        for checkpoint in self:
+            if checkpoint.form_kind == "visual" and checkpoint.phase:
+                raise ValidationError(_("Visual checkpoints cannot carry an Assembly phase."))
+            if checkpoint.form_kind == "assembly" and not checkpoint.phase:
+                raise ValidationError(_("Assembly checkpoints require a controlled phase."))
+            if checkpoint.sequence <= 0:
+                raise ValidationError(_("Checkpoint sequence must be positive."))
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        source_urls = {
+            "visual": "https://docs.google.com/document/d/1rfKLmNQ11Gkh1rEQBZTlI6WjNHj6F0CGxOZbzndFl_0/edit",
+            "assembly": "https://docs.google.com/document/d/1YcZ2X6jb1YtGfvEVspfEg5dvw-gtogMzypb77ywHU64/edit",
+        }
+        for vals in vals_list:
+            vals.setdefault("source_url", source_urls.get(vals.get("form_kind")))
+        return super().create(vals_list)
+
+    def write(self, vals):
+        governed = {"form_kind", "sequence", "phase", "category", "checkpoint_text", "source_specification", "source_url"}
+        used = self.env["hjig.inspection.point"].search_count([("checkpoint_master_id", "in", self.ids)])
+        if governed.intersection(vals) and used:
+            raise ValidationError(
+                _("A checkpoint already used by an inspection report cannot be rewritten. Archive it and create a revised baseline.")
+            )
+        return super().write(vals)
+
+    def unlink(self):
+        if self.env["hjig.inspection.point"].search_count([("checkpoint_master_id", "in", self.ids)]):
+            raise UserError(_("A checkpoint used by an inspection report cannot be deleted. Archive it instead."))
+        return super().unlink()
 
 class HjigMould(models.Model):
     """Code-owned continuation of the existing production PN Mould model."""
@@ -565,6 +628,11 @@ class HjigInspectionReport(models.Model):
     point_ids = fields.One2many("hjig.inspection.point", "report_id", string="Inspection Points")
     dimension_line_ids = fields.One2many("hjig.dimensional.line", "report_id", string="Dimensions")
     notes = fields.Text()
+    overall_status = fields.Selection(
+        [("pending", "Pending"), ("pass", "Pass"), ("fail", "Fail")],
+        compute="_compute_overall_status",
+        store=True,
+    )
 
     _report_number_unique = models.Constraint("UNIQUE(report_number)", "Inspection Report Number must be unique.")
     _project_report_revision_unique = models.Constraint(
@@ -592,7 +660,42 @@ class HjigInspectionReport(models.Model):
             vals.setdefault("approver_designation_id", template.artifact_master_id.approver_designation_id.id)
             if vals.get("report_number", _("New")) == _("New"):
                 vals["report_number"] = self.env["ir.sequence"].next_by_code("hjig.inspection.report") or _("New")
-        return super().create(vals_list)
+        reports = super().create(vals_list)
+        checkpoint_model = self.env["hjig.inspection.checkpoint.master"]
+        point_model = self.env["hjig.inspection.point"]
+        for report in reports.filtered(lambda item: item.report_type in ("visual", "assembly")):
+            checkpoints = checkpoint_model.search([
+                ("form_kind", "=", report.report_type),
+                ("active", "=", True),
+            ], order="sequence, id")
+            expected = 41 if report.report_type == "visual" else 33
+            if len(checkpoints) != expected:
+                raise ValidationError(
+                    _("The controlled %s baseline must contain exactly %s active checkpoints; found %s.")
+                    % (report.template_id.name, expected, len(checkpoints))
+                )
+            point_model.with_context(hjig_checkpoint_generation=True).create([{
+                "report_id": report.id,
+                "checkpoint_master_id": checkpoint.id,
+                "sequence": checkpoint.sequence,
+                "description": checkpoint.checkpoint_text,
+                "not_required": checkpoint.default_not_required,
+            } for checkpoint in checkpoints])
+        return reports
+
+    @api.depends("point_ids.not_required", "point_ids.trial_result_ids.status")
+    def _compute_overall_status(self):
+        for report in self:
+            if report.report_type == "dimensional":
+                report.overall_status = "pending"
+                continue
+            results = report.point_ids.filtered(lambda point: not point.not_required).trial_result_ids
+            if not results or results.filtered(lambda result: result.status == "pending"):
+                report.overall_status = "pending"
+            elif results.filtered(lambda result: result.status == "fail"):
+                report.overall_status = "fail"
+            else:
+                report.overall_status = "pass"
 
     @api.constrains("template_id", "report_type", "mould_id", "part_id", "assembly_name")
     def _check_report_structure(self):
@@ -642,10 +745,12 @@ class HjigInspectionReport(models.Model):
                 raise ValidationError(_("Add at least one dimensional inspection line."))
             if report.report_type != "dimensional" and not report.point_ids:
                 raise ValidationError(_("Add at least one inspection point."))
-            if report.report_type != "dimensional" and report.point_ids.trial_result_ids.filtered(
-                lambda result: result.status == "open"
+            if report.report_type != "dimensional" and report.point_ids.filtered(
+                lambda point: not point.not_required
+            ).trial_result_ids.filtered(
+                lambda result: result.status in ("pending", "fail")
             ):
-                raise ValidationError(_("Close or mark N/A every trial result before submission."))
+                raise ValidationError(_("Every applicable checkpoint must be Pass before submission."))
             if report.report_type == "dimensional" and any(
                 not line.measurement_ids for line in report.dimension_line_ids
             ):
@@ -679,9 +784,20 @@ class HjigInspectionPoint(models.Model):
 
     report_id = fields.Many2one("hjig.inspection.report", required=True, ondelete="cascade", index=True)
     project_id = fields.Many2one(related="report_id.project_id", store=True, index=True)
+    report_type = fields.Selection(related="report_id.report_type", store=True, readonly=True)
     sequence = fields.Integer(default=10)
     point_number = fields.Char(required=True, readonly=True, copy=False, default=lambda self: _("New"))
     description = fields.Text(required=True)
+    checkpoint_master_id = fields.Many2one(
+        "hjig.inspection.checkpoint.master",
+        string="Controlled Checkpoint",
+        ondelete="restrict",
+        readonly=True,
+        index=True,
+    )
+    category = fields.Char(related="checkpoint_master_id.category", store=True, readonly=True)
+    phase = fields.Selection(related="checkpoint_master_id.phase", store=True, readonly=True)
+    not_required = fields.Boolean(string="Not Required")
     picture = fields.Image(attachment=True)
     involved_part_ids = fields.Many2many("x_mould_part", string="Parts Involved")
     trial_result_ids = fields.One2many("hjig.inspection.trial.result", "point_id", string="Trial Results")
@@ -700,6 +816,22 @@ class HjigInspectionPoint(models.Model):
                 raise ValidationError(_("Inspection points may only be added to a Draft report."))
             if report.report_type == "dimensional":
                 raise ValidationError(_("Inspection points cannot be added to a Dimensional report."))
+            if not self.env.context.get("hjig_checkpoint_generation"):
+                raise ValidationError(
+                    _("Visual and Assembly checkpoints are generated only from the controlled master baseline.")
+                )
+            checkpoint = self.env["hjig.inspection.checkpoint.master"].browse(
+                vals.get("checkpoint_master_id")
+            ).exists()
+            if not checkpoint:
+                raise ValidationError(_("A controlled checkpoint master is required."))
+            if checkpoint and checkpoint.form_kind != report.report_type:
+                raise ValidationError(_("The controlled checkpoint belongs to a different inspection form."))
+            vals.update({
+                "sequence": checkpoint.sequence,
+                "description": checkpoint.checkpoint_text,
+                "not_required": checkpoint.default_not_required,
+            })
             if vals.get("point_number", _("New")) == _("New"):
                 prefix = "AP" if report.report_type == "assembly" else "VP"
                 count = self.search_count([("report_id", "=", report.id)]) + 1
@@ -719,9 +851,20 @@ class HjigInspectionPoint(models.Model):
     def write(self, vals):
         if any(item.report_id.workflow_state != "draft" for item in self):
             raise ValidationError(_("Inspection points are editable only while the report is Draft."))
-        return super().write(vals)
+        governed = {"report_id", "checkpoint_master_id", "sequence", "point_number", "description"}
+        if governed.intersection(vals) and self.filtered("checkpoint_master_id"):
+            raise ValidationError(_("Controlled checkpoint identity and wording cannot be rewritten."))
+        result = super().write(vals)
+        if "not_required" in vals:
+            if vals["not_required"]:
+                self.trial_result_ids.write({"status": "na"})
+            else:
+                self.trial_result_ids.filtered(lambda item: item.status == "na").write({"status": "pending"})
+        return result
 
     def unlink(self):
+        if self.filtered("checkpoint_master_id"):
+            raise UserError(_("Controlled baseline checkpoints cannot be deleted from an inspection report."))
         if any(item.report_id.workflow_state != "draft" for item in self):
             raise UserError(_("Inspection points may only be deleted while the report is Draft."))
         return super().unlink()
@@ -737,7 +880,11 @@ class HjigInspectionTrialResult(models.Model):
     trial_stage = fields.Selection(TRIAL_STAGES, required=True)
     plan_date = fields.Date()
     actual_date = fields.Date()
-    status = fields.Selection([("open", "Open"), ("closed", "Closed"), ("na", "N/A")], default="open", required=True)
+    status = fields.Selection(
+        [("pending", "Not Yet Checked"), ("pass", "Pass"), ("fail", "Fail"), ("na", "N/A")],
+        default="pending",
+        required=True,
+    )
     remarks = fields.Text()
 
     _point_trial_unique = models.Constraint(
@@ -756,6 +903,22 @@ class HjigInspectionTrialResult(models.Model):
     def write(self, vals):
         if any(item.point_id.report_id.workflow_state != "draft" for item in self):
             raise ValidationError(_("Trial results are editable only while the report is Draft."))
+        if vals.get("status") == "na" and any(not item.point_id.not_required for item in self):
+            raise ValidationError(_("Only a checkpoint marked Not Required may use the N/A result."))
+        if vals.get("status") not in (None, "pending"):
+            for result in self:
+                point = result.point_id
+                if point.report_id.report_type == "assembly" and point.phase == "after" and not point.not_required:
+                    blockers = point.report_id.point_ids.filtered(
+                        lambda item: item.phase == "during" and not item.not_required
+                    ).trial_result_ids.filtered(
+                        lambda item: item.trial_stage == result.trial_stage and item.status != "pass"
+                    )
+                    if blockers:
+                        raise ValidationError(
+                            _("Complete every applicable During Assembly checkpoint as Pass before evaluating After Assembly Complete checkpoints for %s.")
+                            % dict(TRIAL_STAGES).get(result.trial_stage, result.trial_stage)
+                        )
         return super().write(vals)
 
     def unlink(self):
