@@ -401,6 +401,8 @@ class HjigEvidenceLink(models.Model):
         for evidence in self:
             if evidence.verification_state != "unverified":
                 raise UserError(_("Only Unverified evidence can be accepted or rejected."))
+            if evidence.create_uid == self.env.user:
+                raise ValidationError(_("The person who created or uploaded evidence cannot verify it."))
             evidence.with_context(**workflow_context()).write({
                 "verification_state": state,
                 "verifier_id": self.env.user.id,
@@ -420,6 +422,13 @@ class HjigEvidenceLink(models.Model):
 
     def action_reject(self):
         self._record_verification("rejected")
+
+    def _assert_accepted(self):
+        unaccepted = self.filtered(lambda evidence: evidence.verification_state != "accepted")
+        if unaccepted:
+            raise ValidationError(_(
+                "Evidence must be independently Accepted before it can support a controlled result: %s"
+            ) % ", ".join(unaccepted.mapped("code")))
 
     def unlink(self):
         if any(evidence.verification_state != "unverified" for evidence in self):

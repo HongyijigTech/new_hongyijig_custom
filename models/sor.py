@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+import json
+
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
@@ -348,6 +350,12 @@ class HjigSorRequirementVerification(models.Model):
     )
     verified_by_id = fields.Many2one("res.users", readonly=True)
     verified_date = fields.Datetime(readonly=True)
+    cycle = fields.Integer(default=1, required=True, readonly=True)
+    reverification_reason = fields.Text(help="Required to reopen a failed phase verification.")
+    audit_history_json = fields.Text(
+        string="Immutable Verification History", default="[]", readonly=True, copy=False,
+        help="Server-controlled snapshot of every completed phase-verification cycle and its evidence.",
+    )
     notes = fields.Text()
 
     _requirement_phase_unique = models.Constraint(
@@ -357,6 +365,14 @@ class HjigSorRequirementVerification(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
+            controlled = {
+                "status": "pending", "verified_by_id": False,
+                "verified_date": False, "cycle": 1, "audit_history_json": "[]",
+            }
+            for field_name, default_value in controlled.items():
+                if field_name in vals and vals[field_name] not in (False, default_value):
+                    raise ValidationError(_("Verification result-control fields cannot be supplied during creation."))
+            vals.update(controlled)
             requirement = self.env["hjig.sor.requirement"].browse(vals.get("requirement_id")).exists()
             if requirement and requirement.sor_id.state in ("review", "frozen", "superseded"):
                 raise ValidationError(_("Phase allocations cannot be added after SOR review begins."))
@@ -372,10 +388,15 @@ class HjigSorRequirementVerification(models.Model):
         if any(record.sor_id.state == "review" for record in self):
             raise ValidationError(_("Phase allocations are read-only while the SOR is under review."))
         if any(record.sor_id.state in ("frozen", "superseded") for record in self):
-            allowed = {"status", "evidence_ids", "verified_by_id", "verified_date", "notes"}
+            allowed = {
+                "status", "evidence_ids", "verified_by_id", "verified_date",
+                "cycle", "reverification_reason", "notes", "audit_history_json",
+            }
             if set(vals) - allowed:
                 raise ValidationError(_("The phase allocation is locked after SOR freeze."))
-        workflow_fields = {"status", "verified_by_id", "verified_date"}
+        if "evidence_ids" in vals and any(record.status != "pending" for record in self) and not is_workflow_context(self.env):
+            raise ValidationError(_("Recorded SOR verification evidence is locked. Reopen a failed result for controlled re-verification."))
+        workflow_fields = {"status", "verified_by_id", "verified_date", "cycle", "audit_history_json"}
         if workflow_fields.intersection(vals) and not is_workflow_context(self.env):
             raise ValidationError(_("Verification status may only change through verification actions."))
         return super().write(vals)
@@ -391,6 +412,41 @@ class HjigSorRequirementVerification(models.Model):
     def action_fail(self):
         self._record_result("fail")
 
+    def action_reopen_failed(self):
+        if not self.env.user.has_group("new_hongyijig_custom.group_hjig_governance_approver"):
+            raise UserError(_("Only an authorised Governance Approver may reopen a failed SOR verification."))
+        for verification in self:
+            if verification.sor_id.state != "frozen":
+                raise UserError(_("Only a verification on the current Frozen SOR may be reopened."))
+            if self.env.user not in verification.responsible_designation_id.holder_ids:
+                raise UserError(_("Only a holder of the responsible designation may reopen this verification."))
+            if verification.status != "fail":
+                raise UserError(_("Only a Failed SOR verification can be reopened."))
+            if not (verification.reverification_reason or "").strip():
+                raise ValidationError(_("A re-verification reason is required."))
+            reverification_reason = verification.reverification_reason
+            history = json.loads(verification.audit_history_json or "[]")
+            if not history or history[-1].get("cycle") != verification.cycle:
+                raise ValidationError(_("The recorded SOR verification has no immutable cycle snapshot."))
+            history[-1].update({
+                "reopened_by_id": self.env.user.id,
+                "reopened_date": fields.Datetime.to_string(fields.Datetime.now()),
+                "reverification_reason": reverification_reason,
+            })
+            verification.with_context(**workflow_context()).write({
+                "status": "pending", "cycle": verification.cycle + 1,
+                "verified_by_id": False, "verified_date": False,
+                "reverification_reason": False,
+                "audit_history_json": json.dumps(history, sort_keys=True),
+            })
+            self.env["hjig.transition.log"].sudo().create({
+                "project_id": verification.project_id.id,
+                "target_ref": "%s,%s" % (verification.requirement_id._name, verification.requirement_id.id),
+                "from_state": "fail", "to_state": "pending",
+                "decision": "reverification_requested", "actor_id": self.env.user.id,
+                "reason": reverification_reason,
+            })
+
     def _record_result(self, result):
         for verification in self:
             if verification.status != "pending":
@@ -401,12 +457,27 @@ class HjigSorRequirementVerification(models.Model):
                 raise UserError(_("Only a holder of the responsible designation may verify this requirement."))
             if not verification.check_required:
                 raise UserError(_("This phase is not marked for verification."))
-            if result == "pass" and not verification.evidence_ids:
-                raise ValidationError(_("Evidence is required before a phase verification can pass."))
+            if not verification.evidence_ids:
+                raise ValidationError(_("Accepted evidence is required before a phase verification can record PASS or FAIL."))
+            verification.evidence_ids._assert_accepted()
+            verified_date = fields.Datetime.now()
+            history = json.loads(verification.audit_history_json or "[]")
+            history.append({
+                "cycle": verification.cycle,
+                "result": result,
+                "evidence": [
+                    {"id": evidence.id, "code": evidence.code}
+                    for evidence in verification.evidence_ids
+                ],
+                "verified_by_id": self.env.user.id,
+                "verified_date": fields.Datetime.to_string(verified_date),
+                "notes": verification.notes or "",
+            })
             verification.with_context(**workflow_context()).write({
                 "status": result,
                 "verified_by_id": self.env.user.id,
-                "verified_date": fields.Datetime.now(),
+                "verified_date": verified_date,
+                "audit_history_json": json.dumps(history, sort_keys=True),
             })
             self.env["hjig.transition.log"].sudo().create({
                 "project_id": verification.project_id.id,

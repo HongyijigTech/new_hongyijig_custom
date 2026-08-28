@@ -105,9 +105,10 @@
                 <header>
                     <button name="action_pass" string="Pass" type="object" class="btn-primary" invisible="status != 'pending'"/>
                     <button name="action_fail" string="Fail" type="object" invisible="status != 'pending'"/>
+                    <button name="action_reopen_failed" string="Reopen Failed Verification" type="object" invisible="status != 'fail'" groups="new_hongyijig_custom.group_hjig_governance_approver"/>
                     <field name="status" widget="statusbar" statusbar_visible="pending,pass,fail,waived"/>
                 </header>
-                <sheet><group><group><field name="requirement_id"/><field name="phase"/><field name="check_required"/><field name="responsible_designation_id"/><field name="due_date"/></group><group><field name="verification_method"/><field name="required_evidence"/><field name="evidence_ids" widget="many2many_tags"/><field name="verified_by_id"/><field name="verified_date"/></group></group><field name="notes"/></sheet>
+                <sheet><group><group><field name="requirement_id"/><field name="phase"/><field name="check_required"/><field name="responsible_designation_id"/><field name="due_date"/><field name="cycle"/></group><group><field name="verification_method"/><field name="required_evidence"/><field name="evidence_ids" widget="many2many_tags"/><field name="verified_by_id"/><field name="verified_date"/></group></group><field name="reverification_reason"/><field name="notes"/><field name="audit_history_json" readonly="1"/></sheet>
             </form>
         </field>
     </record>

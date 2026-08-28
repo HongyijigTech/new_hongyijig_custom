@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+import json
+
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
@@ -245,6 +247,9 @@ class HjigChecklist(models.Model):
                 raise UserError(_("Only an open checklist can be marked Ready."))
             if checklist.readiness not in ("pass", "warn"):
                 raise ValidationError(checklist.blocking_summary or _("Checklist is not ready."))
+            evidence = checklist.response_ids.mapped("evidence_ids")
+            if evidence:
+                evidence._assert_accepted()
             checklist.with_context(**workflow_context()).write({"state": "ready"})
 
 
@@ -271,6 +276,12 @@ class HjigChecklistResponse(models.Model):
     comments = fields.Text()
     verified_by_id = fields.Many2one("res.users", readonly=True)
     verified_date = fields.Datetime(readonly=True)
+    cycle = fields.Integer(default=1, required=True, readonly=True)
+    rework_reason = fields.Text(help="Required before reopening a recorded result for controlled rework.")
+    audit_history_json = fields.Text(
+        string="Immutable Result History", default="[]", readonly=True, copy=False,
+        help="Server-controlled snapshot of every completed verification cycle and its evidence.",
+    )
 
     _checklist_item_unique = models.Constraint(
         "UNIQUE(checklist_id, template_item_id)", "A checklist can contain each template item only once."
@@ -279,6 +290,14 @@ class HjigChecklistResponse(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
+            controlled = {
+                "result": "pending", "verified_by_id": False,
+                "verified_date": False, "cycle": 1, "audit_history_json": "[]",
+            }
+            for field_name, default_value in controlled.items():
+                if field_name in vals and vals[field_name] not in (False, default_value):
+                    raise ValidationError(_("Checklist result-control fields cannot be supplied during creation."))
+            vals.update(controlled)
             checklist = self.env["hjig.checklist"].browse(vals.get("checklist_id")).exists()
             if checklist and checklist.state in ("ready", "closed"):
                 raise ValidationError(_("Responses cannot be added to Ready or Closed checklists."))
@@ -295,7 +314,11 @@ class HjigChecklistResponse(models.Model):
     def write(self, vals):
         if any(response.checklist_id.state in ("ready", "closed") for response in self):
             raise ValidationError(_("Responses are read-only after the checklist is Ready or Closed."))
-        workflow_fields = {"result", "verified_by_id", "verified_date"}
+        if {"evidence_ids", "comments"}.intersection(vals) and any(
+            response.result != "pending" for response in self
+        ) and not is_workflow_context(self.env):
+            raise ValidationError(_("Recorded checklist evidence and comments are locked. Reopen the item for controlled rework."))
+        workflow_fields = {"result", "verified_by_id", "verified_date", "cycle", "audit_history_json"}
         if workflow_fields.intersection(vals) and not is_workflow_context(self.env):
             raise ValidationError(_("Checklist results may only change through response actions."))
         return super().write(vals)
@@ -314,17 +337,68 @@ class HjigChecklistResponse(models.Model):
     def action_not_applicable(self):
         self._record_result("not_applicable")
 
+    def action_reset_for_rework(self):
+        for response in self:
+            response.checklist_id._check_owner_authority()
+            if response.checklist_id.state not in ("draft", "in_progress"):
+                raise UserError(_("Only an open checklist item can be reopened."))
+            if response.result == "pending":
+                raise UserError(_("The checklist item is already Pending."))
+            if not (response.rework_reason or "").strip():
+                raise ValidationError(_("A rework reason is required before reopening this checklist item."))
+            previous_result = response.result
+            rework_reason = response.rework_reason
+            history = json.loads(response.audit_history_json or "[]")
+            if not history or history[-1].get("cycle") != response.cycle:
+                raise ValidationError(_("The recorded checklist result has no immutable cycle snapshot."))
+            history[-1].update({
+                "reopened_by_id": self.env.user.id,
+                "reopened_date": fields.Datetime.to_string(fields.Datetime.now()),
+                "rework_reason": rework_reason,
+            })
+            response.with_context(**workflow_context()).write({
+                "result": "pending", "cycle": response.cycle + 1,
+                "verified_by_id": False, "verified_date": False,
+                "rework_reason": False,
+                "audit_history_json": json.dumps(history, sort_keys=True),
+            })
+            self.env["hjig.transition.log"].sudo().create({
+                "project_id": response.project_id.id,
+                "target_ref": "%s,%s" % (response.checklist_id._name, response.checklist_id.id),
+                "from_state": previous_result, "to_state": "pending",
+                "decision": "rework_requested", "actor_id": self.env.user.id,
+                "reason": rework_reason,
+            })
+
     def _record_result(self, result):
         for response in self:
             response.checklist_id._check_owner_authority()
-            if result == "pass" and response.evidence_required and not response.evidence_ids:
-                raise ValidationError(_("Evidence is required before this item can pass."))
+            if response.result != "pending":
+                raise UserError(_("A recorded checklist result must be reopened before it can change."))
+            if result in ("pass", "fail") and response.evidence_required and not response.evidence_ids:
+                raise ValidationError(_("Accepted evidence is required before this item can record PASS or FAIL."))
+            if result in ("pass", "fail") and response.evidence_ids:
+                response.evidence_ids._assert_accepted()
             if result == "not_applicable" and response.blocking and not (response.comments or "").strip():
                 raise ValidationError(_("A reason is required when a blocking item is Not Applicable."))
+            verified_date = fields.Datetime.now()
+            history = json.loads(response.audit_history_json or "[]")
+            history.append({
+                "cycle": response.cycle,
+                "result": result,
+                "evidence": [
+                    {"id": evidence.id, "code": evidence.code}
+                    for evidence in response.evidence_ids
+                ],
+                "verified_by_id": self.env.user.id,
+                "verified_date": fields.Datetime.to_string(verified_date),
+                "comments": response.comments or "",
+            })
             response.with_context(**workflow_context()).write({
                 "result": result,
                 "verified_by_id": self.env.user.id,
-                "verified_date": fields.Datetime.now(),
+                "verified_date": verified_date,
+                "audit_history_json": json.dumps(history, sort_keys=True),
             })
 
 

@@ -1,3 +1,5 @@
+import json
+
 from odoo.exceptions import UserError, ValidationError
 from odoo.tests import TransactionCase, tagged
 from psycopg2.errors import UniqueViolation
@@ -49,6 +51,8 @@ class TestChecklistGate(TransactionCase):
         with self.assertRaises(ValidationError):
             checklist.response_ids.action_pass()
         with self.assertRaises(ValidationError):
+            checklist.response_ids.action_fail()
+        with self.assertRaises(ValidationError):
             checklist.action_mark_ready()
 
     def test_operating_catalogue_covers_every_governance_stage(self):
@@ -84,6 +88,7 @@ class TestChecklistGate(TransactionCase):
             "evidence_type": "Steel approval", "source_party": "hongyi",
             "source_url": "https://drive.google.com/steel-approval",
         })
+        evidence.with_user(self.approver).action_accept()
         gate = self.env["hjig.gate"].create({
             "project_id": self.project.id, "target_ref": self._target(),
             "stage_id": self.stage.id, "approval_authority_designation_id": self.designation.id,
@@ -112,3 +117,68 @@ class TestChecklistGate(TransactionCase):
         gate.action_apply_decision()
         self.assertEqual(gate.state, "go")
         self.assertEqual(checklist.state, "closed")
+
+    def test_result_evidence_is_locked_and_rework_is_a_new_cycle(self):
+        first_evidence = self.env["hjig.evidence.link"].create({
+            "project_id": self.project.id, "target_ref": self._target(),
+            "evidence_type": "Initial check", "source_party": "hongyi",
+            "source_url": "https://drive.google.com/initial-check",
+        })
+        first_evidence.with_user(self.approver).action_accept()
+        second_evidence = self.env["hjig.evidence.link"].create({
+            "project_id": self.project.id, "target_ref": self._target(),
+            "evidence_type": "Rework check", "source_party": "hongyi",
+            "source_url": "https://drive.google.com/rework-check",
+        })
+        second_evidence.with_user(self.approver).action_accept()
+        checklist = self.env["hjig.checklist"].create({
+            "project_id": self.project.id, "target_ref": self._target(),
+            "template_id": self.template.id,
+        })
+        response = checklist.response_ids
+        response.evidence_ids = first_evidence
+        response.with_user(self.approver).action_fail()
+        with self.assertRaises(ValidationError):
+            response.evidence_ids = [(6, 0, [second_evidence.id])]
+        response.rework_reason = "Correct the steel approval evidence."
+        response.with_user(self.approver).action_reset_for_rework()
+        self.assertEqual(response.cycle, 2)
+        self.assertEqual(response.result, "pending")
+        response.evidence_ids = [(6, 0, [second_evidence.id])]
+        response.with_user(self.approver).action_pass()
+        self.assertEqual(response.result, "pass")
+        history = json.loads(response.audit_history_json)
+        self.assertEqual([entry["cycle"] for entry in history], [1, 2])
+        self.assertEqual(history[0]["result"], "fail")
+        self.assertEqual(history[0]["evidence"][0]["id"], first_evidence.id)
+        self.assertEqual(history[1]["result"], "pass")
+        self.assertEqual(history[1]["evidence"][0]["id"], second_evidence.id)
+
+    def test_unaccepted_evidence_cannot_support_checklist_result(self):
+        evidence = self.env["hjig.evidence.link"].create({
+            "project_id": self.project.id, "target_ref": self._target(),
+            "evidence_type": "Unverified check", "source_party": "hongyi",
+            "source_url": "https://drive.google.com/unverified-check",
+        })
+        checklist = self.env["hjig.checklist"].create({
+            "project_id": self.project.id, "target_ref": self._target(),
+            "template_id": self.template.id,
+        })
+        checklist.response_ids.evidence_ids = evidence
+        with self.assertRaises(ValidationError):
+            checklist.response_ids.with_user(self.approver).action_pass()
+
+    def test_response_create_rejects_forged_controlled_result(self):
+        checklist = self.env["hjig.checklist"].create({
+            "project_id": self.project.id, "target_ref": self._target(),
+            "template_id": self.template.id,
+        })
+        with self.assertRaises(ValidationError):
+            self.env["hjig.checklist.response"].with_user(self.requester).create({
+                "checklist_id": checklist.id,
+                "template_item_id": self.template.item_ids.id,
+                "result": "pass",
+                "verified_by_id": self.requester.id,
+                "cycle": 9,
+                "audit_history_json": '[{"cycle": 9, "result": "pass"}]',
+            })

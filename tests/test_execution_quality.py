@@ -28,12 +28,15 @@ class TestExecutionQuality(TransactionCase):
     def _target(self):
         return "project.project,%s" % self.project.id
 
-    def _evidence(self, label="evidence"):
-        return self.env["hjig.evidence.link"].create({
+    def _evidence(self, label="evidence", accepted=True):
+        evidence = self.env["hjig.evidence.link"].create({
             "project_id": self.project.id, "target_ref": self._target(),
             "evidence_type": label, "source_party": "supplier",
             "source_url": "https://drive.google.com/%s" % label,
         })
+        if accepted:
+            evidence.with_user(self.approver).action_accept()
+        return evidence
 
     def test_weekly_report_requires_evidence_and_next_plan(self):
         execution = self.env["hjig.tooling.execution"].create({
@@ -52,9 +55,30 @@ class TestExecutionQuality(TransactionCase):
         report.evidence_ids = self._evidence("weekly-photo")
         report.next_plan = "Complete core machining."
         report.with_user(self.owner).action_submit_review()
+        with self.assertRaises(ValidationError):
+            report.with_user(self.owner).next_plan = "Altered after submission."
+        with self.assertRaises(ValidationError):
+            report.with_user(self.owner).evidence_ids = [(5, 0, 0)]
         report.approval_id.with_user(self.approver).action_approve()
         report.action_apply_decision()
         self.assertEqual(report.state, "approved")
+
+    def test_tooling_report_rejects_unaccepted_evidence(self):
+        execution = self.env["hjig.tooling.execution"].create({
+            "project_id": self.project.id, "supplier_id": self.supplier.id,
+            "mould_plan_reference": "MP-2026-UNVERIFIED", "start_date": "2026-08-01",
+            "baseline_trial_date": "2026-09-01", "current_forecast_trial_date": "2026-09-05",
+            "coordinator_id": self.owner.id,
+        })
+        report = self.env["hjig.tooling.report"].create({
+            "execution_id": execution.id, "report_type": "weekly_progress",
+            "reporting_period": "2026-W36", "planned_progress_percent": 60,
+            "actual_progress_percent": 55, "next_plan": "Finish validation.",
+            "approval_authority_designation_id": self.designation.id,
+            "evidence_ids": [(6, 0, [self._evidence("unverified-weekly", accepted=False).id])],
+        })
+        with self.assertRaises(ValidationError):
+            report.with_user(self.owner).action_submit_review()
 
     def test_tooling_requires_authoritative_or_external_mould_plan_reference(self):
         with self.assertRaises(ValidationError):
@@ -115,3 +139,43 @@ class TestExecutionQuality(TransactionCase):
         inspection.action_apply_decision()
         self.assertEqual(inspection.state, "approved")
         self.assertEqual(inspection.overall_result, "pass")
+
+    def test_inspection_rejects_unaccepted_line_evidence(self):
+        inspection = self.env["hjig.inspection"].create({
+            "project_id": self.project.id, "inspection_type": "part_visual",
+            "supplier_id": self.supplier.id, "part_or_assembly_reference": "PART-002",
+            "batch_reference": "T1-UNVERIFIED", "drawing_revision": "R03",
+            "approval_authority_designation_id": self.designation.id, "disposition": "accept",
+        })
+        self.env["hjig.inspection.line"].create({
+            "inspection_id": inspection.id, "characteristic_code": "V02",
+            "check_type": "visual", "description": "Cosmetic surface",
+            "critical": True, "result": "pass",
+            "evidence_ids": [(6, 0, [self._evidence("unverified-visual", accepted=False).id])],
+        })
+        with self.assertRaises(ValidationError):
+            inspection.with_user(self.owner).action_submit_review()
+
+    def test_closed_supplier_action_is_immutable(self):
+        execution = self.env["hjig.tooling.execution"].create({
+            "project_id": self.project.id, "supplier_id": self.supplier.id,
+            "mould_plan_reference": "MP-2026-ACTION", "start_date": "2026-08-01",
+            "baseline_trial_date": "2026-09-01", "current_forecast_trial_date": "2026-09-05",
+            "coordinator_id": self.owner.id,
+        })
+        evidence = self._evidence("action-closure", accepted=False)
+        action = self.env["hjig.tooling.action"].create({
+            "execution_id": execution.id, "title": "Correct ejector alignment",
+            "owner_id": self.owner.id, "due_date": "2026-08-31",
+            "closure_evidence_ids": [(6, 0, [evidence.id])],
+        })
+        action.with_user(self.owner).action_start()
+        action.with_user(self.owner).action_request_verification()
+        with self.assertRaises(ValidationError):
+            action.with_user(self.approver).action_close()
+        evidence.with_user(self.approver).action_accept()
+        action.with_user(self.approver).action_close()
+        with self.assertRaises(ValidationError):
+            action.title = "Changed after closure"
+        with self.assertRaises(ValidationError):
+            action.closure_evidence_ids = [(5, 0, 0)]

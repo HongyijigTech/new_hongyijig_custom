@@ -1,5 +1,9 @@
-from odoo.exceptions import ValidationError
+import json
+
+from odoo.exceptions import UserError, ValidationError
 from odoo.tests import TransactionCase, tagged
+
+from odoo.addons.new_hongyijig_custom.models.workflow_guard import workflow_context
 
 
 @tagged("post_install", "-at_install")
@@ -88,6 +92,22 @@ class TestHongyiSor(TransactionCase):
         with self.assertRaises(ValidationError):
             sor.action_submit_review()
 
+    def test_verification_create_rejects_forged_controlled_result(self):
+        sor = self._create_sor(revision="R06")
+        requirement = self.env["hjig.sor.requirement"].create({
+            "sor_id": sor.id, "requirement_id": "9.1", "category": "quality",
+            "requirement_text": "Controlled verification result.",
+            "declaration_state": "specified", "acceptance_criteria": "Accepted report.",
+        })
+        with self.assertRaises(ValidationError):
+            self.env["hjig.sor.requirement.verification"].with_user(self.requester).create({
+                "requirement_id": requirement.id, "phase": "trial", "check_required": True,
+                "verification_method": "Visual inspection", "required_evidence": "Report",
+                "responsible_designation_id": self.designation.id,
+                "status": "pass", "verified_by_id": self.requester.id, "cycle": 7,
+                "audit_history_json": '[{"cycle": 7, "result": "pass"}]',
+            })
+
     def test_sor_freeze_uses_human_approval(self):
         sor = self._create_sor()
         self._add_specified_requirement(sor)
@@ -117,3 +137,95 @@ class TestHongyiSor(TransactionCase):
         sor.with_user(self.requester).action_submit_review()
         self.assertEqual(sor.baseline_id, baseline)
         self.assertEqual(sor.state, "review")
+
+    def test_phase_result_requires_independently_accepted_evidence(self):
+        sor = self._create_sor(revision="R03")
+        requirement = self._add_specified_requirement(sor)
+        sor.with_user(self.requester).action_submit_review()
+        sor.baseline_id.approval_id.with_user(self.approver).action_approve()
+        sor.action_apply_decision()
+        verification = requirement.verification_ids
+        evidence = self.env["hjig.evidence.link"].create({
+            "project_id": self.project.id,
+            "target_ref": "hjig.sor.requirement,%s" % requirement.id,
+            "evidence_type": "Trial inspection", "source_party": "hongyi",
+            "source_url": "https://drive.google.com/trial-inspection",
+        })
+        verification.evidence_ids = evidence
+        with self.assertRaises(ValidationError):
+            verification.with_user(self.approver).action_pass()
+        evidence.with_user(self.approver).action_accept()
+        verification.with_user(self.approver).action_pass()
+        self.assertEqual(verification.status, "pass")
+
+    def test_failed_verification_evidence_is_locked_and_reopened_by_governance(self):
+        sor = self._create_sor(revision="R04")
+        requirement = self._add_specified_requirement(sor)
+        sor.with_user(self.requester).action_submit_review()
+        sor.baseline_id.approval_id.with_user(self.approver).action_approve()
+        sor.action_apply_decision()
+        verification = requirement.verification_ids
+        first_evidence = self.env["hjig.evidence.link"].create({
+            "project_id": self.project.id,
+            "target_ref": "hjig.sor.requirement,%s" % requirement.id,
+            "evidence_type": "Failed trial", "source_party": "hongyi",
+            "source_url": "https://drive.google.com/failed-trial",
+        })
+        first_evidence.with_user(self.approver).action_accept()
+        replacement = self.env["hjig.evidence.link"].create({
+            "project_id": self.project.id,
+            "target_ref": "hjig.sor.requirement,%s" % requirement.id,
+            "evidence_type": "Corrected trial", "source_party": "hongyi",
+            "source_url": "https://drive.google.com/corrected-trial",
+        })
+        replacement.with_user(self.approver).action_accept()
+        verification.evidence_ids = first_evidence
+        verification.with_user(self.approver).action_fail()
+        with self.assertRaises(ValidationError):
+            verification.evidence_ids = [(6, 0, [replacement.id])]
+        verification.reverification_reason = "Repeat trial after corrective action."
+        verification.with_user(self.approver).action_reopen_failed()
+        self.assertEqual(verification.cycle, 2)
+        verification.evidence_ids = [(6, 0, [replacement.id])]
+        verification.with_user(self.approver).action_pass()
+        self.assertEqual(verification.status, "pass")
+        history = json.loads(verification.audit_history_json)
+        self.assertEqual([entry["cycle"] for entry in history], [1, 2])
+        self.assertEqual(history[0]["result"], "fail")
+        self.assertEqual(history[0]["evidence"][0]["id"], first_evidence.id)
+        self.assertEqual(history[1]["result"], "pass")
+        self.assertEqual(history[1]["evidence"][0]["id"], replacement.id)
+
+    def test_reopen_requires_responsible_designation_and_current_frozen_sor(self):
+        sor = self._create_sor(revision="R05")
+        requirement = self._add_specified_requirement(sor)
+        sor.with_user(self.requester).action_submit_review()
+        sor.baseline_id.approval_id.with_user(self.approver).action_approve()
+        sor.action_apply_decision()
+        verification = requirement.verification_ids
+        evidence = self.env["hjig.evidence.link"].create({
+            "project_id": self.project.id,
+            "target_ref": "hjig.sor.requirement,%s" % requirement.id,
+            "evidence_type": "Failed controlled trial", "source_party": "hongyi",
+            "source_url": "https://drive.google.com/failed-controlled-trial",
+        })
+        evidence.with_user(self.approver).action_accept()
+        verification.evidence_ids = evidence
+        verification.with_user(self.approver).action_fail()
+        verification.reverification_reason = "Controlled retest required."
+
+        unrelated_approver = self.env["res.users"].create({
+            "name": "Unrelated SOR Approver",
+            "login": "sor.unrelated.approver@test.invalid",
+            "group_ids": [(6, 0, [
+                self.env.ref("project.group_project_user").id,
+                self.env.ref("new_hongyijig_custom.group_hjig_governance_approver").id,
+            ])],
+        })
+        self.project.hjig_authorized_user_ids = [(4, unrelated_approver.id)]
+        with self.assertRaises(UserError):
+            verification.with_user(unrelated_approver).action_reopen_failed()
+
+        sor.with_context(**workflow_context()).write({"state": "superseded"})
+        with self.assertRaises(UserError):
+            verification.with_user(self.approver).action_reopen_failed()

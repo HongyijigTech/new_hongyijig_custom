@@ -288,8 +288,10 @@ class HjigToolingReport(models.Model):
         workflow = {"state", "approval_id"}
         if workflow.intersection(vals) and not is_workflow_context(self.env):
             raise ValidationError(_("Tooling report approval fields may only change through workflow actions."))
-        if any(report.state == "approved" for report in self) and set(vals) - {"message_follower_ids"}:
-            raise ValidationError(_("Approved tooling reports are read-only. Create a correction report."))
+        if any(report.state in ("review", "approved") for report in self):
+            allowed = workflow if is_workflow_context(self.env) else {"message_follower_ids"}
+            if set(vals) - allowed:
+                raise ValidationError(_("Submitted tooling reports are read-only. Reject or create a correction report."))
         return super().write(vals)
 
     def _check_submission(self):
@@ -300,6 +302,8 @@ class HjigToolingReport(models.Model):
         for report in self:
             if report.report_type in evidence_required and not report.evidence_ids:
                 raise ValidationError(_("This tooling report type requires evidence."))
+            if report.evidence_ids:
+                report.evidence_ids._assert_accepted()
             if report.report_type == "weekly_progress" and not report.next_plan:
                 raise ValidationError(_("Weekly progress reports require the next-period plan."))
             if report.report_type in ("weekly_progress", "milestone", "trial") and not report.reporting_period:
@@ -334,6 +338,7 @@ class HjigToolingReport(models.Model):
             if report.state != "review" or not report.approval_id:
                 raise UserError(_("The report has no approval decision to apply."))
             if report.approval_id.state == "approved":
+                report._check_submission()
                 result = "approved"
             elif report.approval_id.state == "rejected":
                 result = "rejected"
@@ -398,6 +403,7 @@ class HjigToolingAction(models.Model):
                 raise UserError(_("Only actions Pending Verification can close."))
             if not action.closure_evidence_ids:
                 raise ValidationError(_("Closure evidence is required before closing a supplier action."))
+            action.closure_evidence_ids._assert_accepted()
             action.with_context(**workflow_context()).write({"state": "closed"})
             action._log_transition("verification", "closed", "verified_closed")
 
@@ -432,6 +438,10 @@ class HjigToolingAction(models.Model):
     def write(self, vals):
         if "state" in vals and not is_workflow_context(self.env):
             raise ValidationError(_("Tooling action state may only change through workflow actions."))
+        if any(action.state == "closed" for action in self):
+            allowed = {"state"} if is_workflow_context(self.env) else set()
+            if set(vals) - allowed:
+                raise ValidationError(_("Verified-closed supplier actions are immutable. Create a governed correction action."))
         return super().write(vals)
 
     def unlink(self):
@@ -552,6 +562,7 @@ class HjigInspection(models.Model):
                 raise ValidationError(_("Every inspection characteristic must have a result."))
             if any(not line.evidence_ids for line in inspection.line_ids):
                 raise ValidationError(_("Every inspection characteristic requires evidence."))
+            inspection.line_ids.mapped("evidence_ids")._assert_accepted()
             if not inspection.disposition:
                 raise ValidationError(_("Inspection disposition is required before review."))
             if inspection.overall_result in ("conditional", "fail") and not inspection.disposition_reason:

@@ -128,10 +128,32 @@ class TestHongyiFoundation(TransactionCase):
             self.env["hjig.evidence.link"].create(values)
         values["source_url"] = "https://drive.google.com/evidence"
         evidence = self.env["hjig.evidence.link"].create(values)
-        evidence.action_accept()
+        evidence.with_user(self.approver).action_accept()
         self.assertEqual(evidence.verification_state, "accepted")
         with self.assertRaises(ValidationError):
             evidence.source_url = "https://drive.google.com/replaced"
+
+    def test_evidence_creator_cannot_verify_own_evidence(self):
+        second_approver = self.env["res.users"].create({
+            "name": "Independent Evidence Approver",
+            "login": "foundation.independent.approver@test.invalid",
+            "group_ids": [(6, 0, [
+                self.env.ref("project.group_project_user").id,
+                self.env.ref("new_hongyijig_custom.group_hjig_governance_approver").id,
+            ])],
+        })
+        self.project.hjig_authorized_user_ids = [(4, second_approver.id)]
+        evidence = self.env["hjig.evidence.link"].with_user(self.approver).create({
+            "project_id": self.project.id,
+            "target_ref": self._target(),
+            "evidence_type": "Creator segregation test",
+            "source_party": "hongyi",
+            "source_url": "https://drive.google.com/creator-segregation",
+        })
+        with self.assertRaises(ValidationError):
+            evidence.with_user(self.approver).action_accept()
+        evidence.with_user(second_approver).action_accept()
+        self.assertEqual(evidence.verifier_id, second_approver)
 
     def test_transition_log_is_append_only(self):
         transition = self.env["hjig.transition.log"].create({
