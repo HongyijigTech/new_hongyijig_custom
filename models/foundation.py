@@ -1,13 +1,78 @@
 # -*- coding: utf-8 -*-
 
+import hashlib
+import json
+
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
 from .workflow_guard import is_workflow_context, workflow_context
 
+HJIG_PROGRAMME_SELECTION = [
+    ("launchguard_complete", "LaunchGuard Complete"),
+    ("launchguard_design", "LaunchGuard Design"),
+    ("launchguard_development", "LaunchGuard Development"),
+    ("toollock_control", "ToolLock Control"),
+    ("toollock_lite", "ToolLock Lite"),
+]
+
 
 class ProjectProject(models.Model):
     _inherit = "project.project"
+
+    _HJIG_PROGRAMME_STAGE_CODES = {
+        "launchguard_complete": (
+            "PA-00", "TG-01", "TG-02", "TG-03", "TG-04",
+            "TG-05", "TG-06", "TG-07", "TG-08", "TG-09",
+        ),
+        "launchguard_design": ("PA-00", "TG-01"),
+        "launchguard_development": (
+            "TG-01", "TG-02", "TG-03", "TG-04", "TG-05",
+            "TG-06", "TG-07", "TG-08", "TG-09",
+        ),
+        "toollock_control": (
+            "TG-01", "TG-02", "TG-03", "TG-04", "TG-05", "TG-06", "TG-09",
+        ),
+        "toollock_lite": (),
+    }
+
+    hjig_programme = fields.Selection(
+        HJIG_PROGRAMME_SELECTION,
+        string="Hongyi Programme",
+        required=True,
+        default="launchguard_complete",
+        tracking=True,
+    )
+    hjig_allowed_stage_ids = fields.Many2many(
+        "hjig.launchguard.stage", compute="_compute_hjig_allowed_stages",
+        string="Applicable Governance Stages",
+    )
+    hjig_current_stage_id = fields.Many2one(
+        "hjig.launchguard.stage", string="Current Governance Stage",
+        ondelete="restrict", tracking=True, readonly=True,
+        help="Last stage cleared by an approved GO decision. It cannot be set manually.",
+    )
+    hjig_pending_programme = fields.Selection(
+        HJIG_PROGRAMME_SELECTION,
+        string="Proposed Programme Route", tracking=True,
+    )
+    hjig_programme_change_reason = fields.Text(string="Route Change Reason", tracking=True)
+    hjig_programme_commercial_review = fields.Text(
+        string="Commercial Impact Review", tracking=True,
+        help="Record the reviewed cost, revenue, liability and customer/supplier commercial impact, including No Impact.",
+    )
+    hjig_programme_change_authority_id = fields.Many2one(
+        "hjig.governance.designation", string="PMO Route-Change Authority",
+        ondelete="restrict", tracking=True,
+    )
+    hjig_programme_change_approval_id = fields.Many2one(
+        "hjig.approval", string="Route-Change Approval", readonly=True, copy=False, ondelete="restrict",
+    )
+    hjig_programme_change_status = fields.Selection(
+        [("none", "No Change"), ("pending", "Pending Approval"),
+         ("approved", "Approved"), ("rejected", "Rejected")],
+        default="none", required=True, readonly=True, copy=False, tracking=True,
+    )
 
     hjig_authorized_user_ids = fields.Many2many(
         "res.users",
@@ -30,6 +95,33 @@ class ProjectProject(models.Model):
         compute="_compute_hjig_commercial_count",
         groups="new_hongyijig_custom.group_hjig_commercial_user",
     )
+
+    def _hjig_allowed_stage_codes(self):
+        self.ensure_one()
+        return self._HJIG_PROGRAMME_STAGE_CODES.get(self.hjig_programme, ())
+
+    @api.depends("hjig_programme")
+    def _compute_hjig_allowed_stages(self):
+        stage_model = self.env["hjig.launchguard.stage"]
+        for project in self:
+            codes = project._hjig_allowed_stage_codes()
+            project.hjig_allowed_stage_ids = stage_model.search([
+                ("code", "in", list(codes)), ("active", "=", True),
+            ]) if codes else stage_model.browse()
+
+    @api.constrains("hjig_programme", "hjig_current_stage_id")
+    def _check_hjig_programme_routing(self):
+        for project in self:
+            allowed_codes = set(project._hjig_allowed_stage_codes())
+            if project.hjig_current_stage_id and project.hjig_current_stage_id.code not in allowed_codes:
+                raise ValidationError(_("The current stage is not applicable to the selected Hongyi Programme."))
+            invalid_gates = self.env["hjig.gate"].search([
+                ("project_id", "=", project.id), ("stage_id.code", "not in", list(allowed_codes)),
+            ], limit=1)
+            if invalid_gates:
+                raise ValidationError(_(
+                    "The Programme cannot change while gate %s belongs to a stage outside the selected route."
+                ) % invalid_gates.code)
 
     def _compute_hjig_operating_counts(self):
         models_by_field = {
@@ -91,17 +183,168 @@ class ProjectProject(models.Model):
             raise UserError(_("Hongyi Commercial Records access is required."))
         return self._hjig_project_record_action("new_hongyijig_custom.action_hjig_commercial_link_all")
 
+    def action_request_hjig_programme_change(self):
+        if not self.env.user.has_group("project.group_project_manager"):
+            raise UserError(_("Only a Project Manager may request a Programme route change."))
+        for project in self:
+            project._lock_hjig_programme_route()
+            if project.hjig_programme_change_status == "pending":
+                raise UserError(_("A Programme route change is already pending."))
+            if not project.hjig_pending_programme or project.hjig_pending_programme == project.hjig_programme:
+                raise ValidationError(_("Select a different proposed Programme route."))
+            if not (project.hjig_programme_change_reason or "").strip():
+                raise ValidationError(_("A Programme route-change reason is required."))
+            if not (project.hjig_programme_commercial_review or "").strip():
+                raise ValidationError(_("A documented commercial impact review is required, including when there is no impact."))
+            authority = project.hjig_programme_change_authority_id
+            if not authority or authority.category != "governance":
+                raise ValidationError(_("Select a Governance / PMO designation as the route-change authority."))
+            snapshot_values = {
+                "from_programme": project.hjig_programme,
+                "to_programme": project.hjig_pending_programme,
+                "reason": project.hjig_programme_change_reason,
+                "commercial_review": project.hjig_programme_commercial_review,
+                "current_stage": project.hjig_current_stage_id.code if project.hjig_current_stage_id else False,
+            }
+            snapshot = json.dumps(snapshot_values, sort_keys=True, separators=(",", ":"))
+            approval = self.env["hjig.approval"].sudo().create({
+                "project_id": project.id,
+                "target_ref": "project.project,%s" % project.id,
+                "approval_type": "other",
+                "authority_designation_id": authority.id,
+                "requested_by_id": self.env.user.id,
+            })
+            approval.with_context(**workflow_context()).write({
+                "request_snapshot": snapshot,
+                "request_snapshot_hash": hashlib.sha256(snapshot.encode("utf-8")).hexdigest(),
+            })
+            project.with_context(**workflow_context()).write({
+                "hjig_programme_change_approval_id": approval.id,
+                "hjig_programme_change_status": "pending",
+            })
+
+    def action_apply_hjig_programme_change(self):
+        for project in self:
+            project._lock_hjig_programme_route()
+            approval = project.hjig_programme_change_approval_id
+            if project.hjig_programme_change_status != "pending" or not approval:
+                raise UserError(_("The Project has no pending Programme route-change decision."))
+            approval._lock_transition()
+            if (
+                approval.approval_type != "other"
+                or approval.target_ref != project
+                or approval.project_id != project
+                or approval.authority_designation_id != project.hjig_programme_change_authority_id
+            ):
+                raise ValidationError(_(
+                    "The linked approval does not match this Project route-change request and authority."
+                ))
+            if approval.state == "approved":
+                snapshot = approval.request_snapshot or ""
+                if not snapshot or hashlib.sha256(snapshot.encode("utf-8")).hexdigest() != approval.request_snapshot_hash:
+                    raise ValidationError(_("The approved Programme route-change snapshot is missing or invalid."))
+                try:
+                    approved_values = json.loads(snapshot)
+                except (TypeError, ValueError) as error:
+                    raise ValidationError(_("The approved Programme route-change snapshot is not valid JSON.")) from error
+                new_programme = approved_values.get("to_programme")
+                if (
+                    approved_values.get("from_programme") != project.hjig_programme
+                    or new_programme not in self._HJIG_PROGRAMME_STAGE_CODES
+                ):
+                    raise ValidationError(_(
+                        "The approved Programme route-change snapshot does not match the Project's current route."
+                    ))
+                allowed_codes = set(self._HJIG_PROGRAMME_STAGE_CODES.get(new_programme, ()))
+                invalid_gate = self.env["hjig.gate"].search([
+                    ("project_id", "=", project.id),
+                    ("stage_id.code", "not in", list(allowed_codes)),
+                ], limit=1)
+                if invalid_gate:
+                    raise ValidationError(_(
+                        "Route change cannot be applied while decided gate %s is outside the proposed route."
+                    ) % invalid_gate.code)
+                eligible_go_gates = self.env["hjig.gate"].search([
+                    ("project_id", "=", project.id), ("state", "=", "go"),
+                    ("stage_id.code", "in", list(allowed_codes)),
+                    ("stage_id.active", "=", True),
+                ])
+                route_order = list(self._HJIG_PROGRAMME_STAGE_CODES.get(new_programme, ()))
+                last_go = max(
+                    eligible_go_gates,
+                    key=lambda gate: (route_order.index(gate.stage_id.code), gate.cycle),
+                    default=self.env["hjig.gate"].browse(),
+                )
+                previous_programme = project.hjig_programme
+                project.with_context(**workflow_context()).write({
+                    "hjig_programme": new_programme,
+                    "hjig_current_stage_id": last_go.stage_id.id if last_go else False,
+                    "hjig_programme_change_status": "approved",
+                })
+                self.env["hjig.transition.log"].sudo().create({
+                    "project_id": project.id, "target_ref": "project.project,%s" % project.id,
+                    "from_state": previous_programme, "to_state": new_programme,
+                    "decision": "programme_route_changed", "actor_id": self.env.user.id,
+                    "approval_id": approval.id, "reason": approved_values.get("reason"),
+                })
+            elif approval.state == "rejected":
+                project.with_context(**workflow_context()).write({
+                    "hjig_programme_change_status": "rejected",
+                })
+            else:
+                raise UserError(_("The Programme route-change approval is still pending."))
+
+    def _lock_hjig_programme_route(self):
+        """Serialize route changes with all gate transitions for this Project."""
+        self.ensure_one()
+        self.env.cr.execute(
+            "SELECT pg_advisory_xact_lock(%s, %s)",
+            (self.id, 0),
+        )
+        self.env.cr.execute(
+            "SELECT id FROM project_project WHERE id = %s FOR UPDATE",
+            (self.id,),
+        )
+        self.invalidate_recordset([
+            "hjig_programme", "hjig_current_stage_id", "hjig_pending_programme",
+            "hjig_programme_change_reason", "hjig_programme_commercial_review",
+            "hjig_programme_change_authority_id", "hjig_programme_change_approval_id",
+            "hjig_programme_change_status",
+        ])
+
     @api.model_create_multi
     def create(self, vals_list):
-        if any("hjig_authorized_user_ids" in vals for vals in vals_list) and not self.env.user.has_group(
+        governed = {"hjig_authorized_user_ids", "hjig_programme"}
+        if any(governed.intersection(vals) for vals in vals_list) and not self.env.user.has_group(
             "project.group_project_manager"
         ):
-            raise UserError(_("Only Project Managers may assign the governed Hongyi project team."))
+            raise UserError(_("Only Project Managers may configure the governed Hongyi project route and team."))
+        if any(vals.get("hjig_current_stage_id") for vals in vals_list):
+            raise ValidationError(_("The current governance stage can only be established by an approved GO decision."))
+        for vals in vals_list:
+            vals["hjig_current_stage_id"] = False
+            vals["hjig_programme_change_status"] = "none"
         return super().create(vals_list)
 
     def write(self, vals):
-        if "hjig_authorized_user_ids" in vals and not self.env.user.has_group("project.group_project_manager"):
-            raise UserError(_("Only Project Managers may change the governed Hongyi project team."))
+        workflow_only = {
+            "hjig_programme", "hjig_current_stage_id",
+            "hjig_programme_change_approval_id", "hjig_programme_change_status",
+        }
+        if workflow_only.intersection(vals) and not is_workflow_context(self.env):
+            raise ValidationError(_("Programme route, stage and decision fields may only change through governed actions."))
+        manager_fields = {
+            "hjig_authorized_user_ids", "hjig_pending_programme",
+            "hjig_programme_change_reason", "hjig_programme_commercial_review",
+            "hjig_programme_change_authority_id",
+        }
+        if manager_fields.intersection(vals) and not self.env.user.has_group("project.group_project_manager"):
+            raise UserError(_("Only Project Managers may configure the governed Hongyi project route and team."))
+        if manager_fields.intersection(vals):
+            for project in self:
+                project._lock_hjig_programme_route()
+                if project.hjig_programme_change_status == "pending":
+                    raise ValidationError(_("Programme route-change inputs are locked while approval is pending."))
         return super().write(vals)
 
 
@@ -505,10 +748,22 @@ class HjigApproval(models.Model):
         }
         if workflow_fields.intersection(vals) and not is_workflow_context(self.env):
             raise ValidationError(_("Approval audit fields may only change through decision actions."))
+        identity_fields = {
+            "project_id", "target_ref", "approval_type", "authority_designation_id",
+            "requested_by_id", "requested_date",
+        }
+        if identity_fields.intersection(vals):
+            raise ValidationError(_("Approval request identity is immutable after creation."))
+        if "decision_reason" in vals:
+            for approval in self:
+                approval._lock_transition()
+                if approval.state != "pending":
+                    raise ValidationError(_("A completed approval is read-only."))
         if any(record.state != "pending" for record in self):
             protected = {
                 "project_id", "target_ref", "approval_type", "authority_designation_id",
                 "requested_by_id", "requested_date", "request_snapshot_hash", "request_snapshot", "decision_reason",
+                "state", "approver_id", "decision_date",
             }
             if protected.intersection(vals):
                 raise ValidationError(_("A completed approval is read-only."))
@@ -533,9 +788,29 @@ class HjigApproval(models.Model):
             if approval.requested_by_id == self.env.user:
                 raise ValidationError(_("The requester cannot approve or reject their own request."))
 
+    def _lock_transition(self):
+        """Serialize approval decisions with cancellation and gate application."""
+        self.ensure_one()
+        target = self.sudo().target_ref
+        if self.approval_type == "gate" and target and target._name == "hjig.gate":
+            self.env.cr.execute(
+                "SELECT pg_advisory_xact_lock(%s, %s)",
+                (target.project_id.id, 0),
+            )
+            self.env.cr.execute(
+                "SELECT pg_advisory_xact_lock(%s, %s)",
+                (target.project_id.id, target.stage_id.id),
+            )
+        self.env.cr.execute(
+            "SELECT id FROM hjig_approval WHERE id = %s FOR UPDATE",
+            (self.id,),
+        )
+        self.invalidate_recordset(["state", "approver_id", "decision_date", "decision_reason"])
+
     def _record_decision(self, state):
         self._check_decision_authority()
         for approval in self:
+            approval._lock_transition()
             if approval.state != "pending":
                 raise UserError(_("Only Pending approvals can be decided."))
             if state == "rejected" and not (approval.decision_reason or "").strip():

@@ -110,7 +110,7 @@
                 <sheet>
                     <div class="oe_title"><h1><field name="code"/></h1></div>
                     <group>
-                        <group><field name="project_id"/><field name="target_ref"/><field name="approval_type"/><field name="authority_designation_id"/></group>
+                        <group><field name="project_id" readonly="1"/><field name="target_ref" readonly="1"/><field name="approval_type" readonly="1"/><field name="authority_designation_id" readonly="1"/></group>
                         <group><field name="requested_by_id"/><field name="requested_date"/><field name="approver_id"/><field name="decision_date"/></group>
                     </group>
                     <group string="Submission Snapshot" invisible="not request_snapshot_hash">
@@ -182,7 +182,26 @@
             </xpath>
             <xpath expr="//sheet/notebook" position="inside">
                 <page string="Hongyi Team" name="hjig_project_team">
-                    <field name="hjig_authorized_user_ids" widget="many2many_tags" groups="project.group_project_manager"/>
+                    <group>
+                        <group string="Programme Route">
+                            <field name="hjig_programme" readonly="1"/>
+                            <field name="hjig_allowed_stage_ids" invisible="1"/>
+                            <field name="hjig_current_stage_id" readonly="1"/>
+                            <field name="hjig_programme_change_status" readonly="1"/>
+                            <field name="hjig_programme_change_approval_id" readonly="1"/>
+                        </group>
+                        <group string="Controlled Route Change" groups="project.group_project_manager">
+                            <field name="hjig_pending_programme" readonly="hjig_programme_change_status == 'pending'"/>
+                            <field name="hjig_programme_change_authority_id" readonly="hjig_programme_change_status == 'pending'"/>
+                            <field name="hjig_programme_change_reason" readonly="hjig_programme_change_status == 'pending'"/>
+                            <field name="hjig_programme_commercial_review" readonly="hjig_programme_change_status == 'pending'"/>
+                            <button name="action_request_hjig_programme_change" string="Request Route Change" type="object" class="btn-primary" invisible="hjig_programme_change_status == 'pending'"/>
+                            <button name="action_apply_hjig_programme_change" string="Apply Route Decision" type="object" class="btn-primary" invisible="hjig_programme_change_status != 'pending'"/>
+                        </group>
+                        <group string="Governed Team">
+                            <field name="hjig_authorized_user_ids" widget="many2many_tags" groups="project.group_project_manager"/>
+                        </group>
+                    </group>
                 </page>
             </xpath>
         </field>

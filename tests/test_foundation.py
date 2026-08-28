@@ -117,6 +117,31 @@ class TestHongyiFoundation(TransactionCase):
         self.assertEqual(approval.state, "rejected")
         self.assertEqual(self.env["hjig.transition.log"].search_count([("approval_id", "=", approval.id)]), 1)
 
+    def test_pending_approval_identity_is_immutable(self):
+        approval = self.env["hjig.approval"].create({
+            "project_id": self.project.id,
+            "target_ref": self._target(),
+            "approval_type": "other",
+            "requested_by_id": self.requester.id,
+            "authority_designation_id": self.designation.id,
+        })
+        other_designation = self.env["hjig.governance.designation"].create({
+            "code": "WRONG-APPROVER",
+            "name": "Wrong Approval Authority",
+            "category": "governance",
+            "holder_ids": [(6, 0, [self.approver.id])],
+        })
+        for values in (
+            {"authority_designation_id": other_designation.id},
+            {"approval_type": "gate"},
+            {"target_ref": self._target(self.env["project.project"].create({"name": "Wrong Target"}))},
+        ):
+            with self.assertRaises(ValidationError):
+                approval.with_user(self.approver).write(values)
+        self.assertEqual(approval.authority_designation_id, self.designation)
+        self.assertEqual(approval.approval_type, "other")
+        self.assertEqual(approval.target_ref, self.project)
+
     def test_evidence_requires_a_source(self):
         values = {
             "project_id": self.project.id,
@@ -186,3 +211,65 @@ class TestHongyiFoundation(TransactionCase):
     def test_project_cockpit_hides_commercial_records_without_role(self):
         with self.assertRaises(UserError):
             self.project.with_user(self.requester).action_open_hjig_commercial_links()
+
+    def test_programme_route_exposes_only_applicable_stages(self):
+        design_project = self.env["project.project"].create({
+            "name": "LaunchGuard Design Project",
+            "hjig_programme": "launchguard_design",
+            "hjig_authorized_user_ids": [(6, 0, [self.requester.id, self.approver.id])],
+        })
+        self.assertEqual(set(design_project.hjig_allowed_stage_ids.mapped("code")), {"PA-00", "TG-01"})
+        with self.assertRaises(ValidationError):
+            design_project.hjig_current_stage_id = self.env.ref("new_hongyijig_custom.stage_tg02")
+        with self.assertRaises(ValidationError):
+            self.env["hjig.gate"].create({
+                "project_id": design_project.id,
+                "target_ref": "project.project,%s" % design_project.id,
+                "stage_id": self.env.ref("new_hongyijig_custom.stage_tg02").id,
+                "approval_authority_designation_id": self.designation.id,
+            })
+
+        lite_project = self.env["project.project"].create({
+            "name": "ToolLock Lite Project", "hjig_programme": "toollock_lite",
+            "hjig_authorized_user_ids": [(6, 0, [self.requester.id, self.approver.id])],
+        })
+        self.assertFalse(lite_project.hjig_allowed_stage_ids)
+
+    def test_programme_and_current_stage_reject_direct_writes(self):
+        with self.assertRaises(ValidationError):
+            self.project.hjig_programme = "launchguard_design"
+        with self.assertRaises(ValidationError):
+            self.project.hjig_current_stage_id = self.env.ref("new_hongyijig_custom.stage_pa00")
+
+    def test_archived_stage_cannot_receive_a_gate(self):
+        stage = self.env.ref("new_hongyijig_custom.stage_pa00")
+        stage.active = False
+        with self.assertRaises(ValidationError):
+            self.env["hjig.gate"].create({
+                "project_id": self.project.id,
+                "target_ref": self._target(),
+                "stage_id": stage.id,
+                "approval_authority_designation_id": self.designation.id,
+            })
+
+    def test_programme_change_requires_governed_approval_and_commercial_review(self):
+        self.project.write({
+            "hjig_pending_programme": "launchguard_design",
+            "hjig_programme_change_reason": "Customer has contracted design services only.",
+            "hjig_programme_commercial_review": "Reviewed quotation and revenue scope; no supplier commitment remains.",
+            "hjig_programme_change_authority_id": self.designation.id,
+        })
+        self.project.action_request_hjig_programme_change()
+        approval = self.project.hjig_programme_change_approval_id
+        self.assertEqual(self.project.hjig_programme_change_status, "pending")
+        self.assertTrue(approval.request_snapshot_hash)
+        with self.assertRaises(ValidationError):
+            self.project.hjig_programme_change_reason = "Changed during approval"
+        approval.with_user(self.approver).action_approve()
+        self.project.action_apply_hjig_programme_change()
+        self.assertEqual(self.project.hjig_programme, "launchguard_design")
+        self.assertEqual(self.project.hjig_programme_change_status, "approved")
+        self.assertEqual(self.env["hjig.transition.log"].search_count([
+            ("project_id", "=", self.project.id),
+            ("decision", "=", "programme_route_changed"),
+        ]), 1)

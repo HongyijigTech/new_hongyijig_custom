@@ -5,6 +5,7 @@ import json
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
+from .foundation import HJIG_PROGRAMME_SELECTION
 from .workflow_guard import is_workflow_context, workflow_context
 
 
@@ -34,6 +35,12 @@ class HjigChecklistTemplate(models.Model):
     owner_designation_id = fields.Many2one(
         "hjig.governance.designation", required=True, ondelete="restrict", tracking=True
     )
+    programme_scope = fields.Selection(
+        HJIG_PROGRAMME_SELECTION,
+        string="Programme-Specific Override",
+        tracking=True,
+        help="Leave blank for the standard template. A matching Programme-specific template takes precedence.",
+    )
     item_ids = fields.One2many("hjig.checklist.template.item", "template_id", string="Checklist Items")
     active = fields.Boolean(default=True, tracking=True)
 
@@ -49,7 +56,10 @@ class HjigChecklistTemplate(models.Model):
         return super().create(vals_list)
 
     def write(self, vals):
-        governed = {"code", "name", "version", "stage_id", "purpose", "owner_designation_id"}
+        governed = {
+            "code", "name", "version", "stage_id", "purpose",
+            "owner_designation_id", "programme_scope",
+        }
         if governed.intersection(vals) and self.env["hjig.checklist"].search_count([
             ("template_id", "in", self.ids),
         ]):
@@ -57,7 +67,6 @@ class HjigChecklistTemplate(models.Model):
         if vals.get("code"):
             vals["code"] = vals["code"].strip().upper()
         return super().write(vals)
-
 
 class HjigChecklistTemplateItem(models.Model):
     _name = "hjig.checklist.template.item"
@@ -412,6 +421,10 @@ class HjigGate(models.Model):
     code = fields.Char(default=lambda self: _("New"), required=True, readonly=True, copy=False, index=True)
     project_id = fields.Many2one("project.project", required=True, ondelete="restrict", index=True, tracking=True)
     company_id = fields.Many2one(related="project_id.company_id", store=True, readonly=True, index=True)
+    allowed_stage_ids = fields.Many2many(
+        related="project_id.hjig_allowed_stage_ids", readonly=True,
+        string="Applicable Governance Stages",
+    )
     target_ref = fields.Reference(selection="_selection_target_model", required=True, string="Gate For")
     stage_id = fields.Many2one("hjig.launchguard.stage", required=True, ondelete="restrict", index=True, tracking=True)
     approval_authority_designation_id = fields.Many2one(
@@ -445,10 +458,34 @@ class HjigGate(models.Model):
                 vals["code"] = sequence.next_by_code("hjig.gate") or _("New")
         return super().create(vals_list)
 
-    @api.constrains("target_ref", "project_id")
+    @api.constrains("target_ref", "project_id", "stage_id")
     def _check_target(self):
         for gate in self:
             gate._check_target_project(gate.target_ref, gate.project_id)
+            if not gate.stage_id.active or gate.stage_id not in gate.project_id.hjig_allowed_stage_ids:
+                raise ValidationError(_(
+                    "Stage %s is inactive or not applicable to the project's Hongyi Programme route."
+                ) % gate.stage_id.code)
+
+    def _check_expected_next_stage(self):
+        for gate in self:
+            route_codes = list(gate.project_id._hjig_allowed_stage_codes())
+            current = gate.project_id.hjig_current_stage_id
+            if not route_codes:
+                raise ValidationError(_("This Hongyi Programme does not use B-Series governance gates."))
+            if current:
+                if current.code not in route_codes:
+                    raise ValidationError(_("The Project current stage is inconsistent with its Programme route."))
+                current_index = route_codes.index(current.code)
+                expected_code = route_codes[current_index + 1] if current_index + 1 < len(route_codes) else False
+            else:
+                expected_code = route_codes[0]
+            if not expected_code:
+                raise ValidationError(_("All applicable governance stages for this Project are already cleared."))
+            if gate.stage_id.code != expected_code:
+                raise ValidationError(_(
+                    "The next applicable stage is %s. Stage %s cannot be decided out of sequence."
+                ) % (expected_code, gate.stage_id.code))
 
     @api.depends("checklist_ids.readiness", "checklist_ids.state", "checklist_ids.blocking_summary")
     def _compute_readiness(self):
@@ -476,14 +513,64 @@ class HjigGate(models.Model):
         if workflow_fields.intersection(vals) and not is_workflow_context(self.env):
             raise ValidationError(_("Gate decision fields may only change through the controlled workflow."))
         governed = {"project_id", "target_ref", "stage_id", "cycle", "approval_authority_designation_id"}
-        if governed.intersection(vals) and any(gate.state in ("pending", "go", "no_go") for gate in self):
-            raise ValidationError(_("Gate identity is read-only after decision request."))
+        if governed.intersection(vals):
+            raise ValidationError(_(
+                "Gate identity is immutable after creation. Delete and recreate an incorrect Draft gate."
+            ))
         return super().write(vals)
+
+    def _lock_gate_transition(self):
+        """Serialize every state transition with Project route and stage-lane changes."""
+        self.ensure_one()
+        project = self.project_id
+        self.env.cr.execute(
+            "SELECT pg_advisory_xact_lock(%s, %s)",
+            (project.id, 0),
+        )
+        self.env.cr.execute(
+            "SELECT pg_advisory_xact_lock(%s, %s)",
+            (project.id, self.stage_id.id),
+        )
+        self.env.cr.execute(
+            "SELECT id FROM hjig_gate WHERE id = %s FOR UPDATE",
+            (self.id,),
+        )
+        self.invalidate_recordset([
+            "state", "approval_id", "project_id", "target_ref", "stage_id", "cycle",
+            "approval_authority_designation_id",
+        ])
+        project.invalidate_recordset(["hjig_programme", "hjig_current_stage_id"])
+
+    def _check_linked_approval_identity(self):
+        self.ensure_one()
+        approval = self.approval_id
+        if (
+            not approval
+            or approval.approval_type != "gate"
+            or approval.target_ref != self
+            or approval.project_id != self.project_id
+            or approval.authority_designation_id != self.approval_authority_designation_id
+        ):
+            raise ValidationError(_(
+                "The linked approval does not match this gate, Project and required authority."
+            ))
 
     def action_request_decision(self):
         for gate in self:
+            gate._lock_gate_transition()
             if gate.state != "draft":
                 raise UserError(_("Only Draft gates can request a decision."))
+            competing = self.search([
+                ("project_id", "=", gate.project_id.id),
+                ("stage_id", "=", gate.stage_id.id),
+                ("state", "=", "pending"),
+                ("id", "!=", gate.id),
+            ], limit=1)
+            if competing:
+                raise ValidationError(_(
+                    "Gate %s already has a pending decision for this Project stage. Cancel or complete it first."
+                ) % competing.code)
+            gate._check_expected_next_stage()
             if gate.readiness not in ("pass", "warn"):
                 raise ValidationError(gate.blocking_summary or _("Gate is not ready."))
             approval = self.env["hjig.approval"].sudo().create({
@@ -501,8 +588,14 @@ class HjigGate(models.Model):
         for gate in self:
             if gate.state != "draft":
                 raise UserError(_("Stage checklists can be loaded only while the gate is Draft."))
-            templates = self.env["hjig.checklist.template"].search([
+            template_model = self.env["hjig.checklist.template"]
+            exact_templates = template_model.search([
                 ("stage_id", "=", gate.stage_id.id), ("active", "=", True),
+                ("programme_scope", "=", gate.project_id.hjig_programme),
+            ])
+            templates = exact_templates or template_model.search([
+                ("stage_id", "=", gate.stage_id.id), ("active", "=", True),
+                ("programme_scope", "=", False),
             ])
             if not templates:
                 raise ValidationError(_("No active checklist template is configured for this stage."))
@@ -522,10 +615,50 @@ class HjigGate(models.Model):
                 "gate_id": gate.id,
             })
 
+    def action_cancel_pending_decision(self):
+        if not self.env.user.has_group("project.group_project_manager"):
+            raise UserError(_("Only a Project Manager may cancel a pending gate decision request."))
+        for gate in self:
+            gate._lock_gate_transition()
+            if gate.state != "pending" or not gate.approval_id:
+                raise UserError(_("Only a gate with a pending decision request can be cancelled."))
+            approval = gate.approval_id
+            approval._lock_transition()
+            gate._check_linked_approval_identity()
+            if gate.approval_id.state != "pending":
+                raise UserError(_("A gate decision request cannot be cancelled after the approver has decided it."))
+            if not (gate.decision_notes or "").strip():
+                raise ValidationError(_("Record the cancellation reason in Decision Notes."))
+            approval.with_context(**workflow_context()).write({
+                "state": "cancelled",
+                "decision_date": fields.Datetime.now(),
+            })
+            self.env["hjig.transition.log"].sudo().create({
+                "project_id": gate.project_id.id,
+                "target_ref": "%s,%s" % (approval._name, approval.id),
+                "from_state": "pending", "to_state": "cancelled",
+                "decision": "request_cancelled", "actor_id": self.env.user.id,
+                "approval_id": approval.id, "reason": gate.decision_notes,
+            })
+            gate.with_context(**workflow_context()).write({
+                "state": "draft", "approval_id": False,
+            })
+            self.env["hjig.transition.log"].sudo().create({
+                "project_id": gate.project_id.id,
+                "target_ref": "%s,%s" % (gate._name, gate.id),
+                "from_state": "pending", "to_state": "draft",
+                "decision": "decision_request_cancelled", "actor_id": self.env.user.id,
+                "approval_id": approval.id, "reason": gate.decision_notes,
+            })
+
     def action_apply_decision(self):
         for gate in self:
+            gate._lock_gate_transition()
             if gate.state != "pending" or not gate.approval_id:
                 raise UserError(_("The gate has no pending approval decision."))
+            gate.approval_id._lock_transition()
+            gate._check_linked_approval_identity()
+            gate._check_expected_next_stage()
             if gate.approval_id.state == "approved":
                 next_state = "go"
             elif gate.approval_id.state == "rejected":
@@ -538,6 +671,10 @@ class HjigGate(models.Model):
                 raise ValidationError(_("A GO decision with warnings requires the approver's acceptance reason."))
             gate.with_context(**workflow_context()).write({"state": next_state})
             gate.checklist_ids.with_context(**workflow_context()).write({"state": "closed"})
+            if next_state == "go":
+                gate.project_id.with_context(**workflow_context()).write({
+                    "hjig_current_stage_id": gate.stage_id.id,
+                })
             self.env["hjig.transition.log"].sudo().create({
                 "project_id": gate.project_id.id,
                 "target_ref": "%s,%s" % (gate._name, gate.id),
