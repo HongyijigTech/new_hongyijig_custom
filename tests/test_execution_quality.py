@@ -56,6 +56,14 @@ class TestExecutionQuality(TransactionCase):
         report.action_apply_decision()
         self.assertEqual(report.state, "approved")
 
+    def test_tooling_requires_authoritative_or_external_mould_plan_reference(self):
+        with self.assertRaises(ValidationError):
+            self.env["hjig.tooling.execution"].create({
+                "project_id": self.project.id, "supplier_id": self.supplier.id,
+                "start_date": "2026-08-01", "baseline_trial_date": "2026-09-01",
+                "current_forecast_trial_date": "2026-09-01", "coordinator_id": self.owner.id,
+            })
+
     def test_dimensional_result_must_match_limits(self):
         inspection = self.env["hjig.inspection"].create({
             "project_id": self.project.id, "inspection_type": "dimensional",
@@ -81,6 +89,14 @@ class TestExecutionQuality(TransactionCase):
         })
         with self.assertRaises(ValidationError):
             valid_line.instrument_reference = False
+
+    def test_inspection_requires_authoritative_or_external_part_reference(self):
+        with self.assertRaises(ValidationError):
+            self.env["hjig.inspection"].create({
+                "project_id": self.project.id, "inspection_type": "part_visual",
+                "supplier_id": self.supplier.id, "batch_reference": "T1-SAMPLE",
+                "drawing_revision": "R03", "approval_authority_designation_id": self.designation.id,
+            })
 
     def test_inspection_uses_shared_header_and_human_approval(self):
         inspection = self.env["hjig.inspection"].create({

@@ -20,6 +20,27 @@ TOOLING_REPORT_TYPES = [
     ("handover_dossier", "Tool Handover Dossier"),
 ]
 
+MOULD_PLAN_REFERENCE_MODELS = [
+    ("hjig.final.mould.plan", "Final Mould Plan"),
+    ("x_mould", "Project Mould Planning Form"),
+    ("hjig.mould.register", "Project Mould Register"),
+]
+
+PART_REFERENCE_MODELS = [
+    ("x_mould_part", "Mould Planning Component / Part"),
+    ("hjig.sourcebridge.component", "SourceBridge Sourcing Component"),
+]
+
+
+def _available_reference_models(recordset, candidates):
+    """Expose database-native adapters without making them hard module dependencies."""
+    return [(model, label) for model, label in candidates if model in recordset.env.registry]
+
+
+def _reference_project(record):
+    """Read the project from either governed or legacy Studio-backed records."""
+    return getattr(record, "project_id", False) or getattr(record, "x_project_id", False)
+
 
 class HjigTargetMixin(models.AbstractModel):
     _inherit = "hjig.target.mixin"
@@ -45,10 +66,16 @@ class HjigToolingExecution(models.Model):
     project_id = fields.Many2one("project.project", required=True, ondelete="restrict", index=True, tracking=True)
     company_id = fields.Many2one(related="project_id.company_id", store=True, readonly=True, index=True)
     supplier_id = fields.Many2one("res.partner", required=True, ondelete="restrict", index=True, tracking=True)
-    mould_plan_reference = fields.Char(
-        required=True,
+    mould_plan_ref = fields.Reference(
+        selection="_selection_mould_plan_ref_model",
+        string="Linked Mould Plan",
         tracking=True,
-        help="Reference the authoritative Mould Planning record; do not duplicate its engineering fields here.",
+        help="Link the existing authoritative Mould Planning or frozen Mould Plan record when available.",
+    )
+    mould_plan_reference = fields.Char(
+        string="External / Legacy Mould Plan Reference",
+        tracking=True,
+        help="Fallback identifier only when the authoritative Mould Planning record is outside this Odoo database.",
     )
     supplier_order_reference = fields.Char(string="Supplier PO / Work Order", tracking=True)
     start_date = fields.Date(required=True, tracking=True)
@@ -66,6 +93,10 @@ class HjigToolingExecution(models.Model):
     delay_days = fields.Integer(compute="_compute_execution_summary")
 
     _code_unique = models.Constraint("UNIQUE(code)", "Tooling execution code must be unique.")
+
+    @api.model
+    def _selection_mould_plan_ref_model(self):
+        return _available_reference_models(self, MOULD_PLAN_REFERENCE_MODELS)
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -99,6 +130,16 @@ class HjigToolingExecution(models.Model):
                 raise ValidationError(_("Baseline trial date cannot be before tooling start."))
             if execution.current_forecast_trial_date < execution.start_date:
                 raise ValidationError(_("Forecast trial date cannot be before tooling start."))
+
+    @api.constrains("project_id", "mould_plan_ref", "mould_plan_reference")
+    def _check_mould_plan_reference(self):
+        for execution in self:
+            if not execution.mould_plan_ref and not (execution.mould_plan_reference or "").strip():
+                raise ValidationError(_("Link the authoritative Mould Plan or enter an external reference."))
+            if execution.mould_plan_ref:
+                reference_project = _reference_project(execution.mould_plan_ref)
+                if reference_project and reference_project != execution.project_id:
+                    raise ValidationError(_("The linked Mould Plan must belong to the same project."))
 
     def write(self, vals):
         if "state" in vals and not is_workflow_context(self.env):
@@ -420,10 +461,16 @@ class HjigInspection(models.Model):
     )
     supplier_id = fields.Many2one("res.partner", required=True, ondelete="restrict", tracking=True)
     supplier_order_reference = fields.Char(string="Supplier PO / Work Order", tracking=True)
-    part_or_assembly_reference = fields.Char(
-        required=True,
+    part_or_assembly_ref = fields.Reference(
+        selection="_selection_part_reference_model",
+        string="Linked Part / Assembly",
         tracking=True,
-        help="Reference the authoritative Part/Assembly record; do not duplicate its technical master data.",
+        help="Link the existing authoritative Mould Planning Part or SourceBridge Component when available.",
+    )
+    part_or_assembly_reference = fields.Char(
+        string="External / Legacy Part or Assembly Reference",
+        tracking=True,
+        help="Fallback identifier only when the authoritative Part/Assembly record is outside this Odoo database.",
     )
     batch_reference = fields.Char(required=True, tracking=True)
     drawing_revision = fields.Char(required=True, tracking=True)
@@ -449,6 +496,10 @@ class HjigInspection(models.Model):
 
     _code_unique = models.Constraint("UNIQUE(code)", "Inspection code must be unique.")
 
+    @api.model
+    def _selection_part_reference_model(self):
+        return _available_reference_models(self, PART_REFERENCE_MODELS)
+
     @api.model_create_multi
     def create(self, vals_list):
         sequence = self.env["ir.sequence"]
@@ -469,6 +520,16 @@ class HjigInspection(models.Model):
                 inspection.overall_result = "conditional"
             else:
                 inspection.overall_result = "pass"
+
+    @api.constrains("project_id", "part_or_assembly_ref", "part_or_assembly_reference")
+    def _check_part_reference(self):
+        for inspection in self:
+            if not inspection.part_or_assembly_ref and not (inspection.part_or_assembly_reference or "").strip():
+                raise ValidationError(_("Link the authoritative Part/Assembly or enter an external reference."))
+            if inspection.part_or_assembly_ref:
+                reference_project = _reference_project(inspection.part_or_assembly_ref)
+                if reference_project and reference_project != inspection.project_id:
+                    raise ValidationError(_("The linked Part/Assembly must belong to the same project."))
 
     def write(self, vals):
         workflow = {"state", "approval_id"}
