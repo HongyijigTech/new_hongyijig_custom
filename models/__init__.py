@@ -6,3 +6,4 @@ from . import foundation
 from . import governance_master
 from . import project_document
 from . import sor
+from . import checklist_gate

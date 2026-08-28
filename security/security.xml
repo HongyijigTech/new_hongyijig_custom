@@ -47,6 +47,9 @@
         <field name="model_id" ref="model_hjig_sor_requirement_verification"/>
         <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
     </record>
+    <record id="rule_hjig_checklist_company" model="ir.rule"><field name="name">Hongyi Checklist: allowed companies</field><field name="model_id" ref="model_hjig_checklist"/><field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field></record>
+    <record id="rule_hjig_checklist_response_company" model="ir.rule"><field name="name">Hongyi Checklist Response: allowed companies</field><field name="model_id" ref="model_hjig_checklist_response"/><field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field></record>
+    <record id="rule_hjig_gate_company" model="ir.rule"><field name="name">Hongyi Gate: allowed companies</field><field name="model_id" ref="model_hjig_gate"/><field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field></record>
 
     <record id="rule_hjig_baseline_project_team" model="ir.rule">
         <field name="name">Hongyi Baseline: assigned project team</field>
@@ -90,6 +93,9 @@
         <field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field>
         <field name="groups" eval="[(4, ref('project.group_project_user'))]"/>
     </record>
+    <record id="rule_hjig_checklist_project_team" model="ir.rule"><field name="name">Hongyi Checklist: assigned project team</field><field name="model_id" ref="model_hjig_checklist"/><field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field><field name="groups" eval="[(4, ref('project.group_project_user'))]"/></record>
+    <record id="rule_hjig_checklist_response_project_team" model="ir.rule"><field name="name">Hongyi Checklist Response: assigned project team</field><field name="model_id" ref="model_hjig_checklist_response"/><field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field><field name="groups" eval="[(4, ref('project.group_project_user'))]"/></record>
+    <record id="rule_hjig_gate_project_team" model="ir.rule"><field name="name">Hongyi Gate: assigned project team</field><field name="model_id" ref="model_hjig_gate"/><field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field><field name="groups" eval="[(4, ref('project.group_project_user'))]"/></record>
 
     <record id="rule_hjig_baseline_manager_all" model="ir.rule">
         <field name="name">Hongyi Baseline: project manager access</field>
@@ -133,4 +139,7 @@
         <field name="domain_force">[(1, '=', 1)]</field>
         <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
     </record>
+    <record id="rule_hjig_checklist_manager_all" model="ir.rule"><field name="name">Hongyi Checklist: project manager access</field><field name="model_id" ref="model_hjig_checklist"/><field name="domain_force">[(1, '=', 1)]</field><field name="groups" eval="[(4, ref('project.group_project_manager'))]"/></record>
+    <record id="rule_hjig_checklist_response_manager_all" model="ir.rule"><field name="name">Hongyi Checklist Response: project manager access</field><field name="model_id" ref="model_hjig_checklist_response"/><field name="domain_force">[(1, '=', 1)]</field><field name="groups" eval="[(4, ref('project.group_project_manager'))]"/></record>
+    <record id="rule_hjig_gate_manager_all" model="ir.rule"><field name="name">Hongyi Gate: project manager access</field><field name="model_id" ref="model_hjig_gate"/><field name="domain_force">[(1, '=', 1)]</field><field name="groups" eval="[(4, ref('project.group_project_manager'))]"/></record>
 </odoo>

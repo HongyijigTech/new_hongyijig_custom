@@ -25,3 +25,13 @@
 "access_hjig_sor_requirement_manager","hjig.sor.requirement manager","model_hjig_sor_requirement","project.group_project_manager",1,1,1,1
 "access_hjig_sor_verification_user","hjig.sor.requirement.verification user","model_hjig_sor_requirement_verification","project.group_project_user",1,1,1,0
 "access_hjig_sor_verification_manager","hjig.sor.requirement.verification manager","model_hjig_sor_requirement_verification","project.group_project_manager",1,1,1,1
+"access_hjig_checklist_template_user","hjig.checklist.template user","model_hjig_checklist_template","project.group_project_user",1,0,0,0
+"access_hjig_checklist_template_manager","hjig.checklist.template manager","model_hjig_checklist_template","project.group_project_manager",1,1,1,1
+"access_hjig_checklist_template_item_user","hjig.checklist.template.item user","model_hjig_checklist_template_item","project.group_project_user",1,0,0,0
+"access_hjig_checklist_template_item_manager","hjig.checklist.template.item manager","model_hjig_checklist_template_item","project.group_project_manager",1,1,1,1
+"access_hjig_checklist_user","hjig.checklist user","model_hjig_checklist","project.group_project_user",1,1,1,0
+"access_hjig_checklist_manager","hjig.checklist manager","model_hjig_checklist","project.group_project_manager",1,1,1,1
+"access_hjig_checklist_response_user","hjig.checklist.response user","model_hjig_checklist_response","project.group_project_user",1,1,1,0
+"access_hjig_checklist_response_manager","hjig.checklist.response manager","model_hjig_checklist_response","project.group_project_manager",1,1,1,1
+"access_hjig_gate_user","hjig.gate user","model_hjig_gate","project.group_project_user",1,1,1,0
+"access_hjig_gate_manager","hjig.gate manager","model_hjig_gate","project.group_project_manager",1,1,1,1
