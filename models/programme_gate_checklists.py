@@ -4,8 +4,8 @@ import re
 from odoo import models
 
 
-SOURCE_REFERENCE = "Hongyi_BSeries_TG_Gate_Forms_v1_7"
-SOURCE_VERSION = "v1.8 / Drive revision AIroW37BlcpU3GXZM7x5I3XVQBEPToqPfJHFNydrDneV1ZsEh2CIWFm8SWoqgtVl3HriFk37wGrX8wAvI0eFnYOwMkiWiY8BNKhvMHacw_8"
+SOURCE_REFERENCE = "Hongyi_BSeries_TG_Gate_Forms_v1_9"
+SOURCE_VERSION = "v1.9 / Controlled Updated / 21-Aug-2026"
 
 GATE_FORM_EXIT_ITEMS = (
     ("TG-01", 1, "[LAUNCHGUARD COMPLETE + LAUNCHGUARD DESIGN ONLY] Post-Design Revision confirmed: SOR revised + BOP revised + Design Challenges revised + Mould Planning revised — all re-signed after A-011 Design Sign-Off\nMandatory revision after R&D. B2 cannot begin until all four revised documents are signed off."),
@@ -123,28 +123,28 @@ GATE_FORM_EXIT_ITEMS = (
     ("TG-09", 7, "CM-10 collected (0% standard. 5% ONLY if held from CM-07 exception — RARE)\nTrigger = A-090 MIH sign-off for this programme (Complete/Development). Most Chinese toolmakers do not accept holding final payment beyond dispatch. Confirm at A-017 NDA/Solicitation."),
     ("TG-09", 8, "Testimonial request made to customer (A-092)\nWhatsApp/Email/Video byte. Mandatory attempt before B8."),
     ("TG-09", 9, "Risk Register reviewed — no new risk with score ≥16 unresolved\nIf new risk ≥16: document in Risk Register + escalate to PMO before gate closes."),
-    ("TG-10", 1, "Final Technical Outcome Summary complete (A-084 B8)\nOwner: Sr. Tool Development Engineer. Refers to Project Planning Sheet. INTERNAL ONLY."),
-    ("TG-10", 2, "Tool Performance Snapshot complete (A-085 B8)\nStability, issues, learnings. Input for future SOR standards."),
-    ("TG-10", 3, "Commercial Closure confirmed — No pending claims (A-086 B8)"),
-    ("TG-10", 4, "Internal Profitability Reflection complete (A-087 B8)\nINTERNAL ONLY. Never shared externally."),
-    ("TG-10", 5, "Supplier Performance Reflection + Future Eligibility (T-22 / A-088 B8)\nINTERNAL ONLY. Preferred / Conditional / Restricted / Blacklisted."),
-    ("TG-10", 6, "Lessons Learned + Risk Register formally CLOSED (A-089 B8)\nJr. PM/PMO fills. Founder approves before filing."),
-    ("TG-10", 7, "Programme Effectiveness Review complete (A-090 B8)"),
-    ("TG-10", 8, "Authority Assets archived — Testimonial + Case + Narrative (A-091 B8)"),
-    ("TG-10", 9, "Project marked CLOSED in Odoo / System (A-092 B8)"),
+    ("TG-10", 1, "Final Technical Outcome Summary complete (B8-01)\nOwner: Sr. Tool Development Engineer. Refers to Project Planning Sheet. INTERNAL ONLY."),
+    ("TG-10", 2, "Tool Performance Snapshot complete (B8-02)\nStability, issues, learnings. Input for future SOR standards."),
+    ("TG-10", 3, "Commercial Closure confirmed — No pending claims (B8-03)"),
+    ("TG-10", 4, "Internal Profitability Reflection complete (B8-04)\nINTERNAL ONLY. Never shared externally."),
+    ("TG-10", 5, "Supplier Performance Reflection + Future Eligibility (T-22 / B8-05)\nINTERNAL ONLY. Preferred / Conditional / Restricted / Blacklisted."),
+    ("TG-10", 6, "Lessons Learned + Risk Register formally CLOSED (B8-06)\nJr. PM/PMO fills. Founder approves before filing."),
+    ("TG-10", 7, "Programme Effectiveness Review complete (B8-07)"),
+    ("TG-10", 8, "Authority Assets archived (B8-08) — testimonial request evidence is required; receipt is not mandatory."),
+    ("TG-10", 9, "Project marked CLOSED in Odoo / System (B8-09)"),
     ("TG-10", 10, "CM-11 released — Final 5% to Chinese Toolmaker\nSTANDARD: held until this gate. CASE-TO-CASE EXCEPTION (added July 25, 2026): if the toolmaker refuses to hold this 5% until B8 Closure, an alternate release schedule requires Founder/PMO WRITTEN APPROVAL, documented at A-017 NDA/Solicitation — BEFORE toolmaker finalisation, not discovered afterwards."),
     ("TG-10", 11, "Risk Register reviewed — no new risk with score ≥16 unresolved\nIf new risk ≥16: document in Risk Register + escalate to PMO before gate closes."),
     ("TG-10-LITE", 1, "Dispatch Confirmation Sign-Off complete\nREPLACES A-089 (Golden Sample Comparison) + A-090 (MIH Sign-Off) for ToolLock Control. Customer confirms mould(s) received in acceptable condition after their own transport/customs process. Golden Sample (from A-057) retained as passive reference document only — available to customer for self-verification if a quality dispute arises during their own installation. HJIG does NOT travel to site, does NOT witness installation, and issues no active comparison sign-off."),
     ("TG-10-LITE", 2, "CM-10 collected — trigger = Dispatch Confirmation Sign-Off (NOT A-090, which never occurs for this programme)\n0% standard. 5% ONLY if held from CM-07 exception — RARE."),
-    ("TG-10-LITE", 3, "Final Technical Outcome Summary complete (A-084 B8)\nOwner: Sr. Tool Development Engineer. Refers to Project Planning Sheet. INTERNAL ONLY."),
-    ("TG-10-LITE", 4, "Tool Performance Snapshot complete (A-085 B8)\nStability, issues, learnings. Input for future SOR standards."),
-    ("TG-10-LITE", 5, "Commercial Closure confirmed — No pending claims (A-086 B8)"),
-    ("TG-10-LITE", 6, "Internal Profitability Reflection complete (A-087 B8)\nINTERNAL ONLY. Never shared externally."),
-    ("TG-10-LITE", 7, "Supplier Performance Reflection + Future Eligibility (T-22 / A-088 B8)\nINTERNAL ONLY. Preferred / Conditional / Restricted / Blacklisted."),
-    ("TG-10-LITE", 8, "Lessons Learned + Risk Register formally CLOSED (A-089 B8)\nJr. PM/PMO fills. Founder approves before filing."),
-    ("TG-10-LITE", 9, "Programme Effectiveness Review complete (A-090 B8)"),
-    ("TG-10-LITE", 10, "Authority Assets archived — Testimonial + Case + Narrative (A-091 B8)\nTestimonial requested after Dispatch Confirmation Sign-Off, not after installation (since ToolLock Control has none)."),
-    ("TG-10-LITE", 11, "Project marked CLOSED in Odoo / System (A-092 B8 — Lite)"),
+    ("TG-10-LITE", 3, "Final Technical Outcome Summary complete (B8-01)\nOwner: Sr. Tool Development Engineer. Refers to Project Planning Sheet. INTERNAL ONLY."),
+    ("TG-10-LITE", 4, "Tool Performance Snapshot complete (B8-02)\nStability, issues, learnings. Input for future SOR standards."),
+    ("TG-10-LITE", 5, "Commercial Closure confirmed — No pending claims (B8-03)"),
+    ("TG-10-LITE", 6, "Internal Profitability Reflection complete (B8-04)\nINTERNAL ONLY. Never shared externally."),
+    ("TG-10-LITE", 7, "Supplier Performance Reflection + Future Eligibility (T-22 / B8-05)\nINTERNAL ONLY. Preferred / Conditional / Restricted / Blacklisted."),
+    ("TG-10-LITE", 8, "Lessons Learned + Risk Register formally CLOSED (B8-06)\nJr. PM/PMO fills. Founder approves before filing."),
+    ("TG-10-LITE", 9, "Programme Effectiveness Review complete (B8-07)"),
+    ("TG-10-LITE", 10, "Authority Assets archived (B8-08) — testimonial request evidence is required; receipt is not mandatory."),
+    ("TG-10-LITE", 11, "Project marked CLOSED in Odoo / System (B8-09 — Lite)"),
     ("TG-10-LITE", 12, "CM-11 released — Final 5% to Chinese Toolmaker\nSTANDARD: held until this gate. CASE-TO-CASE EXCEPTION: if the toolmaker refuses to hold this 5% until Lite-Closure, an alternate release schedule requires Founder/PMO WRITTEN APPROVAL, documented at A-017 — BEFORE toolmaker finalisation."),
     ("TG-10-LITE", 13, "Risk Register reviewed — no new risk with score ≥16 unresolved\nIf new risk ≥16: document in Risk Register + escalate to PMO before gate closes."),
 )
@@ -304,7 +304,7 @@ class HjigProgrammeTemplateVersion(models.Model):
                 for row_number, text in stage_rows:
                     code = "GF-%s-%02d" % (stage_code.replace("-", ""), row_number)
                     expected_codes.add(code)
-                    match = re.search(r"\b(A-\d+[A-Z]?)\b", text.upper())
+                    match = re.search(r"\b(A-\d+[A-Z]?|B8-\d+)\b", text.upper())
                     activity = activity_by_master.get(match.group(1)) if match else False
                     owner = activity.owner_designation_id if activity else designation_by_code[owner_code]
                     approver = activity.approver_designation_id if activity else designation_by_code[approver_code]
@@ -339,8 +339,8 @@ class HjigProgrammeTemplateVersion(models.Model):
                         "evidence_artifact_id": artifact.id if artifact else False,
                         "owner_designation_id": owner.id,
                         "approver_designation_id": approver.id,
-                        "source_reference": SOURCE_REFERENCE if stage_code not in ("PRE-B2", "LGD-SIGNOFF") else "Hongyi_BSeries_Constitution_v2_5_v6_9 and reconciled legacy programme activities",
-                        "source_version": SOURCE_VERSION if stage_code not in ("PRE-B2", "LGD-SIGNOFF") else "v6.9 / production snapshot 2026-08-27",
+                        "source_reference": SOURCE_REFERENCE if stage_code not in ("PRE-B2", "LGD-SIGNOFF") else "Hongyi_BSeries_Constitution_v2_5_v6_11 and reconciled legacy programme activities",
+                        "source_version": SOURCE_VERSION if stage_code not in ("PRE-B2", "LGD-SIGNOFF") else "v6.11 / Founder approved 21-Aug-2026 / production snapshot 2026-08-27",
                     }
                     item = version.checklist_item_ids.filtered(lambda record: record.code == code)[:1]
                     if item:

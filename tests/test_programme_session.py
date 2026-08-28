@@ -53,6 +53,7 @@ class TestProgrammeAdvisorySessions(TransactionCase):
             "legacy_source_database": "legacy_test_db",
             "legacy_source_project_id": 5, "legacy_source_task_count": 12,
             "dependency_review_status": "verified", "evidence_review_status": "verified",
+            "timing_review_status": "verified",
         })
         for number in range(1, 7):
             code = "TLL-S%02d" % number
@@ -103,6 +104,7 @@ class TestProgrammeAdvisorySessions(TransactionCase):
         draft = self.env["hjig.programme.template.version"].create({
             "template_id": self.template.id, "version": "INVALID",
             "dependency_review_status": "verified", "evidence_review_status": "verified",
+            "timing_review_status": "verified",
         })
         self.env["hjig.programme.template.gate"].create({
             "version_id": draft.id, "stage_id": self.stage.id,

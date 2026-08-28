@@ -129,6 +129,16 @@ class HjigProgrammeTemplateVersion(models.Model):
         tracking=True,
         help="A verified status means every mandatory SOP/Form requirement was reviewed gate by gate.",
     )
+    timing_review_status = fields.Selection(
+        [("unreviewed", "Unreviewed"), ("verified", "Verified")],
+        required=True,
+        default="unreviewed",
+        tracking=True,
+        help=(
+            "A verified status means every activity duration and planning offset was approved "
+            "as an internal planning baseline. It is not a customer delivery commitment."
+        ),
+    )
     approved_by_id = fields.Many2one("res.users", readonly=True, tracking=True)
     approved_on = fields.Datetime(readonly=True, tracking=True)
     definition_hash = fields.Char(readonly=True, copy=False, index=True)
@@ -156,7 +166,7 @@ class HjigProgrammeTemplateVersion(models.Model):
             "legacy_source_database", "legacy_source_project_id", "legacy_source_task_count",
             "gate_line_ids", "activity_line_ids", "artifact_rule_ids",
             "dependency_rule_ids", "checklist_item_ids",
-            "dependency_review_status", "evidence_review_status",
+            "dependency_review_status", "evidence_review_status", "timing_review_status",
         }
         retiring = vals.get("state") == "retired"
         retirement_date_only = governed.intersection(vals).issubset({"effective_to"})
@@ -218,6 +228,13 @@ class HjigProgrammeTemplateVersion(models.Model):
                 raise ValidationError(_("The activity dependency map must be verified before review."))
             if record.evidence_review_status != "verified":
                 raise ValidationError(_("The gate-by-gate SOP/Form map must be verified before review."))
+            if record.timing_review_status != "verified":
+                raise ValidationError(_("The activity timing baseline must be verified before review."))
+            unbaselined = record.activity_line_ids.filtered(lambda activity: activity.duration_days <= 0)
+            if unbaselined:
+                raise ValidationError(
+                    _("Every activity requires an approved positive planning duration before review.")
+                )
             pending_content = record.activity_line_ids.filtered(
                 lambda activity: "PENDING CHECKLIST CONTENT" in (activity.name or "").upper()
             )
@@ -438,6 +455,7 @@ class HjigProgrammeTemplateVersion(models.Model):
             "checklist": checklist,
             "dependency_review_status": self.dependency_review_status,
             "evidence_review_status": self.evidence_review_status,
+            "timing_review_status": self.timing_review_status,
         }
 
     def _definition_hash(self):
@@ -528,7 +546,13 @@ class HjigProgrammeTemplateActivity(models.Model):
         "hjig.governance.designation", required=True, ondelete="restrict"
     )
     offset_days = fields.Integer(default=0)
-    duration_days = fields.Integer(default=1)
+    duration_days = fields.Integer(
+        default=1,
+        help=(
+            "Approved internal planning duration in working days. Zero means not yet baselined; "
+            "it must never be interpreted as a customer commitment."
+        ),
+    )
     predecessor_ids = fields.Many2many(
         "hjig.programme.template.activity",
         "hjig_programme_activity_dependency_rel",
@@ -645,6 +669,8 @@ class HjigProgrammeTemplateArtifact(models.Model):
     artifact_master_id = fields.Many2one(
         "hjig.governance.artifact.master", required=True, ondelete="restrict", index=True
     )
+    artifact_code = fields.Char(related="artifact_master_id.code", readonly=True)
+    artifact_type = fields.Selection(related="artifact_master_id.artifact_type", readonly=True)
     stage_id = fields.Many2one(
         "hjig.launchguard.stage", required=True, ondelete="restrict", index=True
     )

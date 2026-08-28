@@ -102,6 +102,7 @@
                             <field name="execution_mode" readonly="1"/>
                             <field name="dependency_review_status" readonly="state in ['approved', 'retired']"/>
                             <field name="evidence_review_status" readonly="state in ['approved', 'retired']"/>
+                            <field name="timing_review_status" readonly="state in ['approved', 'retired']"/>
                         </group>
                         <group>
                             <field name="effective_from" readonly="state in ['approved', 'retired']"/>
@@ -164,6 +165,8 @@
                                 <list editable="bottom">
                                     <field name="stage_id"/>
                                     <field name="artifact_master_id"/>
+                                    <field name="artifact_code" string="Artifact Code"/>
+                                    <field name="artifact_type" string="Type"/>
                                     <field name="mandatory"/>
                                 </list>
                             </field>
@@ -182,6 +185,7 @@
                                     <field name="sign_required" optional="show"/>
                                     <field name="execution_basis"/>
                                     <field name="linked_activity_id" optional="show"/>
+                                    <field name="evidence_artifact_id" optional="show"/>
                                     <field name="owner_designation_id"/>
                                     <field name="approver_designation_id"/>
                                     <field name="source_reference" optional="hide"/>

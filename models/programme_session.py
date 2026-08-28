@@ -73,6 +73,8 @@ class HjigProgrammeTemplateVersion(models.Model):
                 raise ValidationError(_("The advisory-session sequence must be verified before review."))
             if version.evidence_review_status != "verified":
                 raise ValidationError(_("The advisory framework map must be verified before review."))
+            if version.timing_review_status != "verified":
+                raise ValidationError(_("The advisory-session timing baseline must be verified before review."))
 
     def _definition_payload(self):
         self.ensure_one()
@@ -93,6 +95,7 @@ class HjigProgrammeTemplateVersion(models.Model):
             "sessions": [session._snapshot_values() for session in self.session_line_ids.sorted("sequence")],
             "dependency_review_status": self.dependency_review_status,
             "evidence_review_status": self.evidence_review_status,
+            "timing_review_status": self.timing_review_status,
         }
 
 

@@ -72,6 +72,7 @@ class TestProgrammeTemplateGovernance(TransactionCase):
             "legacy_source_task_count": 2,
             "dependency_review_status": "verified",
             "evidence_review_status": "verified",
+            "timing_review_status": "verified",
         })
         cls.gate = cls.env["hjig.programme.template.gate"].create({
             "version_id": cls.version.id,
@@ -177,6 +178,7 @@ class TestProgrammeTemplateGovernance(TransactionCase):
             "version": "PENDING-CONTENT",
             "dependency_review_status": "verified",
             "evidence_review_status": "verified",
+            "timing_review_status": "verified",
         })
         gate = self.env["hjig.programme.template.gate"].create({
             "version_id": draft.id,
@@ -206,6 +208,7 @@ class TestProgrammeTemplateGovernance(TransactionCase):
             "effective_from": "2026-09-01",
             "dependency_review_status": "verified",
             "evidence_review_status": "verified",
+            "timing_review_status": "verified",
         })
         gate = self.env["hjig.programme.template.gate"].create({
             "version_id": version.id,
@@ -320,6 +323,50 @@ class TestProgrammeTemplateGovernance(TransactionCase):
         with self.assertRaises(ValidationError):
             draft.action_submit_review()
 
+    def test_review_rejects_unverified_timing_baseline(self):
+        draft = self.env["hjig.programme.template.version"].create({
+            "template_id": self.template.id,
+            "version": "TIMING-UNVERIFIED",
+            "dependency_review_status": "verified",
+            "evidence_review_status": "verified",
+        })
+        gate = self.env["hjig.programme.template.gate"].create({
+            "version_id": draft.id, "stage_id": self.stage.id,
+        })
+        self.env["hjig.programme.template.activity"].create({
+            "version_id": draft.id,
+            "code": "TIMING-UNVERIFIED-1",
+            "name": "Timing Review Activity",
+            "gate_line_id": gate.id,
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+        })
+        with self.assertRaisesRegex(ValidationError, "timing baseline must be verified"):
+            draft.action_submit_review()
+
+    def test_review_rejects_zero_duration_after_timing_verification(self):
+        draft = self.env["hjig.programme.template.version"].create({
+            "template_id": self.template.id,
+            "version": "TIMING-ZERO",
+            "dependency_review_status": "verified",
+            "evidence_review_status": "verified",
+            "timing_review_status": "verified",
+        })
+        gate = self.env["hjig.programme.template.gate"].create({
+            "version_id": draft.id, "stage_id": self.stage.id,
+        })
+        self.env["hjig.programme.template.activity"].create({
+            "version_id": draft.id,
+            "code": "TIMING-ZERO-1",
+            "name": "Unbaselined Activity",
+            "gate_line_id": gate.id,
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+            "duration_days": 0,
+        })
+        with self.assertRaisesRegex(ValidationError, "positive planning duration"):
+            draft.action_submit_review()
+
     def test_sourcebridge_supports_multiple_components_per_programme(self):
         order = self._sale_order(hjig_project_code="HJ-PGT-2026-0004")
         order.action_activate_hjig_programme()
@@ -380,6 +427,7 @@ class TestProgrammeTemplateGovernance(TransactionCase):
             "effective_from": "2026-08-28",
             "dependency_review_status": "verified",
             "evidence_review_status": "verified",
+            "timing_review_status": "verified",
         })
         gate = self.env["hjig.programme.template.gate"].create({
             "version_id": version.id,
@@ -506,6 +554,7 @@ class TestProgrammeTemplateGovernance(TransactionCase):
             "effective_from": "2026-08-28",
             "dependency_review_status": "verified",
             "evidence_review_status": "verified",
+            "timing_review_status": "verified",
         })
         gate = self.env["hjig.programme.template.gate"].create({
             "version_id": version.id, "stage_id": self.stage.id,

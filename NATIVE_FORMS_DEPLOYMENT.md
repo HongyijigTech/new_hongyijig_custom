@@ -1,4 +1,11 @@
-# Native Forms 1.10 deployment control
+# Native Forms deployment control
+
+Version 1.27 replaces the superseded activity-dependency v1.2 enforcement in
+draft B-Series programme DNA with Founder-approved v1.4 rules. It also migrates
+B8 references to B8-01 through B8-09, preserves programme-specific routing, and
+marks imported one-day activity durations as unbaselined rather than approved
+delivery promises. Dependency, evidence and timing reviews remain unapproved
+until their controlled business review is completed.
 
 Version 1.7 promotes the existing `x_mould` and `x_mould_part` tables into
 code-owned Odoo models. It retains the same tables, record IDs and existing SOR

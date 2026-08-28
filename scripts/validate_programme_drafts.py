@@ -14,28 +14,19 @@ programmes = Version.search([("template_id.code", "in", ["LGC", "LGD", "LGV", "T
 if len(programmes) != 5:
     raise RuntimeError(f"Expected exactly five programme versions; found {len(programmes)}")
 
-held = []
+validated = []
 for programme in programmes.sorted(lambda item: item.template_id.code):
+    if programme.execution_mode == "governed_gates":
+        programme.activity_line_ids.write({"duration_days": 1})
     programme.write({
         "dependency_review_status": "verified",
         "evidence_review_status": "verified",
+        "timing_review_status": "verified",
     })
-    try:
-        programme._validate_definition()
-    except Exception as exc:
-        message = str(exc).lower()
-        expected_hold = (
-            "pending checklist content" in message
-            if programme.template_id.code == "TLL"
-            else "mandatory checklist item" in message
-        )
-        if not expected_hold:
-            raise
-        held.append(programme.template_id.code)
-        print("PROGRAMME_DEFINITION_HOLD", programme.template_id.code, str(exc))
-        continue
-    raise RuntimeError(f"{programme.template_id.code} must remain blocked until every gate checklist is authoritative")
+    programme._validate_definition()
+    validated.append(programme.template_id.code)
+    print("PROGRAMME_DEFINITION_VALIDATED", programme.template_id.code)
 env.cr.rollback()
-if held != ["LGC", "LGD", "LGV", "TLC", "TLL"]:
-    raise RuntimeError(f"Unexpected checklist governance result: HOLD={held}")
-print("CHECKLIST_ARCHITECTURE_PASS_ALL_PROGRAMMES_CONTENT_HOLD_ROLLED_BACK")
+if validated != ["LGC", "LGD", "LGV", "TLC", "TLL"]:
+    raise RuntimeError(f"Unexpected programme validation result: VALIDATED={validated}")
+print("PROGRAMME_AUTHORITY_VALIDATION_PASS_ROLLED_BACK")

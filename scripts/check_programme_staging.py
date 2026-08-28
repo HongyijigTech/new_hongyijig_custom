@@ -5,7 +5,7 @@ import os
 isolated_db = os.environ.get("HJIG_ISOLATED_TEST_DB")
 if env.cr.dbname != "HongyijigTech_10Feb" and not (
     isolated_db == env.cr.dbname
-    and env.cr.dbname.startswith("hongyijig_bseries_v121_test_")
+    and env.cr.dbname.startswith("hongyijig_bseries_v127_test_")
 ):
     raise RuntimeError("This staging check is restricted to HongyijigTech_10Feb")
 
@@ -42,7 +42,11 @@ for programme in programmes.sorted(lambda item: item.template_id.code):
         raise RuntimeError(f"{code} route mismatch: expected {expected_routes[code]}, found {route}")
     if programme.state != "draft" or programme.is_current:
         raise RuntimeError(f"{code} must remain a non-current draft pending governed review")
-    if programme.dependency_review_status != "unreviewed" or programme.evidence_review_status != "unreviewed":
+    if (
+        programme.dependency_review_status != "unreviewed"
+        or programme.evidence_review_status != "unreviewed"
+        or programme.timing_review_status != "unreviewed"
+    ):
         raise RuntimeError(f"{code} review status changed without business approval")
     if code == "TLL":
         if programme.execution_mode != "advisory_sessions":
@@ -72,6 +76,12 @@ for programme in programmes.sorted(lambda item: item.template_id.code):
         )
     if programme.execution_mode != "governed_gates":
         raise RuntimeError(f"{code} must remain gate-governed")
+    if programme.activity_line_ids.filtered(lambda activity: activity.duration_days != 0):
+        raise RuntimeError(f"{code} contains unapproved non-zero planning durations")
+    if programme.dependency_rule_ids.filtered(
+        lambda rule: rule.source_reference != "PN_CTL_Activity_Dependencies_Specification_v1.4"
+    ):
+        raise RuntimeError(f"{code} contains superseded dependency authority")
     mould_stages = programme.gate_line_ids.filtered(
         lambda gate: gate.stage_id.code in {"TG-02", "TG-03", "TG-04", "TG-05", "TG-06", "TG-07", "TG-08", "TG-09"}
     )
