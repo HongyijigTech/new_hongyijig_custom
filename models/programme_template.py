@@ -466,6 +466,7 @@ class HjigProgrammeTemplateGate(models.Model):
     _name = "hjig.programme.template.gate"
     _description = "Programme Template Gate"
     _inherit = "hjig.programme.version.child.mixin"
+    _rec_name = "stage_id"
     _order = "sequence, id"
 
     version_id = fields.Many2one(
