@@ -162,6 +162,8 @@ class HjigChecklist(models.Model):
                     raise ValidationError(_("Checklist and gate must belong to the same project."))
                 if checklist.gate_id.stage_id != checklist.stage_id:
                     raise ValidationError(_("Checklist template stage must match the gate stage."))
+                if checklist.gate_id.target_ref != checklist.target_ref:
+                    raise ValidationError(_("Checklist and gate must control the same target record."))
 
     @api.depends(
         "response_ids.result", "response_ids.template_item_id.blocking",
@@ -204,9 +206,21 @@ class HjigChecklist(models.Model):
         locked_fields = {"project_id", "target_ref", "template_id", "gate_id"}
         if locked_fields.intersection(vals) and any(record.state in ("ready", "closed") for record in self):
             raise ValidationError(_("Ready or Closed checklist identity is read-only."))
-        if "gate_id" in vals and any(record.gate_id and record.gate_id.state != "draft" for record in self):
-            raise ValidationError(_("Checklist gate assignment is locked after decision request."))
+        if "gate_id" in vals:
+            destination = self.env["hjig.gate"].browse(vals.get("gate_id")).exists()
+            if destination and destination.state != "draft":
+                raise ValidationError(_("A checklist cannot be assigned to a gate after decision request."))
+            if any(record.gate_id and record.gate_id.state != "draft" for record in self):
+                raise ValidationError(_("Checklist gate assignment is locked after decision request."))
         return super().write(vals)
+
+    def _check_owner_authority(self):
+        for checklist in self:
+            if (
+                self.env.user not in checklist.template_id.owner_designation_id.holder_ids
+                and not self.env.user.has_group("project.group_project_manager")
+            ):
+                raise UserError(_("Only the checklist owner designation or a Project Manager may execute this checklist."))
 
     def unlink(self):
         if any(record.state in ("ready", "closed") or (record.gate_id and record.gate_id.state != "draft") for record in self):
@@ -214,12 +228,14 @@ class HjigChecklist(models.Model):
         return super().unlink()
 
     def action_start(self):
+        self._check_owner_authority()
         for checklist in self:
             if checklist.state != "draft":
                 raise UserError(_("Only Draft checklists can start."))
             checklist.with_context(**workflow_context()).write({"state": "in_progress"})
 
     def action_mark_ready(self):
+        self._check_owner_authority()
         for checklist in self:
             if checklist.state not in ("draft", "in_progress"):
                 raise UserError(_("Only an open checklist can be marked Ready."))
@@ -296,6 +312,7 @@ class HjigChecklistResponse(models.Model):
 
     def _record_result(self, result):
         for response in self:
+            response.checklist_id._check_owner_authority()
             if result == "pass" and response.evidence_required and not response.evidence_ids:
                 raise ValidationError(_("Evidence is required before this item can pass."))
             if result == "not_applicable" and response.blocking and not (response.comments or "").strip():

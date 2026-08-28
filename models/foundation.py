@@ -414,6 +414,15 @@ class HjigApproval(models.Model):
                 raise UserError(_("Only Pending approvals can be decided."))
             if state == "rejected" and not (approval.decision_reason or "").strip():
                 raise ValidationError(_("A rejection reason is required."))
+            if (
+                state == "approved"
+                and approval.approval_type == "gate"
+                and approval.target_ref
+                and approval.target_ref._name == "hjig.gate"
+                and approval.target_ref.readiness == "warn"
+                and not (approval.decision_reason or "").strip()
+            ):
+                raise ValidationError(_("A GO decision with warnings requires the approver's acceptance reason."))
             approval.with_context(**workflow_context()).write({
                 "state": state,
                 "approver_id": self.env.user.id,

@@ -29,6 +29,7 @@ class HjigTargetMixin(models.AbstractModel):
         return super()._selection_target_model() + [
             ("hjig.tooling.execution", "Tooling Execution"),
             ("hjig.tooling.report", "Tooling Report"),
+            ("hjig.tooling.action", "Tooling Action"),
             ("hjig.inspection", "Inspection"),
         ]
 
@@ -104,7 +105,21 @@ class HjigToolingExecution(models.Model):
             raise ValidationError(_("Tooling state may only change through workflow actions."))
         return super().write(vals)
 
+    def _check_coordinator_authority(self):
+        for execution in self:
+            if execution.coordinator_id != self.env.user and not self.env.user.has_group("project.group_project_manager"):
+                raise UserError(_("Only the Tooling Coordinator or a Project Manager may change execution stage."))
+
+    def _log_transition(self, from_state, to_state, decision):
+        self.ensure_one()
+        self.env["hjig.transition.log"].sudo().create({
+            "project_id": self.project_id.id, "target_ref": "%s,%s" % (self._name, self.id),
+            "from_state": from_state, "to_state": to_state, "decision": decision,
+            "actor_id": self.env.user.id,
+        })
+
     def action_start(self):
+        self._check_coordinator_authority()
         for execution in self:
             if execution.state != "planned":
                 raise UserError(_("Only Planned tooling executions can start."))
@@ -113,8 +128,10 @@ class HjigToolingExecution(models.Model):
             if not kickoff or not plan:
                 raise ValidationError(_("Approved Kick-off and Manufacturing Plan reports are required before tooling starts."))
             execution.with_context(**workflow_context()).write({"state": "active"})
+            execution._log_transition("planned", "active", "tooling_started")
 
     def action_start_trial(self):
+        self._check_coordinator_authority()
         for execution in self:
             if execution.state != "active":
                 raise UserError(_("Only Active tooling executions can enter Trial."))
@@ -124,8 +141,10 @@ class HjigToolingExecution(models.Model):
             if not readiness:
                 raise ValidationError(_("An approved Trial Readiness report is required."))
             execution.with_context(**workflow_context()).write({"state": "trial"})
+            execution._log_transition("active", "trial", "trial_started")
 
     def action_start_handover(self):
+        self._check_coordinator_authority()
         for execution in self:
             if execution.state != "trial":
                 raise UserError(_("Only Trial-stage tooling executions can enter Handover."))
@@ -135,8 +154,10 @@ class HjigToolingExecution(models.Model):
             if not approved_trial:
                 raise ValidationError(_("An approved passing or conditional Trial Report is required."))
             execution.with_context(**workflow_context()).write({"state": "handover"})
+            execution._log_transition("trial", "handover", "handover_started")
 
     def action_close(self):
+        self._check_coordinator_authority()
         for execution in self:
             if execution.state != "handover":
                 raise UserError(_("Only Handover-stage tooling executions can close."))
@@ -148,6 +169,7 @@ class HjigToolingExecution(models.Model):
             if execution.action_ids.filtered(lambda action: action.state != "closed"):
                 raise ValidationError(_("All supplier actions must be closed before tooling closure."))
             execution.with_context(**workflow_context()).write({"state": "closed"})
+            execution._log_transition("handover", "closed", "tooling_closed")
 
     def unlink(self):
         if any(execution.state != "planned" or execution.report_ids or execution.action_ids for execution in self):
@@ -253,6 +275,7 @@ class HjigToolingReport(models.Model):
         for report in self:
             if report.state not in ("draft", "rejected"):
                 raise UserError(_("Only Draft or Rejected reports can be submitted."))
+            previous_state = report.state
             approval = self.env["hjig.approval"].sudo().create({
                 "project_id": report.project_id.id,
                 "target_ref": "%s,%s" % (report._name, report.id),
@@ -263,6 +286,7 @@ class HjigToolingReport(models.Model):
             report.with_context(**workflow_context()).write({
                 "state": "review", "approval_id": approval.id,
             })
+            report._log_transition(previous_state, "review", "submitted", approval)
 
     def action_apply_decision(self):
         for report in self:
@@ -275,6 +299,15 @@ class HjigToolingReport(models.Model):
             else:
                 raise UserError(_("The approval decision is still pending."))
             report.with_context(**workflow_context()).write({"state": result})
+            report._log_transition("review", result, report.approval_id.state, report.approval_id)
+
+    def _log_transition(self, from_state, to_state, decision, approval=False):
+        self.ensure_one()
+        self.env["hjig.transition.log"].sudo().create({
+            "project_id": self.project_id.id, "target_ref": "%s,%s" % (self._name, self.id),
+            "from_state": from_state, "to_state": to_state, "decision": decision,
+            "actor_id": self.env.user.id, "approval_id": approval.id if approval else False,
+        })
 
     def unlink(self):
         if any(report.state != "draft" for report in self):
@@ -317,26 +350,43 @@ class HjigToolingAction(models.Model):
                 raise ValidationError(_("Action evidence must belong to the same project."))
 
     def action_close(self):
+        if not self.env.user.has_group("new_hongyijig_custom.group_hjig_governance_approver"):
+            raise UserError(_("Only an authorised Governance Approver may verify and close supplier actions."))
         for action in self:
             if action.state != "verification":
                 raise UserError(_("Only actions Pending Verification can close."))
             if not action.closure_evidence_ids:
                 raise ValidationError(_("Closure evidence is required before closing a supplier action."))
             action.with_context(**workflow_context()).write({"state": "closed"})
+            action._log_transition("verification", "closed", "verified_closed")
 
     def action_start(self):
         for action in self:
+            if action.owner_id != self.env.user and not self.env.user.has_group("project.group_project_manager"):
+                raise UserError(_("Only the Action Owner or a Project Manager may start this action."))
             if action.state != "open":
                 raise UserError(_("Only Open actions can start."))
             action.with_context(**workflow_context()).write({"state": "in_progress"})
+            action._log_transition("open", "in_progress", "started")
 
     def action_request_verification(self):
         for action in self:
+            if action.owner_id != self.env.user and not self.env.user.has_group("project.group_project_manager"):
+                raise UserError(_("Only the Action Owner or a Project Manager may request verification."))
             if action.state != "in_progress":
                 raise UserError(_("Only In Progress actions can request verification."))
             if not action.closure_evidence_ids:
                 raise ValidationError(_("Closure evidence is required before verification."))
             action.with_context(**workflow_context()).write({"state": "verification"})
+            action._log_transition("in_progress", "verification", "verification_requested")
+
+    def _log_transition(self, from_state, to_state, decision):
+        self.ensure_one()
+        self.env["hjig.transition.log"].sudo().create({
+            "project_id": self.project_id.id, "target_ref": "%s,%s" % (self._name, self.id),
+            "from_state": from_state, "to_state": to_state, "decision": decision,
+            "actor_id": self.env.user.id,
+        })
 
     def write(self, vals):
         if "state" in vals and not is_workflow_context(self.env):
@@ -434,6 +484,7 @@ class HjigInspection(models.Model):
         for inspection in self:
             if inspection.state not in ("draft", "rejected"):
                 raise UserError(_("Only Draft or Rejected inspections can be submitted."))
+            previous_state = inspection.state
             if not inspection.line_ids:
                 raise ValidationError(_("At least one inspection characteristic is required."))
             if inspection.overall_result == "pending":
@@ -461,6 +512,7 @@ class HjigInspection(models.Model):
             inspection.with_context(**workflow_context()).write({
                 "state": "review", "approval_id": approval.id,
             })
+            inspection._log_transition(previous_state, "review", "submitted", approval)
 
     def action_apply_decision(self):
         for inspection in self:
@@ -473,6 +525,15 @@ class HjigInspection(models.Model):
             else:
                 raise UserError(_("The inspection approval is still pending."))
             inspection.with_context(**workflow_context()).write({"state": next_state})
+            inspection._log_transition("review", next_state, inspection.approval_id.state, inspection.approval_id)
+
+    def _log_transition(self, from_state, to_state, decision, approval=False):
+        self.ensure_one()
+        self.env["hjig.transition.log"].sudo().create({
+            "project_id": self.project_id.id, "target_ref": "%s,%s" % (self._name, self.id),
+            "from_state": from_state, "to_state": to_state, "decision": decision,
+            "actor_id": self.env.user.id, "approval_id": approval.id if approval else False,
+        })
 
     def unlink(self):
         if any(inspection.state != "draft" for inspection in self):
@@ -535,7 +596,10 @@ class HjigInspectionLine(models.Model):
             if any(evidence.project_id != line.project_id for evidence in line.evidence_ids):
                 raise ValidationError(_("Inspection evidence must belong to the same project."))
 
-    @api.constrains("check_type", "lower_limit", "upper_limit", "measured_value", "result")
+    @api.constrains(
+        "check_type", "lower_limit", "upper_limit", "measured_value", "measurement_recorded",
+        "unit", "instrument_reference", "result", "notes",
+    )
     def _check_dimensional_result(self):
         for line in self:
             if line.check_type == "dimensional":

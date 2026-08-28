@@ -75,6 +75,11 @@ class TestChecklistGate(TransactionCase):
                 "project_id": self.project.id, "target_ref": self._target(),
                 "template_id": self.template.id, "gate_id": gate.id,
             })
+        unlinked = self.env["hjig.checklist"].create({
+            "project_id": self.project.id, "target_ref": self._target(), "template_id": self.template.id,
+        })
+        with self.assertRaises(ValidationError):
+            unlinked.gate_id = gate
         gate.approval_id.with_user(self.approver).action_approve()
         gate.action_apply_decision()
         self.assertEqual(gate.state, "go")

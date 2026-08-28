@@ -62,3 +62,12 @@ class TestKnowledgeAi(TransactionCase):
                 "capability": "draft", "model_identity": "fake", "permission_scope": "none",
                 "output_summary": "Fabricated", "confidence": 100,
             })
+
+    def test_non_reviewer_cannot_submit_knowledge(self):
+        outsider = self.env["res.users"].create({
+            "name": "Knowledge Outsider", "login": "knowledge.outsider@test.invalid",
+            "group_ids": [(6, 0, [self.env.ref("project.group_project_user").id])],
+        })
+        self.project.hjig_authorized_user_ids = [(4, outsider.id)]
+        with self.assertRaises(UserError):
+            self._knowledge().with_user(outsider).action_submit_review()

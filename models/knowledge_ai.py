@@ -63,6 +63,8 @@ class HjigKnowledgeItem(models.Model):
     approver_designation_id = fields.Many2one(
         "hjig.governance.designation", required=True, ondelete="restrict", tracking=True
     )
+    reviewed_by_id = fields.Many2one("res.users", readonly=True, copy=False)
+    reviewed_date = fields.Datetime(readonly=True, copy=False)
     state = fields.Selection(
         [("draft", "Draft"), ("review", "Under Review"), ("approved", "Approved"), ("superseded", "Superseded"), ("obsolete", "Obsolete"), ("rejected", "Rejected")],
         default="draft", required=True, copy=False, index=True, tracking=True,
@@ -95,7 +97,7 @@ class HjigKnowledgeItem(models.Model):
                     raise ValidationError(_("Only an Approved knowledge item can be superseded."))
 
     def write(self, vals):
-        workflow = {"state", "approval_id", "superseded_by_id"}
+        workflow = {"state", "approval_id", "superseded_by_id", "reviewed_by_id", "reviewed_date"}
         if workflow.intersection(vals) and not is_workflow_context(self.env):
             raise ValidationError(_("Knowledge approval fields may only change through workflow actions."))
         if any(item.state in ("approved", "superseded", "obsolete") for item in self):
@@ -109,8 +111,9 @@ class HjigKnowledgeItem(models.Model):
         for item in self:
             if item.state not in ("draft", "rejected"):
                 raise UserError(_("Only Draft or Rejected knowledge can be submitted."))
-            if item.owner_id != self.env.user and not self.env.user.has_group("project.group_project_manager"):
-                raise UserError(_("Only the Knowledge Owner or a Project Manager may submit this item."))
+            previous_state = item.state
+            if self.env.user not in item.reviewer_designation_id.holder_ids:
+                raise UserError(_("Only a holder of the Knowledge Reviewer designation may submit this item."))
             if not item.effective_date:
                 raise ValidationError(_("Effective Date is required before knowledge approval."))
             approval = self.env["hjig.approval"].sudo().create({
@@ -120,7 +123,11 @@ class HjigKnowledgeItem(models.Model):
                 "authority_designation_id": item.approver_designation_id.id,
                 "requested_by_id": self.env.user.id,
             })
-            item.sudo().with_context(**workflow_context()).write({"state": "review", "approval_id": approval.id})
+            item.sudo().with_context(**workflow_context()).write({
+                "state": "review", "approval_id": approval.id,
+                "reviewed_by_id": self.env.user.id, "reviewed_date": fields.Datetime.now(),
+            })
+            item._log_transition(previous_state, "review", "reviewed_submitted", approval)
 
     def action_apply_decision(self):
         for item in self:
@@ -138,6 +145,15 @@ class HjigKnowledgeItem(models.Model):
             else:
                 raise UserError(_("The knowledge approval decision is still pending."))
             item.sudo().with_context(**workflow_context()).write({"state": next_state})
+            item._log_transition("review", next_state, item.approval_id.state, item.approval_id)
+
+    def _log_transition(self, from_state, to_state, decision, approval=False):
+        self.ensure_one()
+        self.env["hjig.transition.log"].sudo().create({
+            "project_id": self.project_id.id, "target_ref": "%s,%s" % (self._name, self.id),
+            "from_state": from_state, "to_state": to_state, "decision": decision,
+            "actor_id": self.env.user.id, "approval_id": approval.id if approval else False,
+        })
 
     def unlink(self):
         if any(item.state != "draft" for item in self):
@@ -217,6 +233,8 @@ class HjigAiAssistanceLog(models.Model):
                 raise ValidationError(_("AI confidence must be between 0 and 100."))
             if any(evidence.project_id != log.project_id for evidence in log.evidence_source_ids):
                 raise ValidationError(_("AI evidence sources must belong to the same project."))
+            if any(item.company_id != log.company_id for item in log.knowledge_source_ids):
+                raise ValidationError(_("AI knowledge sources must belong to the same company."))
 
     @api.model
     def _log_assistance(self, values):

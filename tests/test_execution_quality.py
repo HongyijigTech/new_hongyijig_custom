@@ -72,6 +72,16 @@ class TestExecutionQuality(TransactionCase):
                 "result": "pass",
             })
 
+        valid_line = self.env["hjig.inspection.line"].create({
+            "inspection_id": inspection.id, "characteristic_code": "D02",
+            "check_type": "dimensional", "description": "Overall height",
+            "lower_limit": 19.9, "upper_limit": 20.1, "measured_value": 20.0,
+            "measurement_recorded": True, "unit": "mm", "instrument_reference": "HEIGHT-GAUGE-CAL-001",
+            "result": "pass",
+        })
+        with self.assertRaises(ValidationError):
+            valid_line.instrument_reference = False
+
     def test_inspection_uses_shared_header_and_human_approval(self):
         inspection = self.env["hjig.inspection"].create({
             "project_id": self.project.id, "inspection_type": "part_visual",
