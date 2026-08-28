@@ -24,6 +24,7 @@ expected_routes = {
     "TLL": [],
 }
 expected_checklist_counts = {"LGC": 143, "LGD": 27, "LGV": 136, "TLC": 118, "TLL": 0}
+expected_artifact_counts = {"LGC": 113, "LGD": 23, "LGV": 111, "TLC": 94, "TLL": 0}
 
 Version = env["hjig.programme.template.version"]
 Run = env["hjig.programme.run"]
@@ -37,6 +38,11 @@ for programme in programmes.sorted(lambda item: item.template_id.code):
     actual = (len(programme.activity_line_ids), len(programme.dependency_rule_ids), len(programme.artifact_rule_ids))
     if actual[0] != expected_activity_counts[code]:
         raise RuntimeError(f"{code} activity count mismatch: expected {expected_activity_counts[code]}, found {actual[0]}")
+    if actual[2] != expected_artifact_counts[code]:
+        raise RuntimeError(
+            f"{code} artifact-rule count mismatch: "
+            f"expected {expected_artifact_counts[code]}, found {actual[2]}"
+        )
     route = programme.gate_line_ids.sorted("sequence").mapped("stage_id.code")
     if route != expected_routes[code]:
         raise RuntimeError(f"{code} route mismatch: expected {expected_routes[code]}, found {route}")
