@@ -4,6 +4,9 @@
     <record id="designation_pmo_document_controller" model="hjig.governance.designation">
         <field name="code">PMO-DOC</field><field name="name">PMO Document Controller</field><field name="category">governance</field>
     </record>
+    <record id="designation_founder_md" model="hjig.governance.designation">
+        <field name="code">FOUNDER-MD</field><field name="name">Founder / Managing Director</field><field name="category">governance</field>
+    </record>
     <record id="designation_project_coordinator" model="hjig.governance.designation">
         <field name="code">PROJECT-COORD</field><field name="name">Project Coordinator / Junior PM</field><field name="category">project</field>
     </record>

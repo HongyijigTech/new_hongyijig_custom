@@ -11,6 +11,7 @@
                 <field name="project_id"/>
                 <field name="project_code"/>
                 <field name="stage_id"/>
+                <field name="mould_id" optional="show"/>
                 <field name="artifact_master_id"/>
                 <field name="register_type"/>
                 <field name="document_class"/>
@@ -174,6 +175,7 @@
                         <list editable="bottom" create="false" delete="false">
                             <field name="register_id"/>
                             <field name="stage_id"/>
+                            <field name="mould_id" domain="[('x_project_id', '=', project_id)]"/>
                             <field name="artifact_master_id"/>
                             <field name="register_type"/>
                             <field name="document_class"/>

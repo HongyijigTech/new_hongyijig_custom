@@ -111,6 +111,9 @@ class HjigProgrammeTemplateVersion(models.Model):
     dependency_rule_ids = fields.One2many(
         "hjig.programme.template.dependency.rule", "version_id"
     )
+    checklist_item_ids = fields.One2many(
+        "hjig.programme.template.checklist.item", "version_id"
+    )
     dependency_review_status = fields.Selection(
         [("unreviewed", "Unreviewed"), ("verified", "Verified")],
         required=True,
@@ -151,7 +154,7 @@ class HjigProgrammeTemplateVersion(models.Model):
             "template_id", "version", "effective_from", "effective_to", "source_project_id",
             "legacy_source_database", "legacy_source_project_id", "legacy_source_task_count",
             "gate_line_ids", "activity_line_ids", "artifact_rule_ids",
-            "dependency_rule_ids",
+            "dependency_rule_ids", "checklist_item_ids",
             "dependency_review_status", "evidence_review_status",
         }
         retiring = vals.get("state") == "retired"
@@ -263,6 +266,20 @@ class HjigProgrammeTemplateVersion(models.Model):
                     lambda rule: rule.stage_id == gate.stage_id and rule.mandatory
                 ):
                     raise ValidationError(_("Every required gate needs at least one mandatory SOP/Form rule."))
+                if not record.checklist_item_ids.filtered(
+                    lambda item: item.gate_line_id == gate and item.mandatory
+                ):
+                    raise ValidationError(
+                        _("Every required gate needs at least one authoritative mandatory checklist item.")
+                    )
+                if gate.execution_basis == "mould" and not record.checklist_item_ids.filtered(
+                    lambda item: item.gate_line_id == gate
+                    and item.mandatory
+                    and item.execution_basis == "mould"
+                ):
+                    raise ValidationError(
+                        _("Every mould-basis gate needs an authoritative mandatory per-mould checklist item.")
+                    )
             rule_keys = {
                 (rule.stage_id.id, rule.artifact_master_id.id)
                 for rule in record.artifact_rule_ids
@@ -371,6 +388,30 @@ class HjigProgrammeTemplateVersion(models.Model):
             }
             for line in self.dependency_rule_ids.sorted(lambda line: (line.legacy_source_rule_id, line.id))
         ]
+        checklist = [
+            {
+                "code": item.code,
+                "gate": item.gate_line_id.stage_id.code,
+                "sequence": item.sequence,
+                "subhead": item.subhead,
+                "text": item.item_text,
+                "mandatory": item.mandatory,
+                "conditional": item.conditional,
+                "evidence_required": item.evidence_required,
+                "sign_required": item.sign_required,
+                "execution_basis": item.execution_basis,
+                "linked_activity": item.linked_activity_id.code,
+                "evidence_artifact": item.evidence_artifact_id.code,
+                "owner": item.owner_designation_id.code,
+                "approver": item.approver_designation_id.code,
+                "auto_na_risk_below": item.auto_na_risk_below,
+                "source_reference": item.source_reference,
+                "source_version": item.source_version,
+            }
+            for item in self.checklist_item_ids.sorted(
+                lambda item: (item.gate_line_id.sequence, item.sequence, item.id)
+            )
+        ]
         return {
             "programme": self.template_id.code,
             "version": self.version,
@@ -384,6 +425,7 @@ class HjigProgrammeTemplateVersion(models.Model):
             "activities": activities,
             "artifacts": artifacts,
             "dependency_rules": dependency_rules,
+            "checklist": checklist,
             "dependency_review_status": self.dependency_review_status,
             "evidence_review_status": self.evidence_review_status,
         }
@@ -439,6 +481,12 @@ class HjigProgrammeTemplateGate(models.Model):
         default="standard",
         required=True,
         help="Allows TG-10 and TG-10-LITE to coexist until the closure rule is formally approved.",
+    )
+    execution_basis = fields.Selection(
+        [("project", "Project"), ("mould", "Mould")],
+        required=True,
+        default="project",
+        help="Mould-basis gates close independently for each approved mould plan.",
     )
 
     _version_stage_unique = models.Constraint(
@@ -636,6 +684,9 @@ class HjigProgrammeRun(models.Model):
         "hjig.programme.run.artifact", "run_id", readonly=True
     )
     gate_ids = fields.One2many("hjig.programme.run.gate", "run_id", readonly=True)
+    checklist_instance_ids = fields.One2many(
+        "hjig.programme.checklist.instance", "run_id", readonly=True
+    )
     sourcebridge_engagement_ids = fields.One2many(
         "hjig.sourcebridge.engagement", "programme_run_id", string="SourceBridge Engagements"
     )
@@ -697,21 +748,7 @@ class HjigProgrammeRun(models.Model):
                 )
                 if predecessors:
                     task.depend_on_ids = [(6, 0, predecessors.ids)]
-            for rule in version.artifact_rule_ids:
-                self.env["hjig.programme.run.artifact"].create({
-                    "run_id": run.id,
-                    "artifact_master_id": rule.artifact_master_id.id,
-                    "stage_id": rule.stage_id.id,
-                    "mandatory": rule.mandatory,
-                })
-            for gate in version.gate_line_ids.sorted(lambda line: (line.sequence, line.id)):
-                self.env["hjig.programme.run.gate"].create({
-                    "run_id": run.id,
-                    "template_gate_id": gate.id,
-                    "stage_id": gate.stage_id.id,
-                    "sequence": gate.sequence,
-                    "required": gate.required,
-                })
+            run._sync_execution_scopes()
             payload = version._definition_payload()
             run.with_context(hjig_run_workflow=True).write({
                 "state": "generated",
@@ -722,12 +759,120 @@ class HjigProgrammeRun(models.Model):
             })
         return True
 
+    def _approved_moulds(self):
+        self.ensure_one()
+        return self.env["x_mould"].search([
+            ("x_project_id", "=", self.project_id.id),
+            ("x_workflow_state", "=", "approved"),
+        ])
+
+    def _create_gate_scope(self, template_gate, mould=False):
+        self.ensure_one()
+        gate = self.env["hjig.programme.run.gate"].create({
+            "run_id": self.id,
+            "template_gate_id": template_gate.id,
+            "stage_id": template_gate.stage_id.id,
+            "sequence": template_gate.sequence,
+            "required": template_gate.required,
+            "mould_id": mould.id if mould else False,
+        })
+        for rule in self.template_version_id.artifact_rule_ids.filtered(
+            lambda item: item.stage_id == template_gate.stage_id
+        ):
+            self.env["hjig.programme.run.artifact"].create({
+                "run_id": self.id,
+                "run_gate_id": gate.id,
+                "artifact_master_id": rule.artifact_master_id.id,
+                "stage_id": rule.stage_id.id,
+                "mould_id": mould.id if mould else False,
+                "mandatory": rule.mandatory,
+            })
+        for template_item in self.template_version_id.checklist_item_ids.filtered(
+            lambda item: item.gate_line_id == template_gate
+            and item.execution_basis == ("mould" if mould else "project")
+        ):
+            instance = self.env["hjig.programme.checklist.instance"].create({
+                "run_id": self.id,
+                "run_gate_id": gate.id,
+                "template_item_id": template_item.id,
+                "mould_id": mould.id if mould else False,
+            })
+            threshold = template_item.auto_na_risk_below
+            if threshold:
+                applicable_risk = self.env["hjig.project.risk"].search_count([
+                    ("project_id", "=", self.project_id.id),
+                    ("status", "!=", "resolved"),
+                    ("risk_score", ">=", threshold),
+                ])
+                if not applicable_risk:
+                    instance.with_context(hjig_checklist_workflow=True).write({
+                        "status": "na",
+                        "remarks": _("Automatically N/A: no unresolved project risk has score %s or higher.") % threshold,
+                        "ticked_by_id": self.env.user.id,
+                        "ticked_on": fields.Datetime.now(),
+                        "automatic_disposition": True,
+                    })
+        return gate
+
+    def _ensure_shared_checklist_items(self, template_gate):
+        self.ensure_one()
+        for template_item in self.template_version_id.checklist_item_ids.filtered(
+            lambda item: item.gate_line_id == template_gate and item.execution_basis == "project"
+        ):
+            existing = self.checklist_instance_ids.filtered(
+                lambda item: item.template_item_id == template_item and not item.mould_id
+            )
+            if not existing:
+                self.env["hjig.programme.checklist.instance"].create({
+                    "run_id": self.id,
+                    "template_item_id": template_item.id,
+                })
+
+    def _sync_execution_scopes(self):
+        for run in self:
+            moulds = run._approved_moulds()
+            for template_gate in run.template_version_id.gate_line_ids.sorted(
+                lambda line: (line.sequence, line.id)
+            ):
+                scopes = moulds if template_gate.execution_basis == "mould" else [False]
+                if template_gate.execution_basis == "mould":
+                    run._ensure_shared_checklist_items(template_gate)
+                for mould in scopes:
+                    existing = run.gate_ids.filtered(
+                        lambda gate: gate.template_gate_id == template_gate
+                        and gate.mould_id.id == (mould.id if mould else False)
+                    )
+                    if not existing:
+                        run._create_gate_scope(template_gate, mould=mould)
+        return True
+
+    def action_sync_mould_execution(self):
+        for run in self:
+            if run.state != "generated":
+                raise UserError(_("Mould execution can be synchronised only after programme generation."))
+            run._sync_execution_scopes()
+        return True
+
     def action_close_run(self):
         for run in self:
             if run.state != "generated":
                 raise UserError(_("Only a generated programme run can be closed."))
             if run.gate_ids.filtered(lambda gate: gate.required and gate.state != "approved"):
                 raise ValidationError(_("All required programme gates must be approved before closure."))
+            mould_gates = run.template_version_id.gate_line_ids.filtered(
+                lambda gate: gate.required and gate.execution_basis == "mould"
+            )
+            approved_moulds = run._approved_moulds()
+            if mould_gates and not approved_moulds:
+                raise ValidationError(_("At least one approved mould plan is required for this programme."))
+            for mould in approved_moulds:
+                missing = mould_gates.filtered(
+                    lambda template_gate: not run.gate_ids.filtered(
+                        lambda gate: gate.template_gate_id == template_gate and gate.mould_id == mould
+                    )
+                )
+                if missing:
+                    raise ValidationError(_("Synchronise and approve every required gate for each approved mould."))
             if run.artifact_requirement_ids.filtered(
                 lambda item: item.mandatory and item.status != "approved"
             ):
@@ -742,6 +887,7 @@ class HjigProgrammeRunGate(models.Model):
     _order = "run_id, sequence, id"
 
     run_id = fields.Many2one("hjig.programme.run", required=True, ondelete="cascade", index=True)
+    name = fields.Char(compute="_compute_name", store=True)
     template_gate_id = fields.Many2one(
         "hjig.programme.template.gate", required=True, readonly=True, ondelete="restrict"
     )
@@ -750,6 +896,10 @@ class HjigProgrammeRunGate(models.Model):
     )
     sequence = fields.Integer(required=True, readonly=True)
     required = fields.Boolean(default=True, readonly=True)
+    mould_id = fields.Many2one("x_mould", ondelete="restrict", index=True, readonly=True)
+    checklist_instance_ids = fields.One2many(
+        "hjig.programme.checklist.instance", "run_gate_id", readonly=True
+    )
     state = fields.Selection(
         [("blocked", "Blocked"), ("ready", "Ready"), ("approved", "Approved")],
         default="blocked",
@@ -761,15 +911,44 @@ class HjigProgrammeRunGate(models.Model):
     approval_note = fields.Text(tracking=True)
 
     _run_gate_unique = models.Constraint(
-        "UNIQUE(run_id, template_gate_id)",
-        "A programme gate can appear only once in a programme run.",
+        "UNIQUE(run_id, template_gate_id, mould_id)",
+        "A programme gate can appear only once per project or mould scope.",
     )
+
+    @api.depends("stage_id.name", "mould_id.x_mould_number")
+    def _compute_name(self):
+        for gate in self:
+            gate.name = "%s%s" % (
+                gate.stage_id.name or _("Gate"),
+                " — %s" % gate.mould_id.x_mould_number if gate.mould_id else "",
+            )
+
+    @api.constrains("run_id", "template_gate_id", "mould_id")
+    def _check_gate_scope(self):
+        for gate in self:
+            if gate.template_gate_id.execution_basis == "mould" and not gate.mould_id:
+                raise ValidationError(_("A mould-basis gate requires a mould."))
+            if gate.template_gate_id.execution_basis == "project" and gate.mould_id:
+                raise ValidationError(_("A project-basis gate cannot carry a mould."))
+            if gate.mould_id and gate.mould_id.x_project_id != gate.run_id.project_id:
+                raise ValidationError(_("The programme gate mould must belong to the run project."))
+            duplicate = self.search_count([
+                ("run_id", "=", gate.run_id.id),
+                ("template_gate_id", "=", gate.template_gate_id.id),
+                ("mould_id", "=", gate.mould_id.id if gate.mould_id else False),
+                ("id", "!=", gate.id),
+            ])
+            if duplicate:
+                raise ValidationError(_("A programme gate can appear only once in the same scope."))
 
     def _blocking_reasons(self):
         self.ensure_one()
         reasons = []
         earlier = self.run_id.gate_ids.filtered(
-            lambda gate: gate.required and gate.sequence < self.sequence and gate.state != "approved"
+            lambda gate: gate.required
+            and gate.sequence < self.sequence
+            and gate.state != "approved"
+            and (not self.mould_id or not gate.mould_id or gate.mould_id == self.mould_id)
         )
         if earlier:
             reasons.append(_("earlier required gates are not approved"))
@@ -777,10 +956,20 @@ class HjigProgrammeRunGate(models.Model):
         if tasks.filtered(lambda task: not task.stage_id.fold):
             reasons.append(_("gate activities are not complete"))
         artifacts = self.run_id.artifact_requirement_ids.filtered(
-            lambda item: item.stage_id == self.stage_id and item.mandatory
+            lambda item: item.run_gate_id == self and item.mandatory
         )
         if artifacts.filtered(lambda item: item.status != "approved"):
             reasons.append(_("mandatory SOP/Form evidence is not approved"))
+        checklist = self.run_id.checklist_instance_ids.filtered(
+            lambda item: item.template_item_id.gate_line_id == self.template_gate_id
+            and (not item.mould_id or item.mould_id == self.mould_id)
+        )
+        if not checklist:
+            reasons.append(_("authoritative gate checklist content is missing"))
+        elif checklist.filtered(
+            lambda item: item.mandatory and item.status not in ("pass", "na")
+        ):
+            reasons.append(_("mandatory checklist items are not Pass or controlled N/A"))
         return reasons
 
     def action_refresh_readiness(self):
@@ -808,7 +997,7 @@ class HjigProgrammeRunGate(models.Model):
         return True
 
     def write(self, vals):
-        frozen = {"run_id", "template_gate_id", "stage_id", "sequence", "required"}
+        frozen = {"run_id", "template_gate_id", "stage_id", "sequence", "required", "mould_id"}
         if frozen.intersection(vals):
             raise ValidationError(_("Generated gate identity is immutable."))
         if "state" in vals and not self.env.context.get("hjig_gate_workflow"):
@@ -827,6 +1016,9 @@ class HjigProgrammeRunArtifact(models.Model):
     _order = "stage_id, artifact_master_id"
 
     run_id = fields.Many2one("hjig.programme.run", required=True, ondelete="cascade", index=True)
+    run_gate_id = fields.Many2one(
+        "hjig.programme.run.gate", required=True, ondelete="cascade", index=True, readonly=True
+    )
     artifact_master_id = fields.Many2one(
         "hjig.governance.artifact.master", required=True, ondelete="restrict", index=True
     )
@@ -834,6 +1026,7 @@ class HjigProgrammeRunArtifact(models.Model):
         "hjig.launchguard.stage", required=True, ondelete="restrict", index=True
     )
     mandatory = fields.Boolean(default=True, readonly=True)
+    mould_id = fields.Many2one("x_mould", ondelete="restrict", index=True, readonly=True)
     status = fields.Selection(
         [("required", "Required"), ("available", "Available"), ("approved", "Approved")],
         compute="_compute_status",
@@ -842,8 +1035,8 @@ class HjigProgrammeRunArtifact(models.Model):
     project_document_id = fields.Many2one("hjig.project.document", ondelete="restrict")
 
     _run_artifact_stage_unique = models.Constraint(
-        "UNIQUE(run_id, artifact_master_id, stage_id)",
-        "A programme-run SOP/Form requirement may appear only once per stage.",
+        "UNIQUE(run_id, artifact_master_id, stage_id, mould_id)",
+        "A programme-run SOP/Form requirement may appear only once per gate scope.",
     )
 
     @api.depends("project_document_id", "project_document_id.status")
@@ -855,6 +1048,24 @@ class HjigProgrammeRunArtifact(models.Model):
                 else "available" if document else "required"
             )
 
+    @api.constrains("run_id", "run_gate_id", "stage_id", "mould_id")
+    def _check_gate_scope(self):
+        for requirement in self:
+            gate = requirement.run_gate_id
+            if gate.run_id != requirement.run_id:
+                raise ValidationError(_("The SOP/Form requirement gate must belong to the same programme run."))
+            if gate.stage_id != requirement.stage_id or gate.mould_id != requirement.mould_id:
+                raise ValidationError(_("The SOP/Form requirement must match its gate and mould scope."))
+            duplicate = self.search_count([
+                ("run_id", "=", requirement.run_id.id),
+                ("artifact_master_id", "=", requirement.artifact_master_id.id),
+                ("stage_id", "=", requirement.stage_id.id),
+                ("mould_id", "=", requirement.mould_id.id if requirement.mould_id else False),
+                ("id", "!=", requirement.id),
+            ])
+            if duplicate:
+                raise ValidationError(_("A programme SOP/Form requirement can appear only once in the same scope."))
+
     @api.constrains("project_document_id")
     def _check_project_document(self):
         for requirement in self.filtered("project_document_id"):
@@ -865,6 +1076,23 @@ class HjigProgrammeRunArtifact(models.Model):
                 raise ValidationError(_("The controlled document does not satisfy this SOP/Form requirement."))
             if document.stage_id != requirement.stage_id:
                 raise ValidationError(_("The controlled document is registered against a different gate."))
+            if document.mould_id != requirement.mould_id:
+                raise ValidationError(_("The controlled document uses a different mould scope."))
+
+    def write(self, vals):
+        frozen = {
+            "run_id", "run_gate_id", "artifact_master_id", "stage_id", "mould_id", "mandatory"
+        }
+        if frozen.intersection(vals):
+            raise ValidationError(_("Generated SOP/Form requirement identity is immutable."))
+        if "project_document_id" in vals and self.filtered(
+            lambda item: item.run_gate_id.state == "approved"
+        ):
+            raise ValidationError(_("Approved gate evidence cannot be replaced."))
+        return super().write(vals)
+
+    def unlink(self):
+        raise UserError(_("Generated SOP/Form requirements cannot be deleted."))
 
 
 class HjigPortfolioGuard(models.Model):

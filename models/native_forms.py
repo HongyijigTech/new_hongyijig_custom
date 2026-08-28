@@ -177,6 +177,8 @@ class HjigMould(models.Model):
     def create(self, vals_list):
         template = self.env.ref("new_hongyijig_custom.native_template_mould_plan", raise_if_not_found=False)
         for vals in vals_list:
+            vals["x_workflow_state"] = "draft"
+            vals["x_mould_planning_status"] = "tentative"
             vals.setdefault("x_template_id", template.id if template else False)
             if template:
                 vals.setdefault("x_owner_designation_id", template.artifact_master_id.owner_designation_id.id)

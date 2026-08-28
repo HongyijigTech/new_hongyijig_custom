@@ -56,12 +56,17 @@
 "access_hjig_programme_dependency_manager","hjig.programme.template.dependency.rule manager","model_hjig_programme_template_dependency_rule","project.group_project_manager",1,1,1,1
 "access_hjig_programme_artifact_user","hjig.programme.template.artifact user","model_hjig_programme_template_artifact","project.group_project_user",1,0,0,0
 "access_hjig_programme_artifact_manager","hjig.programme.template.artifact manager","model_hjig_programme_template_artifact","project.group_project_manager",1,1,1,1
+"access_hjig_programme_checklist_template_user","programme checklist template user","model_hjig_programme_template_checklist_item","project.group_project_user",1,0,0,0
+"access_hjig_programme_checklist_template_manager","programme checklist template manager","model_hjig_programme_template_checklist_item","project.group_project_manager",1,1,1,1
+"access_hjig_programme_checklist_template_controller","programme checklist template controller","model_hjig_programme_template_checklist_item","new_hongyijig_custom.group_hjig_document_controller",1,1,1,0
 "access_hjig_programme_run_user","hjig.programme.run user","model_hjig_programme_run","project.group_project_user",1,1,1,0
 "access_hjig_programme_run_manager","hjig.programme.run manager","model_hjig_programme_run","project.group_project_manager",1,1,1,1
 "access_hjig_programme_run_artifact_user","hjig.programme.run.artifact user","model_hjig_programme_run_artifact","project.group_project_user",1,1,1,0
 "access_hjig_programme_run_artifact_manager","hjig.programme.run.artifact manager","model_hjig_programme_run_artifact","project.group_project_manager",1,1,1,1
 "access_hjig_programme_run_gate_user","hjig.programme.run.gate user","model_hjig_programme_run_gate","project.group_project_user",1,1,0,0
 "access_hjig_programme_run_gate_manager","hjig.programme.run.gate manager","model_hjig_programme_run_gate","project.group_project_manager",1,1,1,1
+"access_hjig_programme_checklist_instance_user","programme checklist instance user","model_hjig_programme_checklist_instance","project.group_project_user",1,1,1,0
+"access_hjig_programme_checklist_instance_manager","programme checklist instance manager","model_hjig_programme_checklist_instance","project.group_project_manager",1,1,1,0
 "access_hjig_portfolio_guard_user","hjig.portfolio.guard user","model_hjig_portfolio_guard","project.group_project_user",1,0,0,0
 "access_hjig_portfolio_guard_manager","hjig.portfolio.guard manager","model_hjig_portfolio_guard","project.group_project_manager",1,1,1,1
 "access_hjig_sourcebridge_engagement_user","hjig.sourcebridge.engagement user","model_hjig_sourcebridge_engagement","project.group_project_user",1,1,1,0

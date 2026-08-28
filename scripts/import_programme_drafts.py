@@ -82,12 +82,19 @@ Activity = env["hjig.programme.template.activity"]
 ArtifactRule = env["hjig.programme.template.artifact"]
 Artifact = env["hjig.governance.artifact.master"]
 DependencyRule = env["hjig.programme.template.dependency.rule"]
+ChecklistItem = env["hjig.programme.template.checklist.item"]
 
 stage_by_code = {stage.code: stage for stage in Stage.search([])}
 designation_by_code = {designation.code: designation for designation in Designation.search([])}
 master_by_code = {
     master["code"].upper(): master for master in payload.get("activity_masters", [])
 }
+
+MOULD_STAGE_CODES = {"TG-02", "TG-03", "TG-04", "TG-05", "TG-06", "TG-07", "TG-08", "TG-09"}
+
+
+def gate_basis(stage_code):
+    return "mould" if stage_code in MOULD_STAGE_CODES else "project"
 
 
 def sync_artifact_rules(version):
@@ -137,6 +144,7 @@ def sync_route_gates(version, tasks):
             "stage_id": stage.id,
             "sequence": sequence * 10,
             "closure_variant": "lite" if code == "TG-10-LITE" else "standard",
+            "execution_basis": gate_basis(code),
         })
         gate_by_code[code] = gate
     for activity in version.activity_line_ids:
@@ -145,6 +153,79 @@ def sync_route_gates(version, tasks):
         if activity.gate_line_id != gate:
             activity.gate_line_id = gate
     return gate_by_code
+
+
+IG01_CHECKLIST_ITEMS = (
+    ("IG01-G01", "governance", "Project Code assigned; Primary Senior Tool Design Engineer and Project Coordinator / Junior PM designations assigned.", True, False, True, False, None, "PROJECT-COORD", "PROJECT-MANAGER", None, 0, ("LGC", "LGD", "LGV", "TLC")),
+    ("IG01-G02", "governance", "Risk Register received from P-Series and deepened.", True, False, True, False, "A-005", "PROJECT-ENGINEER", "PROJECT-MANAGER", "FRM-006", 0, ("LGC", "LGD", "LGV", "TLC")),
+    ("IG01-G03", "governance", "Risk Score 16 or higher has triggered PMO escalation with controlled evidence.", True, True, True, False, "A-005", "PMO-DOC", "FOUNDER-MD", "FRM-006", 16, ("LGC", "LGD", "LGV", "TLC")),
+    ("IG01-G04", "governance", "Project Plan built using the standard activity template and governed standard days.", True, False, True, False, None, "PROJECT-MANAGER", "PMO-DOC", None, 0, ("LGC", "LGD", "LGV", "TLC")),
+    ("IG01-G05", "governance", "Risk Score 12 or higher has triggered mitigation activities in the Project Plan.", True, True, True, False, "A-005", "PROJECT-MANAGER", "PMO-DOC", "FRM-006", 12, ("LGC", "LGD", "LGV", "TLC")),
+    ("IG01-G06", "governance", "Customer-specific supplementary tasks are added and traced to the Risk Register or customer request.", False, False, True, False, None, "PROJECT-MANAGER", "PMO-DOC", None, 0, ("LGC", "LGD", "LGV", "TLC")),
+    ("IG01-G07", "governance", "Founder / Managing Director designation approval received on the Project Plan before gate close.", True, False, True, True, None, "PROJECT-MANAGER", "FOUNDER-MD", None, 0, ("LGC", "LGD", "LGV", "TLC")),
+    ("IG01-G08", "governance", "The applicable B-Series programme is confirmed.", True, False, True, False, None, "PROJECT-MANAGER", "PMO-DOC", None, 0, ("LGC", "LGD", "LGV", "TLC")),
+    ("IG01-G09", "governance", "Risk Register final review confirms no unresolved new risk with score 16 or higher.", True, False, True, False, "A-005", "PROJECT-MANAGER", "PMO-DOC", "FRM-006", 0, ("LGC", "LGD", "LGV", "TLC")),
+    ("IG01-T01", "technical", "SOR is complete, 100 percent project-basis, and signed by the customer.", True, False, True, True, "A-001", "PROJECT-ENGINEER", "PROJECT-MANAGER", "FRM-003", 0, ("LGC", "LGD", "LGV", "TLC")),
+    ("IG01-T02", "technical", "BOP is complete, frozen for all components, and signed.", True, False, True, True, "A-002", "PROJECT-ENGINEER", "PROJECT-MANAGER", "FRM-004", 0, ("LGC", "LGD", "LGV", "TLC")),
+    ("IG01-T03", "technical", "Product design and manufacturing challenges are documented in the customer's exact words.", True, False, True, False, "A-003", "PROJECT-ENGINEER", "PROJECT-MANAGER", None, 0, ("LGC", "LGD", "LGV", "TLC")),
+    ("IG01-T04", "technical", "Tentative Mould Planning is complete; the mould list will lock at the applicable design/pre-B2 gate.", True, False, True, False, "A-004", "SR-TOOL-DESIGN", "PROJECT-MANAGER", "FRM-005", 0, ("LGC", "LGD", "LGV", "TLC")),
+    ("IG01-T05", "technical", "BOP physical samples are received by HJIG and verified against SOR and assembly.", True, False, True, False, None, "PROJECT-ENGINEER", "PROJECT-MANAGER", None, 0, ("LGC", "LGD", "LGV", "TLC")),
+    ("IG01-T06", "technical", "Styling or A-Class surface data is available, or a benchmark sample is received.", False, False, True, False, None, "SR-PRODUCT-DESIGN", "PROJECT-MANAGER", None, 0, ("LGC", "LGD")),
+    ("IG01-R01", "reporting", "Estimated project timeline based on the final SOR is shared with the customer.", True, False, True, False, None, "PROJECT-MANAGER", "PMO-DOC", None, 0, ("LGC", "LGD", "LGV", "TLC")),
+    ("IG01-CU01", "customer", "Design agency is identified for the programme's product-design scope.", True, False, True, False, None, "SR-PRODUCT-DESIGN", "PROJECT-MANAGER", None, 0, ("LGC", "LGD")),
+    ("IG01-S01", "supplier", "Existing customer SOR, BOP, Design Challenges and Mould Planning records are reviewed, updated and signed off by HJIG before pre-B2 entry.", True, False, True, True, None, "PROJECT-MANAGER", "PMO-DOC", None, 0, ("LGV", "TLC")),
+)
+
+
+def sync_ig01_checklist(version):
+    programme_code = version.template_id.code
+    gate = version.gate_line_ids.filtered(lambda item: item.stage_id.code == "PA-00")[:1]
+    if not gate:
+        return 0
+    activity_by_master = {}
+    for activity in version.activity_line_ids:
+        for code in (activity.legacy_master_codes or "").split(","):
+            if code.strip():
+                activity_by_master[code.strip().upper()] = activity
+    artifact_by_code = {item.code: item for item in Artifact.search([])}
+    expected = set()
+    for sequence, values in enumerate(IG01_CHECKLIST_ITEMS, start=1):
+        (code, subhead, text, mandatory, conditional, evidence_required, sign_required,
+         linked_code, owner_code, approver_code, artifact_code, threshold, programmes) = values
+        if programme_code not in programmes:
+            continue
+        expected.add(code)
+        vals = {
+            "version_id": version.id,
+            "gate_line_id": gate.id,
+            "code": code,
+            "sequence": sequence * 10,
+            "subhead": subhead,
+            "item_text": text,
+            "mandatory": mandatory,
+            "conditional": conditional,
+            "evidence_required": evidence_required,
+            "sign_required": sign_required,
+            "execution_basis": "project",
+            "linked_activity_id": activity_by_master.get(linked_code).id if linked_code and activity_by_master.get(linked_code) else False,
+            "evidence_artifact_id": artifact_by_code.get(artifact_code).id if artifact_code and artifact_by_code.get(artifact_code) else False,
+            "owner_designation_id": designation_by_code[owner_code].id,
+            "approver_designation_id": designation_by_code[approver_code].id,
+            "auto_na_risk_below": threshold,
+            "source_reference": "BSeries_Checklist_Template_Model_Spec_v2 Section 9",
+            "source_version": "v2 / July 2026",
+        }
+        item = version.checklist_item_ids.filtered(lambda record: record.code == code)[:1]
+        if item:
+            item.write(vals)
+        else:
+            ChecklistItem.create(vals)
+    stale = version.checklist_item_ids.filtered(
+        lambda item: item.gate_line_id == gate and item.code.startswith("IG01-") and item.code not in expected
+    )
+    if stale:
+        stale.unlink()
+    return len(expected)
 
 
 ACTIVITY_ARTIFACTS = {
@@ -459,6 +540,7 @@ for project_id, (programme_code, expected_count) in PROGRAMMES.items():
         dependency_count, documented_count, barrier_count = sync_dependency_rules(
             version, programme_code, task_payload_by_id
         )
+        checklist_count = sync_ig01_checklist(version)
         print(
             "PROGRAMME_ALREADY_RECONCILED",
             programme_code,
@@ -467,6 +549,7 @@ for project_id, (programme_code, expected_count) in PROGRAMMES.items():
             dependency_count,
             documented_count,
             barrier_count,
+            checklist_count,
         )
         continue
     values = {
@@ -499,6 +582,7 @@ for project_id, (programme_code, expected_count) in PROGRAMMES.items():
             "stage_id": stage.id,
             "sequence": sequence * 10,
             "closure_variant": "lite" if code == "TG-10-LITE" else "standard",
+            "execution_basis": gate_basis(code),
         })
 
     for index, task in enumerate(tasks, start=1):
@@ -528,6 +612,7 @@ for project_id, (programme_code, expected_count) in PROGRAMMES.items():
     dependency_count, documented_count, barrier_count = sync_dependency_rules(
         version, programme_code, task_payload_by_id
     )
+    checklist_count = sync_ig01_checklist(version)
     print(
         "PROGRAMME_RECONCILED",
         programme_code,
@@ -537,6 +622,7 @@ for project_id, (programme_code, expected_count) in PROGRAMMES.items():
         dependency_count,
         documented_count,
         barrier_count,
+        checklist_count,
         version.state,
     )
 

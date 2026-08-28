@@ -164,6 +164,14 @@ class HjigProjectDocument(models.Model):
         index=True,
         tracking=True,
     )
+    mould_id = fields.Many2one(
+        "x_mould",
+        string="Mould Scope",
+        ondelete="restrict",
+        index=True,
+        tracking=True,
+        help="Required for per-mould gate evidence; leave blank for project-basis evidence.",
+    )
     document_class = fields.Selection(
         [
             ("master_reference", "Master / Reference"),
@@ -257,9 +265,15 @@ class HjigProjectDocument(models.Model):
         "register_id", "project_id", "artifact_master_id", "stage_id", "register_type",
         "document_class", "title", "document_type", "external_document_number", "revision",
         "owner_designation_id", "approver_designation_id", "owner_id", "approver_id",
-        "effective_date", "drive_url", "sor_reference", "gate_reference",
+        "effective_date", "drive_url", "sor_reference", "gate_reference", "mould_id",
         "ecn_reference", "supersedes_id", "superseded_by_id", "notes", "status",
     }
+
+    @api.constrains("project_id", "mould_id")
+    def _check_mould_scope(self):
+        for document in self.filtered("mould_id"):
+            if document.mould_id.x_project_id != document.project_id:
+                raise ValidationError(_("The controlled-document mould must belong to the same project."))
 
     @api.model_create_multi
     def create(self, vals_list):

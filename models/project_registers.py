@@ -324,7 +324,7 @@ class HjigProjectRisk(models.Model):
     def _compute_risk_score(self):
         for risk in self:
             risk.risk_score = int(risk.probability or 0) * int(risk.impact or 0)
-            risk.escalation_required = risk.risk_score >= 15
+            risk.escalation_required = risk.risk_score >= 16
 
     @api.model_create_multi
     def create(self, vals_list):

@@ -17,6 +17,7 @@ expected_routes = {
     "TLC": ["PA-00", "PRE-B2", "TG-02", "TG-03", "TG-04", "TG-05", "TG-06", "TG-07", "TG-10-LITE"],
     "TLL": ["TLL-S01", "TLL-S02", "TLL-S03", "TLL-S04", "TLL-S05", "TLL-S06"],
 }
+expected_checklist_counts = {"LGC": 17, "LGD": 17, "LGV": 16, "TLC": 16, "TLL": 0}
 
 Version = env["hjig.programme.template.version"]
 Run = env["hjig.programme.run"]
@@ -47,7 +48,21 @@ for programme in programmes.sorted(lambda item: item.template_id.code):
         raise RuntimeError(f"{code} has required gates without mandatory artifacts")
     if not programme.activity_line_ids.filtered("required_artifact_ids"):
         raise RuntimeError(f"{code} has no activity-to-evidence mapping")
-    print("STAGING_PROGRAMME_PASS", code, *actual, "DRAFT_UNREVIEWED", "ROUTE", ",".join(route))
+    if len(programme.checklist_item_ids) != expected_checklist_counts[code]:
+        raise RuntimeError(
+            f"{code} authoritative checklist count mismatch: "
+            f"expected {expected_checklist_counts[code]}, found {len(programme.checklist_item_ids)}"
+        )
+    mould_stages = programme.gate_line_ids.filtered(
+        lambda gate: gate.stage_id.code in {"TG-02", "TG-03", "TG-04", "TG-05", "TG-06", "TG-07", "TG-08", "TG-09"}
+    )
+    if mould_stages.filtered(lambda gate: gate.execution_basis != "mould"):
+        raise RuntimeError(f"{code} has a post-design technical gate that is not mould-basis")
+    print(
+        "STAGING_PROGRAMME_PASS", code, *actual,
+        "CHECKLIST_ITEMS", len(programme.checklist_item_ids),
+        "DRAFT_UNREVIEWED", "ROUTE", ",".join(route)
+    )
 
 print("STAGING_PROGRAMME_RUN_COUNT", Run.search_count([]))
 print("STAGING_BSERIES_READ_ONLY_REGRESSION_PASS")

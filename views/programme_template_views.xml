@@ -116,6 +116,7 @@
                                     <field name="stage_id"/>
                                     <field name="required"/>
                                     <field name="closure_variant"/>
+                                    <field name="execution_basis"/>
                                 </list>
                             </field>
                         </page>
@@ -160,6 +161,26 @@
                                     <field name="stage_id"/>
                                     <field name="artifact_master_id"/>
                                     <field name="mandatory"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Gate Checklist Template">
+                            <field name="checklist_item_ids" readonly="state in ['approved', 'retired']">
+                                <list editable="bottom" open_form_view="1">
+                                    <field name="sequence"/>
+                                    <field name="code"/>
+                                    <field name="gate_line_id"/>
+                                    <field name="subhead"/>
+                                    <field name="item_text"/>
+                                    <field name="mandatory"/>
+                                    <field name="conditional"/>
+                                    <field name="evidence_required"/>
+                                    <field name="sign_required" optional="show"/>
+                                    <field name="execution_basis"/>
+                                    <field name="linked_activity_id" optional="show"/>
+                                    <field name="owner_designation_id"/>
+                                    <field name="approver_designation_id"/>
+                                    <field name="source_reference" optional="hide"/>
                                 </list>
                             </field>
                         </page>
@@ -208,12 +229,15 @@
                     </group>
                     <button name="action_close_run" type="object" string="Close Programme Run"
                             class="btn-primary" invisible="state != 'generated'"/>
+                    <button name="action_sync_mould_execution" type="object" string="Sync Approved Moulds"
+                            invisible="state != 'generated'"/>
                     <notebook>
                         <page string="Governed Gates">
                             <field name="gate_ids">
                                 <list create="false" delete="false">
                                     <field name="sequence"/>
                                     <field name="stage_id"/>
+                                    <field name="mould_id"/>
                                     <field name="required"/>
                                     <field name="state" widget="badge"/>
                                     <field name="approved_by_id"/>
@@ -247,6 +271,24 @@
                                 </list>
                             </field>
                         </page>
+                        <page string="Gate Checklists">
+                            <field name="checklist_instance_ids">
+                                <list create="false" delete="false" open_form_view="1"
+                                      decoration-success="status == 'pass'"
+                                      decoration-danger="status == 'fail'"
+                                      decoration-muted="status == 'na'">
+                                    <field name="run_gate_id"/>
+                                    <field name="mould_id"/>
+                                    <field name="code"/>
+                                    <field name="subhead"/>
+                                    <field name="item_text"/>
+                                    <field name="mandatory"/>
+                                    <field name="status" widget="badge"/>
+                                    <field name="evidence_document_id"/>
+                                    <field name="owner_designation_id"/>
+                                </list>
+                            </field>
+                        </page>
                         <page string="SourceBridge">
                             <field name="sourcebridge_engagement_ids"/>
                         </page>
@@ -258,6 +300,77 @@
                 <chatter/>
             </form>
         </field>
+    </record>
+
+    <record id="view_hjig_checklist_instance_list" model="ir.ui.view">
+        <field name="name">hjig.programme.checklist.instance.list</field>
+        <field name="model">hjig.programme.checklist.instance</field>
+        <field name="arch" type="xml">
+            <list create="false" delete="false" decoration-success="status == 'pass'"
+                  decoration-danger="status == 'fail'" decoration-muted="status == 'na'">
+                <field name="project_id"/>
+                <field name="run_gate_id"/>
+                <field name="mould_id"/>
+                <field name="code"/>
+                <field name="subhead"/>
+                <field name="item_text"/>
+                <field name="mandatory"/>
+                <field name="status" widget="badge"/>
+                <field name="owner_designation_id"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_checklist_instance_form" model="ir.ui.view">
+        <field name="name">hjig.programme.checklist.instance.form</field>
+        <field name="model">hjig.programme.checklist.instance</field>
+        <field name="arch" type="xml">
+            <form string="Gate Checklist Item" create="false" delete="false">
+                <header>
+                    <button name="action_mark_pass" type="object" string="Record Pass" class="btn-primary"/>
+                    <button name="action_mark_fail" type="object" string="Record Fail"/>
+                    <button name="action_mark_na" type="object" string="Approve N/A" invisible="not conditional"/>
+                    <field name="status" widget="statusbar" statusbar_visible="pending,pass,fail,na"/>
+                </header>
+                <sheet>
+                    <div class="oe_title"><h1><field name="code" readonly="1"/></h1></div>
+                    <group>
+                        <group>
+                            <field name="project_id"/>
+                            <field name="run_gate_id"/>
+                            <field name="mould_id"/>
+                            <field name="subhead"/>
+                            <field name="mandatory"/>
+                            <field name="conditional"/>
+                        </group>
+                        <group>
+                            <field name="owner_designation_id"/>
+                            <field name="approver_designation_id"/>
+                            <field name="evidence_required"/>
+                            <field name="sign_required"/>
+                            <field name="ticked_by_id"/>
+                            <field name="ticked_on"/>
+                        </group>
+                    </group>
+                    <group string="Checklist Requirement"><field name="item_text" nolabel="1"/></group>
+                    <group string="Controlled Result">
+                        <field name="evidence_document_id"
+                               domain="[('project_id', '=', project_id), ('mould_id', '=', mould_id), ('status', '=', 'approved')]"/>
+                        <field name="remarks"/>
+                        <field name="automatic_disposition"/>
+                        <field name="disposition_approved_by_id"/>
+                        <field name="disposition_approved_on"/>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_hjig_checklist_instances" model="ir.actions.act_window">
+        <field name="name">Gate Checklist Instances</field>
+        <field name="res_model">hjig.programme.checklist.instance</field>
+        <field name="view_mode">list,form</field>
     </record>
 
     <record id="action_hjig_programme_templates" model="ir.actions.act_window">
@@ -284,6 +397,8 @@
               parent="menu_hjig_programme_governance" action="action_hjig_programme_versions" sequence="20"/>
     <menuitem id="menu_hjig_programme_runs" name="Programme Runs"
               parent="menu_hjig_programme_governance" action="action_hjig_programme_runs" sequence="30"/>
+    <menuitem id="menu_hjig_checklist_instances" name="Gate Checklists"
+              parent="menu_hjig_programme_governance" action="action_hjig_checklist_instances" sequence="35"/>
 
     <record id="view_sale_order_form_hjig_programme" model="ir.ui.view">
         <field name="name">sale.order.form.hjig.programme</field>
