@@ -133,6 +133,30 @@ class HjigProgrammeTemplateVersion(models.Model):
                     if code:
                         activity_by_master[code] = activity
 
+            # v1.4 is output-driven, so the display sequence must be corrected
+            # where the legacy snapshot placed a milestone before its trigger.
+            a067 = activity_by_master.get("A-067")
+            cm07_demand = version.activity_line_ids.filtered(
+                lambda item: (item.name or "").upper().startswith("CM-07: DEMAND RAISED")
+            )[:1]
+            cm07_collected = version.activity_line_ids.filtered(
+                lambda item: (item.name or "").upper().startswith("CM-07: GOVERNANCE FEE COLLECTED")
+            )[:1]
+            if a067 and cm07_demand:
+                cm07_demand.write({
+                    "gate_line_id": a067.gate_line_id.id,
+                    "sequence": a067.sequence + 1,
+                })
+            b8_close = activity_by_master.get("B8-09")
+            cm11 = version.activity_line_ids.filtered(
+                lambda item: (item.name or "").upper().startswith("CM-11:")
+            )[:1]
+            if b8_close and cm11:
+                cm11.write({
+                    "gate_line_id": b8_close.gate_line_id.id,
+                    "sequence": b8_close.sequence - 1,
+                })
+
             version.dependency_rule_ids.unlink()
             version.activity_line_ids.write({"predecessor_ids": [(5, 0, 0)]})
             represented = set()
@@ -145,9 +169,9 @@ class HjigProgrammeTemplateVersion(models.Model):
                 pair = (predecessor.id, successor.id)
                 if pair in represented:
                     return
-                if predecessor.sequence >= successor.sequence:
+                if predecessor.gate_line_id.sequence > successor.gate_line_id.sequence:
                     raise ValidationError(
-                        _("Founder-approved dependency is not forward-only: %s -> %s")
+                        _("Founder-approved dependency crosses a gate backwards: %s -> %s")
                         % (predecessor.name, successor.name)
                     )
                 counter += 1
@@ -229,11 +253,15 @@ class HjigProgrammeTemplateVersion(models.Model):
                 "commercial_trigger",
                 "CM-06 is triggered only after T0 samples are received in India.",
             )
-            cm07 = named("CM-07:")
             create_rule(
-                activity_by_master.get("A-067"), cm07,
+                a067, cm07_demand,
                 "commercial_trigger",
                 "A-067 dispatch readiness is the CM-07 trigger; CM-07 must not wait for sail-off.",
+            )
+            create_rule(
+                cm07_demand, cm07_collected,
+                "commercial_hard_block",
+                "The CM-07 demand must be raised before its collection and tooling release are confirmed.",
             )
             cm08 = named("CM-08:")
             payment_verified = activity_by_master.get("A-081")
@@ -279,7 +307,6 @@ class HjigProgrammeTemplateVersion(models.Model):
                     "commercial_trigger",
                     "For ToolLock Control, Dispatch Confirmation Sign-Off triggers CM-10.",
                 )
-            cm11 = named("CM-11:")
             create_rule(
                 cm11, activity_by_master.get("B8-09"),
                 "commercial_hard_block",

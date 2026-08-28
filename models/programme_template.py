@@ -605,8 +605,16 @@ class HjigProgrammeTemplateActivity(models.Model):
                 raise ValidationError(_("An activity cannot depend on itself."))
             if activity.predecessor_ids.filtered(lambda predecessor: predecessor.version_id != activity.version_id):
                 raise ValidationError(_("Activity dependencies cannot cross programme versions."))
-            if activity.predecessor_ids.filtered(lambda predecessor: predecessor.sequence >= activity.sequence):
-                raise ValidationError(_("Every predecessor must have an earlier sequence than its dependent activity."))
+            frontier = list(activity.predecessor_ids)
+            visited = set()
+            while frontier:
+                predecessor = frontier.pop()
+                if predecessor.id == activity.id:
+                    raise ValidationError(_("Activity dependencies cannot contain a cycle."))
+                if predecessor.id in visited:
+                    continue
+                visited.add(predecessor.id)
+                frontier.extend(predecessor.predecessor_ids)
             if activity.duration_days < 0:
                 raise ValidationError(_("Activity duration cannot be negative."))
             if activity.owner_designation_id == activity.approver_designation_id:

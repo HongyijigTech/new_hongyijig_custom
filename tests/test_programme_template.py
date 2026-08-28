@@ -367,6 +367,30 @@ class TestProgrammeTemplateGovernance(TransactionCase):
         with self.assertRaisesRegex(ValidationError, "positive planning duration"):
             draft.action_submit_review()
 
+    def test_dependency_sequence_is_display_only_but_cycles_are_rejected(self):
+        draft = self.env["hjig.programme.template.version"].create({
+            "template_id": self.template.id, "version": "SEQUENCE-NOT-AUTHORITY",
+        })
+        gate = self.env["hjig.programme.template.gate"].create({
+            "version_id": draft.id, "stage_id": self.stage.id,
+        })
+        first = self.env["hjig.programme.template.activity"].create({
+            "version_id": draft.id, "code": "SEQ-A", "name": "True predecessor",
+            "sequence": 20, "gate_line_id": gate.id,
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+        })
+        second = self.env["hjig.programme.template.activity"].create({
+            "version_id": draft.id, "code": "SEQ-B", "name": "True successor",
+            "sequence": 10, "gate_line_id": gate.id,
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+            "predecessor_ids": [(6, 0, first.ids)],
+        })
+        self.assertEqual(second.predecessor_ids, first)
+        with self.assertRaisesRegex(ValidationError, "cannot contain a cycle"):
+            first.predecessor_ids = [(6, 0, second.ids)]
+
     def test_sourcebridge_supports_multiple_components_per_programme(self):
         order = self._sale_order(hjig_project_code="HJ-PGT-2026-0004")
         order.action_activate_hjig_programme()
