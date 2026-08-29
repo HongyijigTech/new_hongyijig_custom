@@ -1,4 +1,4 @@
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests import TransactionCase, tagged
 
 from ..models.programme_gate_checklists import (
@@ -27,6 +27,11 @@ class TestProgrammeTemplateGovernance(TransactionCase):
                 cls.env.ref("project.group_project_user").id,
                 cls.env.ref("new_hongyijig_custom.group_hjig_document_controller").id,
             ])],
+        })
+        cls.outsider_user = cls.env["res.users"].create({
+            "name": "Unassigned Project User",
+            "login": "programme.outsider@test.invalid",
+            "group_ids": [(6, 0, [cls.env.ref("project.group_project_user").id])],
         })
         cls.owner_designation = cls.env["hjig.governance.designation"].create({
             "code": "PROGRAMME-OWNER-TEST",
@@ -171,6 +176,9 @@ class TestProgrammeTemplateGovernance(TransactionCase):
                     "designation_id": designation.id,
                     "holder_ids": [(6, 0, [holder.id])],
                 })
+        run.project_id.hjig_authorized_user_ids = [(6, 0, [
+            self.owner_user.id, self.approver_user.id,
+        ])]
         if run.state == "draft" and not run.scope_decision_ids:
             run.action_generate_execution()
         return run
@@ -340,6 +348,98 @@ class TestProgrammeTemplateGovernance(TransactionCase):
         self.assertEqual(
             self.env["project.task"].search_count([("hjig_programme_run_id", "=", run.id)]), 2
         )
+
+    def test_team_cannot_bypass_predecessors_or_required_evidence(self):
+        order = self._sale_order(hjig_project_code="HJ-PGT-2026-0004")
+        run = self._activate_order(order)
+        first = run.task_ids.filtered(
+            lambda task: task.hjig_template_activity_id == self.activity_1
+        )
+        dependent = run.task_ids.filtered(
+            lambda task: task.hjig_template_activity_id == self.activity_2
+        )
+        done_stage = self.env["project.task.type"].create({
+            "name": "Governed Done Test",
+            "fold": True,
+        })
+
+        self.assertTrue(first.hjig_execution_blocked)
+        self.assertEqual(first.hjig_missing_artifact_requirement_ids, run.artifact_requirement_ids)
+        self.assertEqual(dependent.hjig_open_predecessor_ids, first)
+        with self.assertRaisesRegex(ValidationError, "predecessors are complete"):
+            dependent.stage_id = done_stage
+        with self.assertRaisesRegex(ValidationError, "required evidence is approved"):
+            first.stage_id = done_stage
+
+        document = self.env["hjig.project.document"].create({
+            "project_id": run.project_id.id,
+            "artifact_master_id": self.artifact.id,
+            "stage_id": self.stage.id,
+            "revision": "R01",
+            "drive_url": "https://drive.google.com/file/d/team-evidence-test/view",
+            "effective_date": "2026-08-30",
+        })
+        document.with_user(self.owner_user).action_submit_review()
+        document.with_user(self.approver_user).action_approve()
+        run.artifact_requirement_ids.project_document_id = document
+
+        self.assertFalse(first.hjig_missing_artifact_requirement_ids)
+        first.stage_id = done_stage
+        self.assertFalse(dependent.hjig_open_predecessor_ids)
+        dependent.stage_id = done_stage
+        self.assertTrue(dependent.stage_id.fold)
+
+    def test_execution_requires_designation_holders_in_authorised_project_team(self):
+        order = self._sale_order(hjig_project_code="HJ-PGT-2026-0005")
+        order.action_activate_hjig_programme()
+        run = order.hjig_programme_run_id
+        for designation, holder in (
+            (self.owner_designation, self.owner_user),
+            (self.approver_designation, self.approver_user),
+        ):
+            self.env["hjig.project.designation.assignment"].create({
+                "project_id": run.project_id.id,
+                "designation_id": designation.id,
+                "holder_ids": [(6, 0, [holder.id])],
+            })
+        with self.assertRaisesRegex(ValidationError, "Hongyi Project Team"):
+            run.action_generate_execution()
+
+        run.project_id.hjig_authorized_user_ids = [(6, 0, [
+            self.owner_user.id, self.approver_user.id,
+        ])]
+        run.action_generate_execution()
+        self.assertEqual(run.state, "generated")
+
+    def test_programme_execution_and_documents_are_project_team_scoped(self):
+        order = self._sale_order(hjig_project_code="HJ-PGT-2026-0006")
+        run = self._activate_order(order)
+        document = self.env["hjig.project.document"].create({
+            "project_id": run.project_id.id,
+            "artifact_master_id": self.artifact.id,
+            "stage_id": self.stage.id,
+            "revision": "SEC-R01",
+            "drive_url": "https://drive.google.com/file/d/security-test/view",
+        })
+
+        self.assertEqual(
+            self.env["hjig.programme.run"].with_user(self.owner_user).search([
+                ("id", "=", run.id),
+            ]),
+            run,
+        )
+        self.assertFalse(
+            self.env["hjig.programme.run"].with_user(self.outsider_user).search([
+                ("id", "=", run.id),
+            ])
+        )
+        self.assertFalse(
+            self.env["hjig.project.document"].with_user(self.outsider_user).search([
+                ("id", "=", document.id),
+            ])
+        )
+        with self.assertRaises(AccessError):
+            document.with_user(self.outsider_user).read(["title"])
 
     def test_generated_snapshot_cannot_be_repointed_or_deleted(self):
         order = self._sale_order(hjig_project_code="HJ-PGT-2026-0002")
