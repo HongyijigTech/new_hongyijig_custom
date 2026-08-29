@@ -6,150 +6,169 @@
         <field name="comment">May approve controlled project documents when the user also holds the required approver designation.</field>
     </record>
 
-    <record id="rule_hjig_project_designation_visibility" model="ir.rule">
-        <field name="name">Project Designation Assignment: project visibility</field>
-        <field name="model_id" ref="model_hjig_project_designation_assignment"/>
-        <field name="domain_force">['|', ('project_id.privacy_visibility', 'in', ['employees', 'portal']), ('project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
-        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    <record id="group_hjig_governance_approver" model="res.groups">
+        <field name="name">Hongyi Governance Approver</field>
+        <field name="implied_ids" eval="[(4, ref('project.group_project_user'))]"/>
+        <field name="comment">May approve or reject governed baselines, engineering decisions, commercial changes and gates when the user also holds the required designation.</field>
     </record>
-    <record id="rule_hjig_project_designation_company" model="ir.rule">
-        <field name="name">Project Designation Assignment: multi-company</field>
-        <field name="model_id" ref="model_hjig_project_designation_assignment"/>
-        <field name="domain_force">[('project_id.company_id', 'in', company_ids + [False])]</field>
+
+    <record id="group_hjig_commercial_user" model="res.groups">
+        <field name="name">Hongyi Commercial Records User</field>
+        <field name="implied_ids" eval="[(4, ref('project.group_project_user'))]"/>
+        <field name="comment">May access project customer/supplier commercial links when also assigned to that governed project team. Access to the linked native Odoo document requires a separately assigned native role.</field>
     </record>
-    <record id="rule_hjig_project_designation_manager" model="ir.rule">
-        <field name="name">Project Designation Assignment: manager oversight</field>
-        <field name="model_id" ref="model_hjig_project_designation_assignment"/>
+
+    <record id="rule_hjig_baseline_company" model="ir.rule">
+        <field name="name">Hongyi Baseline: allowed companies</field>
+        <field name="model_id" ref="model_hjig_baseline"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_hjig_evidence_company" model="ir.rule">
+        <field name="name">Hongyi Evidence: allowed companies</field>
+        <field name="model_id" ref="model_hjig_evidence_link"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_hjig_approval_company" model="ir.rule">
+        <field name="name">Hongyi Approval: allowed companies</field>
+        <field name="model_id" ref="model_hjig_approval"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_hjig_transition_company" model="ir.rule">
+        <field name="name">Hongyi Transition Log: allowed companies</field>
+        <field name="model_id" ref="model_hjig_transition_log"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_hjig_sor_company" model="ir.rule">
+        <field name="name">Hongyi SOR: allowed companies</field>
+        <field name="model_id" ref="model_hjig_sor"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_hjig_sor_requirement_company" model="ir.rule">
+        <field name="name">Hongyi SOR Requirement: allowed companies</field>
+        <field name="model_id" ref="model_hjig_sor_requirement"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_hjig_sor_verification_company" model="ir.rule">
+        <field name="name">Hongyi SOR Verification: allowed companies</field>
+        <field name="model_id" ref="model_hjig_sor_requirement_verification"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_hjig_checklist_company" model="ir.rule"><field name="name">Hongyi Checklist: allowed companies</field><field name="model_id" ref="model_hjig_checklist"/><field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field></record>
+    <record id="rule_hjig_checklist_response_company" model="ir.rule"><field name="name">Hongyi Checklist Response: allowed companies</field><field name="model_id" ref="model_hjig_checklist_response"/><field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field></record>
+    <record id="rule_hjig_gate_company" model="ir.rule"><field name="name">Hongyi Gate: allowed companies</field><field name="model_id" ref="model_hjig_gate"/><field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field></record>
+    <record id="rule_hjig_tooling_execution_company" model="ir.rule"><field name="name">Hongyi Tooling Execution: allowed companies</field><field name="model_id" ref="model_hjig_tooling_execution"/><field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field></record>
+    <record id="rule_hjig_tooling_report_company" model="ir.rule"><field name="name">Hongyi Tooling Report: allowed companies</field><field name="model_id" ref="model_hjig_tooling_report"/><field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field></record>
+    <record id="rule_hjig_tooling_action_company" model="ir.rule"><field name="name">Hongyi Tooling Action: allowed companies</field><field name="model_id" ref="model_hjig_tooling_action"/><field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field></record>
+    <record id="rule_hjig_inspection_company" model="ir.rule"><field name="name">Hongyi Inspection: allowed companies</field><field name="model_id" ref="model_hjig_inspection"/><field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field></record>
+    <record id="rule_hjig_inspection_line_company" model="ir.rule"><field name="name">Hongyi Inspection Line: allowed companies</field><field name="model_id" ref="model_hjig_inspection_line"/><field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field></record>
+    <record id="rule_hjig_knowledge_company" model="ir.rule"><field name="name">Hongyi Knowledge: allowed companies</field><field name="model_id" ref="model_hjig_knowledge_item"/><field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field></record>
+    <record id="rule_hjig_ai_log_company" model="ir.rule"><field name="name">Hongyi AI Log: allowed companies</field><field name="model_id" ref="model_hjig_ai_assistance_log"/><field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field></record>
+    <record id="rule_hjig_commercial_link_company" model="ir.rule"><field name="name">Hongyi Commercial Link: allowed companies</field><field name="model_id" ref="model_hjig_commercial_link"/><field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field></record>
+    <record id="rule_hjig_commercial_submission_company" model="ir.rule"><field name="name">Hongyi Commercial Submission: allowed companies</field><field name="model_id" ref="model_hjig_commercial_submission"/><field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field></record>
+
+    <record id="rule_hjig_baseline_project_team" model="ir.rule">
+        <field name="name">Hongyi Baseline: assigned project team</field>
+        <field name="model_id" ref="model_hjig_baseline"/>
+        <field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_user'))]"/>
+    </record>
+    <record id="rule_hjig_evidence_project_team" model="ir.rule">
+        <field name="name">Hongyi Evidence: assigned project team</field>
+        <field name="model_id" ref="model_hjig_evidence_link"/>
+        <field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_user'))]"/>
+    </record>
+    <record id="rule_hjig_approval_project_team" model="ir.rule">
+        <field name="name">Hongyi Approval: assigned project team</field>
+        <field name="model_id" ref="model_hjig_approval"/>
+        <field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_user'))]"/>
+    </record>
+    <record id="rule_hjig_transition_project_team" model="ir.rule">
+        <field name="name">Hongyi Transition Log: assigned project team</field>
+        <field name="model_id" ref="model_hjig_transition_log"/>
+        <field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_user'))]"/>
+    </record>
+    <record id="rule_hjig_sor_project_team" model="ir.rule">
+        <field name="name">Hongyi SOR: assigned project team</field>
+        <field name="model_id" ref="model_hjig_sor"/>
+        <field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_user'))]"/>
+    </record>
+    <record id="rule_hjig_sor_requirement_project_team" model="ir.rule">
+        <field name="name">Hongyi SOR Requirement: assigned project team</field>
+        <field name="model_id" ref="model_hjig_sor_requirement"/>
+        <field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_user'))]"/>
+    </record>
+    <record id="rule_hjig_sor_verification_project_team" model="ir.rule">
+        <field name="name">Hongyi SOR Verification: assigned project team</field>
+        <field name="model_id" ref="model_hjig_sor_requirement_verification"/>
+        <field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_user'))]"/>
+    </record>
+    <record id="rule_hjig_checklist_project_team" model="ir.rule"><field name="name">Hongyi Checklist: assigned project team</field><field name="model_id" ref="model_hjig_checklist"/><field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field><field name="groups" eval="[(4, ref('project.group_project_user'))]"/></record>
+    <record id="rule_hjig_checklist_response_project_team" model="ir.rule"><field name="name">Hongyi Checklist Response: assigned project team</field><field name="model_id" ref="model_hjig_checklist_response"/><field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field><field name="groups" eval="[(4, ref('project.group_project_user'))]"/></record>
+    <record id="rule_hjig_gate_project_team" model="ir.rule"><field name="name">Hongyi Gate: assigned project team</field><field name="model_id" ref="model_hjig_gate"/><field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field><field name="groups" eval="[(4, ref('project.group_project_user'))]"/></record>
+    <record id="rule_hjig_tooling_execution_project_team" model="ir.rule"><field name="name">Hongyi Tooling Execution: assigned project team</field><field name="model_id" ref="model_hjig_tooling_execution"/><field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field><field name="groups" eval="[(4, ref('project.group_project_user'))]"/></record>
+    <record id="rule_hjig_tooling_report_project_team" model="ir.rule"><field name="name">Hongyi Tooling Report: assigned project team</field><field name="model_id" ref="model_hjig_tooling_report"/><field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field><field name="groups" eval="[(4, ref('project.group_project_user'))]"/></record>
+    <record id="rule_hjig_tooling_action_project_team" model="ir.rule"><field name="name">Hongyi Tooling Action: assigned project team</field><field name="model_id" ref="model_hjig_tooling_action"/><field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field><field name="groups" eval="[(4, ref('project.group_project_user'))]"/></record>
+    <record id="rule_hjig_inspection_project_team" model="ir.rule"><field name="name">Hongyi Inspection: assigned project team</field><field name="model_id" ref="model_hjig_inspection"/><field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field><field name="groups" eval="[(4, ref('project.group_project_user'))]"/></record>
+    <record id="rule_hjig_inspection_line_project_team" model="ir.rule"><field name="name">Hongyi Inspection Line: assigned project team</field><field name="model_id" ref="model_hjig_inspection_line"/><field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field><field name="groups" eval="[(4, ref('project.group_project_user'))]"/></record>
+    <record id="rule_hjig_ai_log_project_team" model="ir.rule"><field name="name">Hongyi AI Log: assigned project team</field><field name="model_id" ref="model_hjig_ai_assistance_log"/><field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field><field name="groups" eval="[(4, ref('project.group_project_user'))]"/></record>
+    <record id="rule_hjig_commercial_link_project_team" model="ir.rule"><field name="name">Hongyi Commercial Link: assigned project commercial team</field><field name="model_id" ref="model_hjig_commercial_link"/><field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field><field name="groups" eval="[(4, ref('group_hjig_commercial_user'))]"/></record>
+    <record id="rule_hjig_commercial_submission_project_team" model="ir.rule"><field name="name">Hongyi Commercial Submission: assigned project commercial team</field><field name="model_id" ref="model_hjig_commercial_submission"/><field name="domain_force">[('project_id.hjig_authorized_user_ids', 'in', [user.id])]</field><field name="groups" eval="[(4, ref('group_hjig_commercial_user'))]"/></record>
+
+    <record id="rule_hjig_baseline_manager_all" model="ir.rule">
+        <field name="name">Hongyi Baseline: project manager access</field>
+        <field name="model_id" ref="model_hjig_baseline"/>
         <field name="domain_force">[(1, '=', 1)]</field>
         <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
     </record>
-
-    <!-- Native project registers follow the same visibility boundary as Odoo projects. -->
-    <record id="rule_hjig_final_plan_company" model="ir.rule">
-        <field name="name">Final Mould Plan: multi-company</field>
-        <field name="model_id" ref="model_hjig_final_mould_plan"/>
-        <field name="domain_force">[('project_id.company_id', 'in', company_ids + [False])]</field>
-    </record>
-    <record id="rule_hjig_final_plan_visibility" model="ir.rule">
-        <field name="name">Final Mould Plan: project visibility</field>
-        <field name="model_id" ref="model_hjig_final_mould_plan"/>
-        <field name="domain_force">['|', ('project_id.privacy_visibility', 'in', ['employees', 'portal']), ('project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
-        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
-    </record>
-    <record id="rule_hjig_final_plan_manager" model="ir.rule">
-        <field name="name">Final Mould Plan: project manager oversight</field>
-        <field name="model_id" ref="model_hjig_final_mould_plan"/>
+    <record id="rule_hjig_evidence_manager_all" model="ir.rule">
+        <field name="name">Hongyi Evidence: project manager access</field>
+        <field name="model_id" ref="model_hjig_evidence_link"/>
         <field name="domain_force">[(1, '=', 1)]</field>
         <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
     </record>
-
-    <record id="rule_hjig_final_plan_line_company" model="ir.rule">
-        <field name="name">Final Mould Plan Line: multi-company</field>
-        <field name="model_id" ref="model_hjig_final_mould_plan_line"/>
-        <field name="domain_force">[('project_id.company_id', 'in', company_ids + [False])]</field>
-    </record>
-    <record id="rule_hjig_final_plan_line_visibility" model="ir.rule">
-        <field name="name">Final Mould Plan Line: project visibility</field>
-        <field name="model_id" ref="model_hjig_final_mould_plan_line"/>
-        <field name="domain_force">['|', ('project_id.privacy_visibility', 'in', ['employees', 'portal']), ('project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
-        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
-    </record>
-    <record id="rule_hjig_final_plan_line_manager" model="ir.rule">
-        <field name="name">Final Mould Plan Line: project manager oversight</field>
-        <field name="model_id" ref="model_hjig_final_mould_plan_line"/>
+    <record id="rule_hjig_approval_manager_all" model="ir.rule">
+        <field name="name">Hongyi Approval: project manager access</field>
+        <field name="model_id" ref="model_hjig_approval"/>
         <field name="domain_force">[(1, '=', 1)]</field>
         <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
     </record>
-
-    <record id="rule_hjig_risk_company" model="ir.rule">
-        <field name="name">Project Risk: multi-company</field>
-        <field name="model_id" ref="model_hjig_project_risk"/>
-        <field name="domain_force">[('project_id.company_id', 'in', company_ids + [False])]</field>
-    </record>
-    <record id="rule_hjig_risk_visibility" model="ir.rule">
-        <field name="name">Project Risk: project visibility</field>
-        <field name="model_id" ref="model_hjig_project_risk"/>
-        <field name="domain_force">['|', ('project_id.privacy_visibility', 'in', ['employees', 'portal']), ('project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
-        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
-    </record>
-    <record id="rule_hjig_risk_manager" model="ir.rule">
-        <field name="name">Project Risk: project manager oversight</field>
-        <field name="model_id" ref="model_hjig_project_risk"/>
+    <record id="rule_hjig_transition_manager_all" model="ir.rule">
+        <field name="name">Hongyi Transition Log: project manager access</field>
+        <field name="model_id" ref="model_hjig_transition_log"/>
         <field name="domain_force">[(1, '=', 1)]</field>
         <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
     </record>
-
-    <record id="rule_hjig_issue_company" model="ir.rule">
-        <field name="name">Project Issue: multi-company</field>
-        <field name="model_id" ref="model_hjig_project_issue"/>
-        <field name="domain_force">[('project_id.company_id', 'in', company_ids + [False])]</field>
-    </record>
-    <record id="rule_hjig_issue_visibility" model="ir.rule">
-        <field name="name">Project Issue: project visibility</field>
-        <field name="model_id" ref="model_hjig_project_issue"/>
-        <field name="domain_force">['|', ('project_id.privacy_visibility', 'in', ['employees', 'portal']), ('project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
-        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
-    </record>
-    <record id="rule_hjig_issue_manager" model="ir.rule">
-        <field name="name">Project Issue: project manager oversight</field>
-        <field name="model_id" ref="model_hjig_project_issue"/>
+    <record id="rule_hjig_sor_manager_all" model="ir.rule">
+        <field name="name">Hongyi SOR: project manager access</field>
+        <field name="model_id" ref="model_hjig_sor"/>
         <field name="domain_force">[(1, '=', 1)]</field>
         <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
     </record>
-
-    <record id="rule_hjig_ecn_company" model="ir.rule">
-        <field name="name">Project ECN: multi-company</field>
-        <field name="model_id" ref="model_hjig_project_ecn"/>
-        <field name="domain_force">[('project_id.company_id', 'in', company_ids + [False])]</field>
-    </record>
-    <record id="rule_hjig_ecn_visibility" model="ir.rule">
-        <field name="name">Project ECN: project visibility</field>
-        <field name="model_id" ref="model_hjig_project_ecn"/>
-        <field name="domain_force">['|', ('project_id.privacy_visibility', 'in', ['employees', 'portal']), ('project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
-        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
-    </record>
-    <record id="rule_hjig_ecn_manager" model="ir.rule">
-        <field name="name">Project ECN: project manager oversight</field>
-        <field name="model_id" ref="model_hjig_project_ecn"/>
+    <record id="rule_hjig_sor_requirement_manager_all" model="ir.rule">
+        <field name="name">Hongyi SOR Requirement: project manager access</field>
+        <field name="model_id" ref="model_hjig_sor_requirement"/>
         <field name="domain_force">[(1, '=', 1)]</field>
         <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
     </record>
-
-    <!-- B-Series execution data follows native Odoo project visibility. -->
-    <record id="rule_hjig_programme_run_visibility" model="ir.rule">
-        <field name="name">Programme Run: project visibility</field>
-        <field name="model_id" ref="model_hjig_programme_run"/>
-        <field name="domain_force">['|', ('project_id.privacy_visibility', 'in', ['employees', 'portal']), ('project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
-        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    <record id="rule_hjig_sor_verification_manager_all" model="ir.rule">
+        <field name="name">Hongyi SOR Verification: project manager access</field>
+        <field name="model_id" ref="model_hjig_sor_requirement_verification"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('project.group_project_manager'))]"/>
     </record>
-    <record id="rule_hjig_programme_gate_visibility" model="ir.rule">
-        <field name="name">Programme Gate: project visibility</field>
-        <field name="model_id" ref="model_hjig_programme_run_gate"/>
-        <field name="domain_force">['|', ('run_id.project_id.privacy_visibility', 'in', ['employees', 'portal']), ('run_id.project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
-        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
-    </record>
-    <record id="rule_hjig_programme_artifact_visibility" model="ir.rule">
-        <field name="name">Programme Artifact Requirement: project visibility</field>
-        <field name="model_id" ref="model_hjig_programme_run_artifact"/>
-        <field name="domain_force">['|', ('run_id.project_id.privacy_visibility', 'in', ['employees', 'portal']), ('run_id.project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
-        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
-    </record>
-    <record id="rule_hjig_programme_checklist_visibility" model="ir.rule">
-        <field name="name">Programme Checklist: project visibility</field>
-        <field name="model_id" ref="model_hjig_programme_checklist_instance"/>
-        <field name="domain_force">['|', ('project_id.privacy_visibility', 'in', ['employees', 'portal']), ('project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
-        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
-    </record>
-    <record id="rule_hjig_sourcebridge_visibility" model="ir.rule">
-        <field name="name">SourceBridge: project visibility</field>
-        <field name="model_id" ref="model_hjig_sourcebridge_engagement"/>
-        <field name="domain_force">['|', ('project_id.privacy_visibility', 'in', ['employees', 'portal']), ('project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
-        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
-    </record>
-    <record id="rule_hjig_sourcebridge_component_visibility" model="ir.rule">
-        <field name="name">SourceBridge Component: project visibility</field>
-        <field name="model_id" ref="model_hjig_sourcebridge_component"/>
-        <field name="domain_force">['|', ('engagement_id.project_id.privacy_visibility', 'in', ['employees', 'portal']), ('engagement_id.project_id.message_partner_ids', 'in', [user.partner_id.id])]</field>
-        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
-    </record>
+    <record id="rule_hjig_checklist_manager_all" model="ir.rule"><field name="name">Hongyi Checklist: project manager access</field><field name="model_id" ref="model_hjig_checklist"/><field name="domain_force">[(1, '=', 1)]</field><field name="groups" eval="[(4, ref('project.group_project_manager'))]"/></record>
+    <record id="rule_hjig_checklist_response_manager_all" model="ir.rule"><field name="name">Hongyi Checklist Response: project manager access</field><field name="model_id" ref="model_hjig_checklist_response"/><field name="domain_force">[(1, '=', 1)]</field><field name="groups" eval="[(4, ref('project.group_project_manager'))]"/></record>
+    <record id="rule_hjig_gate_manager_all" model="ir.rule"><field name="name">Hongyi Gate: project manager access</field><field name="model_id" ref="model_hjig_gate"/><field name="domain_force">[(1, '=', 1)]</field><field name="groups" eval="[(4, ref('project.group_project_manager'))]"/></record>
+    <record id="rule_hjig_tooling_execution_manager_all" model="ir.rule"><field name="name">Hongyi Tooling Execution: project manager access</field><field name="model_id" ref="model_hjig_tooling_execution"/><field name="domain_force">[(1, '=', 1)]</field><field name="groups" eval="[(4, ref('project.group_project_manager'))]"/></record>
+    <record id="rule_hjig_tooling_report_manager_all" model="ir.rule"><field name="name">Hongyi Tooling Report: project manager access</field><field name="model_id" ref="model_hjig_tooling_report"/><field name="domain_force">[(1, '=', 1)]</field><field name="groups" eval="[(4, ref('project.group_project_manager'))]"/></record>
+    <record id="rule_hjig_tooling_action_manager_all" model="ir.rule"><field name="name">Hongyi Tooling Action: project manager access</field><field name="model_id" ref="model_hjig_tooling_action"/><field name="domain_force">[(1, '=', 1)]</field><field name="groups" eval="[(4, ref('project.group_project_manager'))]"/></record>
+    <record id="rule_hjig_inspection_manager_all" model="ir.rule"><field name="name">Hongyi Inspection: project manager access</field><field name="model_id" ref="model_hjig_inspection"/><field name="domain_force">[(1, '=', 1)]</field><field name="groups" eval="[(4, ref('project.group_project_manager'))]"/></record>
+    <record id="rule_hjig_inspection_line_manager_all" model="ir.rule"><field name="name">Hongyi Inspection Line: project manager access</field><field name="model_id" ref="model_hjig_inspection_line"/><field name="domain_force">[(1, '=', 1)]</field><field name="groups" eval="[(4, ref('project.group_project_manager'))]"/></record>
+    <record id="rule_hjig_ai_log_manager_all" model="ir.rule"><field name="name">Hongyi AI Log: project manager access</field><field name="model_id" ref="model_hjig_ai_assistance_log"/><field name="domain_force">[(1, '=', 1)]</field><field name="groups" eval="[(4, ref('project.group_project_manager'))]"/></record>
 </odoo>

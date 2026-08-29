@@ -25,7 +25,7 @@ class TestProjectDocumentGovernance(TransactionCase):
         cls.project = cls.env["project.project"].create({
             "name": "LaunchGuard Controlled Project",
             "hjig_project_record_type": "customer",
-            "x_project_code": "hj-tst-2099-9002",
+            "x_project_code": "hj-lgc-2026-0001",
         })
         cls.owner_designation = cls.env["hjig.governance.designation"].create({
             "code": "TEST-OWNER",
@@ -39,15 +39,6 @@ class TestProjectDocumentGovernance(TransactionCase):
             "category": "governance",
             "holder_ids": [(6, 0, [cls.approver.id])],
         })
-        for designation, holder in (
-            (cls.owner_designation, cls.owner),
-            (cls.approver_designation, cls.approver),
-        ):
-            cls.env["hjig.project.designation.assignment"].create({
-                "project_id": cls.project.id,
-                "designation_id": designation.id,
-                "holder_ids": [(6, 0, [holder.id])],
-            })
         cls.stage = cls.env["hjig.launchguard.stage"].create({
             "code": "TEST-GATE",
             "name": "Test Gate",
@@ -84,12 +75,12 @@ class TestProjectDocumentGovernance(TransactionCase):
         return self.env["hjig.project.document"].create(values)
 
     def test_project_code_is_normalized_and_unique(self):
-        self.assertEqual(self.project.x_project_code, "HJ-TST-2099-9002")
+        self.assertEqual(self.project.x_project_code, "HJ-LGC-2026-0001")
         with self.assertRaises(UniqueViolation), self.env.cr.savepoint():
             self.env["project.project"].create({
                 "name": "Duplicate Code",
                 "hjig_project_record_type": "customer",
-                "x_project_code": "HJ-TST-2099-9002",
+                "x_project_code": "HJ-LGC-2026-0001",
             })
 
     def test_customer_project_requires_valid_code(self):
@@ -108,7 +99,7 @@ class TestProjectDocumentGovernance(TransactionCase):
     def test_project_code_locks_after_first_document(self):
         self._create_document()
         with self.assertRaises(ValidationError):
-            self.project.x_project_code = "HJ-TST-2099-9003"
+            self.project.x_project_code = "HJ-LGC-2026-0002"
 
     def test_master_reference_cannot_enter_customer_register(self):
         with self.assertRaises(ValidationError):
@@ -162,16 +153,6 @@ class TestProjectDocumentGovernance(TransactionCase):
         with self.assertRaises(UserError):
             document.action_submit_review()
 
-    def test_global_holder_has_no_authority_without_project_assignment(self):
-        other_project = self.env["project.project"].create({
-            "name": "Other Controlled Project",
-            "hjig_project_record_type": "customer",
-            "x_project_code": "HJ-TST-2099-9010",
-        })
-        document = self._create_document(project_id=other_project.id)
-        with self.assertRaises(UserError):
-            document.with_user(self.owner).action_submit_review()
-
     def test_status_cannot_bypass_workflow(self):
         document = self._create_document()
         with self.assertRaises(ValidationError):
@@ -181,3 +162,41 @@ class TestProjectDocumentGovernance(TransactionCase):
         self._create_document()
         with self.assertRaises(ValidationError):
             self.artifact.name = "Rewritten Master"
+
+    def test_operating_catalogue_contains_all_sops_and_required_forms(self):
+        master = self.env["hjig.governance.artifact.master"]
+        sop_codes = set(master.search([("artifact_type", "=", "sop")]).mapped("code"))
+        form_by_name = {
+            record.name: record for record in master.search([("artifact_type", "=", "form")])
+        }
+        self.assertTrue({"SOP-%03d" % number for number in range(1, 14)}.issubset(sop_codes))
+        self.assertGreaterEqual(len(form_by_name), 42)
+        required_forms = {
+            "Project Master", "SOR Creation Record", "BOP Lock Record", "Mould Planning Sheet",
+            "Risk Register", "Issue Register", "ECN Register", "Part Visual Inspection Report",
+            "Assembly Inspection Report", "Dimensional Inspection Report", "Project Execution Sheet",
+            "Tool Manufacturing Progress Record", "Installation Checklist", "Site Trial Report",
+            "Final Customer Acceptance", "Lessons Learned Register",
+        }
+        self.assertFalse(required_forms - set(form_by_name))
+
+    def test_bop_uses_controlled_document_and_baseline_without_duplicate_model(self):
+        bop_master = self.env.ref("new_hongyijig_custom.artifact_frm_004")
+        bop_document = self.env["hjig.project.document"].create({
+            "project_id": self.project.id,
+            "artifact_master_id": bop_master.id,
+            "stage_id": self.env.ref("new_hongyijig_custom.stage_tg01").id,
+            "revision": "BOP-R00",
+            "drive_url": "https://docs.google.com/spreadsheets/d/controlled-bop-record",
+        })
+        bop_baseline = self.env["hjig.baseline"].create({
+            "project_id": self.project.id,
+            "target_ref": "hjig.project.document,%s" % bop_document.id,
+            "baseline_type": "bop",
+            "revision": "BOP-R00",
+            "effective_date": "2026-08-29",
+            "approval_authority_designation_id": self.approver_designation.id,
+        })
+        self.assertEqual(bop_document.artifact_master_id.code, "FRM-004")
+        self.assertEqual(bop_baseline.target_ref, bop_document)
+        self.assertEqual(bop_baseline.baseline_type, "bop")

@@ -1,0 +1,691 @@
+# -*- coding: utf-8 -*-
+
+import json
+
+from odoo import _, api, fields, models
+from odoo.exceptions import UserError, ValidationError
+
+from .foundation import HJIG_PROGRAMME_SELECTION
+from .workflow_guard import is_workflow_context, workflow_context
+
+
+class HjigTargetMixin(models.AbstractModel):
+    _inherit = "hjig.target.mixin"
+
+    @api.model
+    def _selection_target_model(self):
+        return super()._selection_target_model() + [
+            ("hjig.checklist", "Checklist"),
+            ("hjig.gate", "Gate"),
+        ]
+
+
+class HjigChecklistTemplate(models.Model):
+    _name = "hjig.checklist.template"
+    _description = "Hongyi Checklist Template"
+    _inherit = ["mail.thread", "mail.activity.mixin"]
+    _order = "stage_id, code, version desc"
+    _rec_name = "name"
+
+    code = fields.Char(required=True, index=True, tracking=True)
+    name = fields.Char(required=True, tracking=True)
+    version = fields.Char(required=True, default="1.0", tracking=True)
+    stage_id = fields.Many2one("hjig.launchguard.stage", required=True, ondelete="restrict", tracking=True)
+    purpose = fields.Text(required=True)
+    owner_designation_id = fields.Many2one(
+        "hjig.governance.designation", required=True, ondelete="restrict", tracking=True
+    )
+    programme_scope = fields.Selection(
+        HJIG_PROGRAMME_SELECTION,
+        string="Programme-Specific Override",
+        tracking=True,
+        help="Leave blank for the standard template. A matching Programme-specific template takes precedence.",
+    )
+    item_ids = fields.One2many("hjig.checklist.template.item", "template_id", string="Checklist Items")
+    active = fields.Boolean(default=True, tracking=True)
+
+    _code_version_unique = models.Constraint(
+        "UNIQUE(code, version)", "Checklist template code and version must be unique."
+    )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if vals.get("code"):
+                vals["code"] = vals["code"].strip().upper()
+        return super().create(vals_list)
+
+    def write(self, vals):
+        governed = {
+            "code", "name", "version", "stage_id", "purpose",
+            "owner_designation_id", "programme_scope",
+        }
+        if governed.intersection(vals) and self.env["hjig.checklist"].search_count([
+            ("template_id", "in", self.ids),
+        ]):
+            raise ValidationError(_("A used checklist template is immutable. Create a new version."))
+        if vals.get("code"):
+            vals["code"] = vals["code"].strip().upper()
+        return super().write(vals)
+
+class HjigChecklistTemplateItem(models.Model):
+    _name = "hjig.checklist.template.item"
+    _description = "Hongyi Checklist Template Item"
+    _order = "template_id, sequence, id"
+
+    template_id = fields.Many2one("hjig.checklist.template", required=True, ondelete="cascade", index=True)
+    sequence = fields.Integer(default=10)
+    item_code = fields.Char(required=True)
+    title = fields.Char(required=True)
+    instruction = fields.Text(required=True)
+    blocking = fields.Boolean(default=True)
+    evidence_required = fields.Boolean(default=True)
+    source_record_type = fields.Selection(
+        [
+            ("live_record", "Read from live operational record"),
+            ("confirmation", "Human confirmation"),
+            ("exception", "Exception-only entry"),
+        ],
+        default="live_record",
+        required=True,
+        help="Use live records wherever possible so the checklist does not duplicate data entry.",
+    )
+
+    _template_item_unique = models.Constraint(
+        "UNIQUE(template_id, item_code)", "Checklist item code must be unique within the template."
+    )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        template_ids = [vals.get("template_id") for vals in vals_list if vals.get("template_id")]
+        if template_ids and self.env["hjig.checklist"].search_count([("template_id", "in", template_ids)]):
+            raise ValidationError(_("Items cannot be added to a checklist template already in use."))
+        return super().create(vals_list)
+
+    def write(self, vals):
+        if self.env["hjig.checklist.response"].search_count([("template_item_id", "in", self.ids)]):
+            raise ValidationError(_("A checklist item already used in an execution is immutable."))
+        return super().write(vals)
+
+    def unlink(self):
+        if self.env["hjig.checklist.response"].search_count([("template_item_id", "in", self.ids)]):
+            raise UserError(_("A checklist item already used in an execution cannot be deleted."))
+        return super().unlink()
+
+
+class HjigChecklist(models.Model):
+    _name = "hjig.checklist"
+    _description = "Hongyi Checklist Execution"
+    _inherit = ["mail.thread", "mail.activity.mixin", "hjig.target.mixin"]
+    _order = "project_id, code desc"
+    _rec_name = "code"
+
+    code = fields.Char(default=lambda self: _("New"), required=True, readonly=True, copy=False, index=True)
+    project_id = fields.Many2one("project.project", required=True, ondelete="restrict", index=True, tracking=True)
+    company_id = fields.Many2one(related="project_id.company_id", store=True, readonly=True, index=True)
+    target_ref = fields.Reference(selection="_selection_target_model", required=True, string="Checklist For")
+    template_id = fields.Many2one("hjig.checklist.template", required=True, ondelete="restrict", tracking=True)
+    stage_id = fields.Many2one(related="template_id.stage_id", store=True, readonly=True, index=True)
+    gate_id = fields.Many2one("hjig.gate", ondelete="restrict", index=True)
+    state = fields.Selection(
+        [("draft", "Draft"), ("in_progress", "In Progress"), ("ready", "Ready"), ("closed", "Closed")],
+        default="draft", required=True, copy=False, index=True, tracking=True,
+    )
+    response_ids = fields.One2many("hjig.checklist.response", "checklist_id", string="Responses")
+    readiness = fields.Selection(
+        [("incomplete", "Incomplete"), ("pass", "Pass"), ("warn", "Warning"), ("fail", "Fail")],
+        compute="_compute_readiness", store=True, index=True,
+    )
+    blocking_summary = fields.Text(compute="_compute_readiness", store=True)
+
+    _code_unique = models.Constraint("UNIQUE(code)", "Checklist code must be unique.")
+    _gate_template_unique = models.Constraint(
+        "UNIQUE(gate_id, template_id)",
+        "A gate can load each checklist template only once.",
+    )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        sequence = self.env["ir.sequence"]
+        for vals in vals_list:
+            gate = self.env["hjig.gate"].browse(vals.get("gate_id")).exists()
+            if gate and gate.state != "draft":
+                raise ValidationError(_("Checklists cannot be added after a gate decision is requested."))
+            vals["state"] = "draft"
+            if vals.get("code", _("New")) == _("New"):
+                vals["code"] = sequence.next_by_code("hjig.checklist") or _("New")
+        records = super().create(vals_list)
+        records._create_responses_from_template()
+        return records
+
+    def _create_responses_from_template(self):
+        response_model = self.env["hjig.checklist.response"]
+        for checklist in self:
+            if checklist.response_ids:
+                continue
+            response_model.create([{
+                "checklist_id": checklist.id,
+                "template_item_id": item.id,
+            } for item in checklist.template_id.item_ids])
+
+    @api.constrains("target_ref", "project_id", "template_id", "gate_id")
+    def _check_governance(self):
+        for checklist in self:
+            checklist._check_target_project(checklist.target_ref, checklist.project_id)
+            if checklist.gate_id:
+                if checklist.gate_id.project_id != checklist.project_id:
+                    raise ValidationError(_("Checklist and gate must belong to the same project."))
+                if checklist.gate_id.stage_id != checklist.stage_id:
+                    raise ValidationError(_("Checklist template stage must match the gate stage."))
+                if checklist.gate_id.target_ref != checklist.target_ref:
+                    raise ValidationError(_("Checklist and gate must control the same target record."))
+
+    @api.depends(
+        "response_ids.result", "response_ids.template_item_id.blocking",
+        "response_ids.template_item_id.evidence_required", "response_ids.evidence_ids",
+    )
+    def _compute_readiness(self):
+        for checklist in self:
+            if not checklist.response_ids:
+                checklist.readiness = "incomplete"
+                checklist.blocking_summary = _("Checklist has no response items.")
+                continue
+            blockers = []
+            warnings = []
+            incomplete = []
+            for response in checklist.response_ids:
+                item = response.template_item_id
+                missing_evidence = item.evidence_required and not response.evidence_ids
+                if response.result == "fail":
+                    (blockers if item.blocking else warnings).append(item.item_code)
+                elif response.result == "not_applicable" and item.blocking:
+                    warnings.append(item.item_code)
+                elif response.result == "pending" or missing_evidence:
+                    (blockers if item.blocking else incomplete).append(item.item_code)
+            if blockers:
+                checklist.readiness = "fail"
+                checklist.blocking_summary = _("Blocking items: %s") % ", ".join(blockers)
+            elif incomplete:
+                checklist.readiness = "incomplete"
+                checklist.blocking_summary = _("Incomplete items: %s") % ", ".join(incomplete)
+            elif warnings:
+                checklist.readiness = "warn"
+                checklist.blocking_summary = _("Non-blocking failures: %s") % ", ".join(warnings)
+            else:
+                checklist.readiness = "pass"
+                checklist.blocking_summary = False
+
+    def write(self, vals):
+        if "state" in vals and not is_workflow_context(self.env):
+            raise ValidationError(_("Checklist state may only change through workflow actions."))
+        locked_fields = {"project_id", "target_ref", "template_id", "gate_id"}
+        if locked_fields.intersection(vals) and any(record.state in ("ready", "closed") for record in self):
+            raise ValidationError(_("Ready or Closed checklist identity is read-only."))
+        if "gate_id" in vals:
+            destination = self.env["hjig.gate"].browse(vals.get("gate_id")).exists()
+            if destination and destination.state != "draft":
+                raise ValidationError(_("A checklist cannot be assigned to a gate after decision request."))
+            if any(record.gate_id and record.gate_id.state != "draft" for record in self):
+                raise ValidationError(_("Checklist gate assignment is locked after decision request."))
+        return super().write(vals)
+
+    def _check_owner_authority(self):
+        for checklist in self:
+            if (
+                self.env.user not in checklist.template_id.owner_designation_id.holder_ids
+                and not self.env.user.has_group("project.group_project_manager")
+            ):
+                raise UserError(_("Only the checklist owner designation or a Project Manager may execute this checklist."))
+
+    def unlink(self):
+        if any(record.state in ("ready", "closed") or (record.gate_id and record.gate_id.state != "draft") for record in self):
+            raise UserError(_("Ready, Closed, or decision-linked checklists cannot be deleted."))
+        return super().unlink()
+
+    def action_start(self):
+        self._check_owner_authority()
+        for checklist in self:
+            if checklist.state != "draft":
+                raise UserError(_("Only Draft checklists can start."))
+            checklist.with_context(**workflow_context()).write({"state": "in_progress"})
+
+    def action_mark_ready(self):
+        self._check_owner_authority()
+        for checklist in self:
+            if checklist.state not in ("draft", "in_progress"):
+                raise UserError(_("Only an open checklist can be marked Ready."))
+            if checklist.readiness not in ("pass", "warn"):
+                raise ValidationError(checklist.blocking_summary or _("Checklist is not ready."))
+            evidence = checklist.response_ids.mapped("evidence_ids")
+            if evidence:
+                evidence._assert_accepted()
+            checklist.with_context(**workflow_context()).write({"state": "ready"})
+
+
+class HjigChecklistResponse(models.Model):
+    _name = "hjig.checklist.response"
+    _description = "Hongyi Checklist Response"
+    _order = "checklist_id, template_item_id"
+
+    checklist_id = fields.Many2one("hjig.checklist", required=True, ondelete="cascade", index=True)
+    project_id = fields.Many2one(related="checklist_id.project_id", store=True, readonly=True, index=True)
+    company_id = fields.Many2one(related="checklist_id.company_id", store=True, readonly=True, index=True)
+    template_item_id = fields.Many2one("hjig.checklist.template.item", required=True, ondelete="restrict")
+    item_code = fields.Char(related="template_item_id.item_code", readonly=True)
+    title = fields.Char(related="template_item_id.title", readonly=True)
+    blocking = fields.Boolean(related="template_item_id.blocking", readonly=True)
+    evidence_required = fields.Boolean(related="template_item_id.evidence_required", readonly=True)
+    result = fields.Selection(
+        [("pending", "Pending"), ("pass", "Pass"), ("fail", "Fail"), ("not_applicable", "Not Applicable")],
+        default="pending", required=True, tracking=True,
+    )
+    evidence_ids = fields.Many2many(
+        "hjig.evidence.link", "hjig_checklist_response_evidence_rel", "response_id", "evidence_id", string="Evidence"
+    )
+    comments = fields.Text()
+    verified_by_id = fields.Many2one("res.users", readonly=True)
+    verified_date = fields.Datetime(readonly=True)
+    cycle = fields.Integer(default=1, required=True, readonly=True)
+    rework_reason = fields.Text(help="Required before reopening a recorded result for controlled rework.")
+    audit_history_json = fields.Text(
+        string="Immutable Result History", default="[]", readonly=True, copy=False,
+        help="Server-controlled snapshot of every completed verification cycle and its evidence.",
+    )
+
+    _checklist_item_unique = models.Constraint(
+        "UNIQUE(checklist_id, template_item_id)", "A checklist can contain each template item only once."
+    )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            controlled = {
+                "result": "pending", "verified_by_id": False,
+                "verified_date": False, "cycle": 1, "audit_history_json": "[]",
+            }
+            for field_name, default_value in controlled.items():
+                if field_name in vals and vals[field_name] not in (False, default_value):
+                    raise ValidationError(_("Checklist result-control fields cannot be supplied during creation."))
+            vals.update(controlled)
+            checklist = self.env["hjig.checklist"].browse(vals.get("checklist_id")).exists()
+            if checklist and checklist.state in ("ready", "closed"):
+                raise ValidationError(_("Responses cannot be added to Ready or Closed checklists."))
+        return super().create(vals_list)
+
+    @api.constrains("template_item_id", "checklist_id", "evidence_ids")
+    def _check_response_governance(self):
+        for response in self:
+            if response.template_item_id.template_id != response.checklist_id.template_id:
+                raise ValidationError(_("Checklist response item must belong to the selected template."))
+            if any(evidence.project_id != response.project_id for evidence in response.evidence_ids):
+                raise ValidationError(_("Checklist evidence must belong to the same project."))
+
+    def write(self, vals):
+        if any(response.checklist_id.state in ("ready", "closed") for response in self):
+            raise ValidationError(_("Responses are read-only after the checklist is Ready or Closed."))
+        if {"evidence_ids", "comments"}.intersection(vals) and any(
+            response.result != "pending" for response in self
+        ) and not is_workflow_context(self.env):
+            raise ValidationError(_("Recorded checklist evidence and comments are locked. Reopen the item for controlled rework."))
+        workflow_fields = {"result", "verified_by_id", "verified_date", "cycle", "audit_history_json"}
+        if workflow_fields.intersection(vals) and not is_workflow_context(self.env):
+            raise ValidationError(_("Checklist results may only change through response actions."))
+        return super().write(vals)
+
+    def unlink(self):
+        if any(response.checklist_id.state in ("ready", "closed") for response in self):
+            raise UserError(_("Responses cannot be deleted from Ready or Closed checklists."))
+        return super().unlink()
+
+    def action_pass(self):
+        self._record_result("pass")
+
+    def action_fail(self):
+        self._record_result("fail")
+
+    def action_not_applicable(self):
+        self._record_result("not_applicable")
+
+    def action_reset_for_rework(self):
+        for response in self:
+            response.checklist_id._check_owner_authority()
+            if response.checklist_id.state not in ("draft", "in_progress"):
+                raise UserError(_("Only an open checklist item can be reopened."))
+            if response.result == "pending":
+                raise UserError(_("The checklist item is already Pending."))
+            if not (response.rework_reason or "").strip():
+                raise ValidationError(_("A rework reason is required before reopening this checklist item."))
+            previous_result = response.result
+            rework_reason = response.rework_reason
+            history = json.loads(response.audit_history_json or "[]")
+            if not history or history[-1].get("cycle") != response.cycle:
+                raise ValidationError(_("The recorded checklist result has no immutable cycle snapshot."))
+            history[-1].update({
+                "reopened_by_id": self.env.user.id,
+                "reopened_date": fields.Datetime.to_string(fields.Datetime.now()),
+                "rework_reason": rework_reason,
+            })
+            response.with_context(**workflow_context()).write({
+                "result": "pending", "cycle": response.cycle + 1,
+                "verified_by_id": False, "verified_date": False,
+                "rework_reason": False,
+                "audit_history_json": json.dumps(history, sort_keys=True),
+            })
+            self.env["hjig.transition.log"].sudo().create({
+                "project_id": response.project_id.id,
+                "target_ref": "%s,%s" % (response.checklist_id._name, response.checklist_id.id),
+                "from_state": previous_result, "to_state": "pending",
+                "decision": "rework_requested", "actor_id": self.env.user.id,
+                "reason": rework_reason,
+            })
+
+    def _record_result(self, result):
+        for response in self:
+            response.checklist_id._check_owner_authority()
+            if response.result != "pending":
+                raise UserError(_("A recorded checklist result must be reopened before it can change."))
+            if result in ("pass", "fail") and response.evidence_required and not response.evidence_ids:
+                raise ValidationError(_("Accepted evidence is required before this item can record PASS or FAIL."))
+            if result in ("pass", "fail") and response.evidence_ids:
+                response.evidence_ids._assert_accepted()
+            if result == "not_applicable" and response.blocking and not (response.comments or "").strip():
+                raise ValidationError(_("A reason is required when a blocking item is Not Applicable."))
+            verified_date = fields.Datetime.now()
+            history = json.loads(response.audit_history_json or "[]")
+            history.append({
+                "cycle": response.cycle,
+                "result": result,
+                "evidence": [
+                    {"id": evidence.id, "code": evidence.code}
+                    for evidence in response.evidence_ids
+                ],
+                "verified_by_id": self.env.user.id,
+                "verified_date": fields.Datetime.to_string(verified_date),
+                "comments": response.comments or "",
+            })
+            response.with_context(**workflow_context()).write({
+                "result": result,
+                "verified_by_id": self.env.user.id,
+                "verified_date": verified_date,
+                "audit_history_json": json.dumps(history, sort_keys=True),
+            })
+
+
+class HjigGate(models.Model):
+    _name = "hjig.gate"
+    _description = "Hongyi Human Gate Decision"
+    _inherit = ["mail.thread", "mail.activity.mixin", "hjig.target.mixin"]
+    _order = "project_id, code desc"
+    _rec_name = "code"
+
+    code = fields.Char(default=lambda self: _("New"), required=True, readonly=True, copy=False, index=True)
+    project_id = fields.Many2one("project.project", required=True, ondelete="restrict", index=True, tracking=True)
+    company_id = fields.Many2one(related="project_id.company_id", store=True, readonly=True, index=True)
+    allowed_stage_ids = fields.Many2many(
+        related="project_id.hjig_allowed_stage_ids", readonly=True,
+        string="Applicable Governance Stages",
+    )
+    target_ref = fields.Reference(selection="_selection_target_model", required=True, string="Gate For")
+    stage_id = fields.Many2one("hjig.launchguard.stage", required=True, ondelete="restrict", index=True, tracking=True)
+    approval_authority_designation_id = fields.Many2one(
+        "hjig.governance.designation", required=True, ondelete="restrict", tracking=True
+    )
+    checklist_ids = fields.One2many("hjig.checklist", "gate_id", string="Gate Checklists")
+    readiness = fields.Selection(
+        [("incomplete", "Incomplete"), ("pass", "Pass"), ("warn", "Warning"), ("fail", "Fail")],
+        compute="_compute_readiness", store=True, index=True,
+    )
+    blocking_summary = fields.Text(compute="_compute_readiness", store=True)
+    state = fields.Selection(
+        [("draft", "Draft"), ("pending", "Pending Decision"), ("go", "GO"), ("no_go", "NO-GO")],
+        default="draft", required=True, copy=False, index=True, tracking=True,
+    )
+    cycle = fields.Integer(default=1, required=True, tracking=True)
+    approval_id = fields.Many2one("hjig.approval", readonly=True, copy=False, ondelete="restrict")
+    decision_notes = fields.Text(tracking=True)
+
+    _code_unique = models.Constraint("UNIQUE(code)", "Gate code must be unique.")
+    _project_stage_cycle_unique = models.Constraint(
+        "UNIQUE(project_id, stage_id, cycle)", "Gate cycle must be unique within a project stage."
+    )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        sequence = self.env["ir.sequence"]
+        for vals in vals_list:
+            vals["state"] = "draft"
+            if vals.get("code", _("New")) == _("New"):
+                vals["code"] = sequence.next_by_code("hjig.gate") or _("New")
+        return super().create(vals_list)
+
+    @api.constrains("target_ref", "project_id", "stage_id")
+    def _check_target(self):
+        for gate in self:
+            gate._check_target_project(gate.target_ref, gate.project_id)
+            if not gate.stage_id.active or gate.stage_id not in gate.project_id.hjig_allowed_stage_ids:
+                raise ValidationError(_(
+                    "Stage %s is inactive or not applicable to the project's Hongyi Programme route."
+                ) % gate.stage_id.code)
+
+    def _check_expected_next_stage(self):
+        for gate in self:
+            route_codes = list(gate.project_id._hjig_allowed_stage_codes())
+            current = gate.project_id.hjig_current_stage_id
+            if not route_codes:
+                raise ValidationError(_("This Hongyi Programme does not use B-Series governance gates."))
+            if current:
+                if current.code not in route_codes:
+                    raise ValidationError(_("The Project current stage is inconsistent with its Programme route."))
+                current_index = route_codes.index(current.code)
+                expected_code = route_codes[current_index + 1] if current_index + 1 < len(route_codes) else False
+            else:
+                expected_code = route_codes[0]
+            if not expected_code:
+                raise ValidationError(_("All applicable governance stages for this Project are already cleared."))
+            if gate.stage_id.code != expected_code:
+                raise ValidationError(_(
+                    "The next applicable stage is %s. Stage %s cannot be decided out of sequence."
+                ) % (expected_code, gate.stage_id.code))
+
+    @api.depends("checklist_ids.readiness", "checklist_ids.state", "checklist_ids.blocking_summary")
+    def _compute_readiness(self):
+        for gate in self:
+            if not gate.checklist_ids:
+                gate.readiness = "incomplete"
+                gate.blocking_summary = _("No gate checklists are linked.")
+            elif any(item.readiness == "fail" for item in gate.checklist_ids):
+                gate.readiness = "fail"
+                gate.blocking_summary = "\n".join(gate.checklist_ids.filtered(
+                    lambda item: item.readiness == "fail"
+                ).mapped("blocking_summary"))
+            elif any(item.state != "ready" for item in gate.checklist_ids):
+                gate.readiness = "incomplete"
+                gate.blocking_summary = _("All linked checklists must be marked Ready.")
+            elif any(item.readiness == "warn" for item in gate.checklist_ids):
+                gate.readiness = "warn"
+                gate.blocking_summary = _("One or more checklists contain accepted non-blocking warnings.")
+            else:
+                gate.readiness = "pass"
+                gate.blocking_summary = False
+
+    def write(self, vals):
+        workflow_fields = {"state", "approval_id"}
+        if workflow_fields.intersection(vals) and not is_workflow_context(self.env):
+            raise ValidationError(_("Gate decision fields may only change through the controlled workflow."))
+        governed = {"project_id", "target_ref", "stage_id", "cycle", "approval_authority_designation_id"}
+        if governed.intersection(vals):
+            raise ValidationError(_(
+                "Gate identity is immutable after creation. Delete and recreate an incorrect Draft gate."
+            ))
+        return super().write(vals)
+
+    def _lock_gate_transition(self):
+        """Serialize every state transition with Project route and stage-lane changes."""
+        self.ensure_one()
+        project = self.project_id
+        self.env.cr.execute(
+            "SELECT pg_advisory_xact_lock(%s, %s)",
+            (project.id, 0),
+        )
+        self.env.cr.execute(
+            "SELECT pg_advisory_xact_lock(%s, %s)",
+            (project.id, self.stage_id.id),
+        )
+        self.env.cr.execute(
+            "SELECT id FROM hjig_gate WHERE id = %s FOR UPDATE",
+            (self.id,),
+        )
+        self.invalidate_recordset([
+            "state", "approval_id", "project_id", "target_ref", "stage_id", "cycle",
+            "approval_authority_designation_id",
+        ])
+        project.invalidate_recordset(["hjig_programme", "hjig_current_stage_id"])
+
+    def _check_linked_approval_identity(self):
+        self.ensure_one()
+        approval = self.approval_id
+        if (
+            not approval
+            or approval.approval_type != "gate"
+            or approval.target_ref != self
+            or approval.project_id != self.project_id
+            or approval.authority_designation_id != self.approval_authority_designation_id
+        ):
+            raise ValidationError(_(
+                "The linked approval does not match this gate, Project and required authority."
+            ))
+
+    def action_request_decision(self):
+        for gate in self:
+            gate._lock_gate_transition()
+            if gate.state != "draft":
+                raise UserError(_("Only Draft gates can request a decision."))
+            competing = self.search([
+                ("project_id", "=", gate.project_id.id),
+                ("stage_id", "=", gate.stage_id.id),
+                ("state", "=", "pending"),
+                ("id", "!=", gate.id),
+            ], limit=1)
+            if competing:
+                raise ValidationError(_(
+                    "Gate %s already has a pending decision for this Project stage. Cancel or complete it first."
+                ) % competing.code)
+            gate._check_expected_next_stage()
+            if gate.readiness not in ("pass", "warn"):
+                raise ValidationError(gate.blocking_summary or _("Gate is not ready."))
+            approval = self.env["hjig.approval"].sudo().create({
+                "project_id": gate.project_id.id,
+                "target_ref": "%s,%s" % (gate._name, gate.id),
+                "approval_type": "gate",
+                "authority_designation_id": gate.approval_authority_designation_id.id,
+                "requested_by_id": self.env.user.id,
+            })
+            gate.with_context(**workflow_context()).write({
+                "state": "pending", "approval_id": approval.id,
+            })
+
+    def action_load_stage_checklist(self):
+        for gate in self:
+            if gate.state != "draft":
+                raise UserError(_("Stage checklists can be loaded only while the gate is Draft."))
+            template_model = self.env["hjig.checklist.template"]
+            exact_templates = template_model.search([
+                ("stage_id", "=", gate.stage_id.id), ("active", "=", True),
+                ("programme_scope", "=", gate.project_id.hjig_programme),
+            ])
+            templates = exact_templates or template_model.search([
+                ("stage_id", "=", gate.stage_id.id), ("active", "=", True),
+                ("programme_scope", "=", False),
+            ])
+            if not templates:
+                raise ValidationError(_("No active checklist template is configured for this stage."))
+            if len(templates) > 1:
+                raise ValidationError(_(
+                    "More than one active checklist template is configured for this stage. Archive the obsolete version before loading."
+                ))
+            template = templates.ensure_one()
+            if self.env["hjig.checklist"].search_count([
+                ("gate_id", "=", gate.id), ("template_id", "=", template.id),
+            ]):
+                raise UserError(_("The active stage checklist is already loaded for this gate."))
+            self.env["hjig.checklist"].create({
+                "project_id": gate.project_id.id,
+                "target_ref": "%s,%s" % (gate.target_ref._name, gate.target_ref.id),
+                "template_id": template.id,
+                "gate_id": gate.id,
+            })
+
+    def action_cancel_pending_decision(self):
+        if not self.env.user.has_group("project.group_project_manager"):
+            raise UserError(_("Only a Project Manager may cancel a pending gate decision request."))
+        for gate in self:
+            gate._lock_gate_transition()
+            if gate.state != "pending" or not gate.approval_id:
+                raise UserError(_("Only a gate with a pending decision request can be cancelled."))
+            approval = gate.approval_id
+            approval._lock_transition()
+            gate._check_linked_approval_identity()
+            if gate.approval_id.state != "pending":
+                raise UserError(_("A gate decision request cannot be cancelled after the approver has decided it."))
+            if not (gate.decision_notes or "").strip():
+                raise ValidationError(_("Record the cancellation reason in Decision Notes."))
+            approval.with_context(**workflow_context()).write({
+                "state": "cancelled",
+                "decision_date": fields.Datetime.now(),
+            })
+            self.env["hjig.transition.log"].sudo().create({
+                "project_id": gate.project_id.id,
+                "target_ref": "%s,%s" % (approval._name, approval.id),
+                "from_state": "pending", "to_state": "cancelled",
+                "decision": "request_cancelled", "actor_id": self.env.user.id,
+                "approval_id": approval.id, "reason": gate.decision_notes,
+            })
+            gate.with_context(**workflow_context()).write({
+                "state": "draft", "approval_id": False,
+            })
+            self.env["hjig.transition.log"].sudo().create({
+                "project_id": gate.project_id.id,
+                "target_ref": "%s,%s" % (gate._name, gate.id),
+                "from_state": "pending", "to_state": "draft",
+                "decision": "decision_request_cancelled", "actor_id": self.env.user.id,
+                "approval_id": approval.id, "reason": gate.decision_notes,
+            })
+
+    def action_apply_decision(self):
+        for gate in self:
+            gate._lock_gate_transition()
+            if gate.state != "pending" or not gate.approval_id:
+                raise UserError(_("The gate has no pending approval decision."))
+            gate.approval_id._lock_transition()
+            gate._check_linked_approval_identity()
+            gate._check_expected_next_stage()
+            if gate.approval_id.state == "approved":
+                next_state = "go"
+            elif gate.approval_id.state == "rejected":
+                next_state = "no_go"
+            else:
+                raise UserError(_("The gate approval decision is still pending."))
+            if gate.readiness not in ("pass", "warn"):
+                raise ValidationError(gate.blocking_summary or _("Gate readiness changed after decision request."))
+            if gate.readiness == "warn" and next_state == "go" and not (gate.approval_id.decision_reason or "").strip():
+                raise ValidationError(_("A GO decision with warnings requires the approver's acceptance reason."))
+            gate.with_context(**workflow_context()).write({"state": next_state})
+            gate.checklist_ids.with_context(**workflow_context()).write({"state": "closed"})
+            if next_state == "go":
+                gate.project_id.with_context(**workflow_context()).write({
+                    "hjig_current_stage_id": gate.stage_id.id,
+                })
+            self.env["hjig.transition.log"].sudo().create({
+                "project_id": gate.project_id.id,
+                "target_ref": "%s,%s" % (gate._name, gate.id),
+                "from_state": "pending", "to_state": next_state,
+                "decision": gate.approval_id.state,
+                "actor_id": self.env.user.id,
+                "approval_id": gate.approval_id.id,
+                "reason": gate.approval_id.decision_reason,
+            })
+
+    def unlink(self):
+        if any(gate.state != "draft" for gate in self):
+            raise UserError(_("A gate cannot be deleted after a decision is requested."))
+        return super().unlink()

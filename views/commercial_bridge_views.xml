@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_hjig_commercial_link_list" model="ir.ui.view">
+        <field name="name">hjig.commercial.link.list</field>
+        <field name="model">hjig.commercial.link</field>
+        <field name="arch" type="xml">
+            <list decoration-success="state == 'verified'" decoration-danger="state == 'rejected'">
+                <field name="code"/><field name="project_id"/><field name="ledger_side"/><field name="partner_id"/>
+                <field name="entry_kind"/><field name="ecn_ref" optional="hide"/><field name="transaction_ref"/>
+                <field name="external_reference" optional="hide"/><field name="transaction_date"/>
+                <field name="authoritative_amount"/><field name="approved_amount" sum="Verified Total"/><field name="currency_id"/><field name="document_state"/><field name="payment_state" optional="hide"/><field name="reference_health"/><field name="source_drift"/><field name="state"/>
+            </list>
+        </field>
+    </record>
+    <record id="view_hjig_commercial_link_form" model="ir.ui.view">
+        <field name="name">hjig.commercial.link.form</field>
+        <field name="model">hjig.commercial.link</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_submit_review" string="Submit for Commercial Review" type="object" class="btn-primary" invisible="state not in ['draft', 'rejected']"/>
+                    <button name="action_apply_decision" string="Apply Decision" type="object" class="btn-primary" invisible="state != 'review'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,review,verified,rejected"/>
+                </header>
+                <sheet>
+                    <div class="oe_title"><h1><field name="code"/></h1></div>
+                    <group>
+                        <group><field name="project_id"/><field name="ledger_side"/><field name="partner_id"/><field name="entry_kind"/><field name="ecn_ref"/><field name="transaction_date"/></group>
+                        <group><field name="transaction_ref"/><field name="external_reference"/><field name="currency_id"/><field name="external_amount"/><field name="authoritative_amount"/><field name="approved_amount"/><field name="document_state"/><field name="payment_state"/><field name="reference_health"/><field name="source_drift"/></group>
+                    </group>
+                    <group><field name="owner_id"/><field name="revision"/><field name="approval_authority_designation_id"/><field name="approval_id"/><field name="current_submission_id"/><field name="verified_snapshot_hash"/></group>
+                    <field name="notes"/>
+                    <notebook><page string="Submission History"><field name="submission_ids" readonly="1"><list create="false" edit="false" delete="false"><field name="revision"/><field name="snapshot_hash"/><field name="approval_id"/><field name="submitted_by_id"/><field name="submitted_date"/><field name="snapshot" optional="hide"/></list></field></page></notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_hjig_commercial_link_all" model="ir.actions.act_window"><field name="name">Project Commercial Links</field><field name="res_model">hjig.commercial.link</field><field name="view_mode">list,form</field></record>
+    <record id="action_hjig_customer_ledger" model="ir.actions.act_window"><field name="name">Customer Ledger Links</field><field name="res_model">hjig.commercial.link</field><field name="view_mode">list,form</field><field name="domain">[('ledger_side','=','customer')]</field><field name="context">{'default_ledger_side':'customer'}</field></record>
+    <record id="action_hjig_supplier_ledger" model="ir.actions.act_window"><field name="name">Supplier Ledger Links</field><field name="res_model">hjig.commercial.link</field><field name="view_mode">list,form</field><field name="domain">[('ledger_side','=','supplier')]</field><field name="context">{'default_ledger_side':'supplier'}</field></record>
+
+    <menuitem id="menu_hjig_commercial_link_all" name="Commercial Links" parent="menu_hjig_governance_foundation" action="action_hjig_commercial_link_all" sequence="75"/>
+    <menuitem id="menu_hjig_customer_ledger" name="Customer Ledger" parent="menu_hjig_commercial_link_all" action="action_hjig_customer_ledger" sequence="10"/>
+    <menuitem id="menu_hjig_supplier_ledger" name="Supplier Ledger" parent="menu_hjig_commercial_link_all" action="action_hjig_supplier_ledger" sequence="20"/>
+</odoo>

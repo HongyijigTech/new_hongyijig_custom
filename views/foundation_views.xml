@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_hjig_baseline_list" model="ir.ui.view">
+        <field name="name">hjig.baseline.list</field>
+        <field name="model">hjig.baseline</field>
+        <field name="arch" type="xml">
+            <list decoration-success="state == 'approved'" decoration-muted="state == 'superseded'" decoration-danger="state == 'rejected'">
+                <field name="code"/>
+                <field name="project_id"/>
+                <field name="target_ref"/>
+                <field name="baseline_type"/>
+                <field name="revision"/>
+                <field name="effective_date"/>
+                <field name="state"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_baseline_form" model="ir.ui.view">
+        <field name="name">hjig.baseline.form</field>
+        <field name="model">hjig.baseline</field>
+        <field name="arch" type="xml">
+            <form string="Controlled Baseline">
+                <header>
+                    <button name="action_submit_review" string="Submit for Review" type="object" class="btn-primary" invisible="state not in ['draft', 'rejected']"/>
+                    <button name="action_apply_approval" string="Apply Decision" type="object" class="btn-primary" invisible="state != 'review'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,review,approved,rejected,superseded"/>
+                </header>
+                <sheet>
+                    <div class="oe_title"><h1><field name="code"/></h1></div>
+                    <group>
+                        <group string="Controlled Identity">
+                            <field name="project_id" readonly="state in ['approved', 'superseded']"/>
+                            <field name="target_ref" readonly="state in ['approved', 'superseded']"/>
+                            <field name="baseline_type" readonly="state in ['approved', 'superseded']"/>
+                            <field name="revision" readonly="state in ['approved', 'superseded']"/>
+                            <field name="approval_authority_designation_id" readonly="state in ['approved', 'superseded']"/>
+                        </group>
+                        <group string="Approval and Effectivity">
+                            <field name="effective_date" readonly="state in ['approved', 'superseded']"/>
+                            <field name="approval_id" readonly="1"/>
+                            <field name="supersedes_id" readonly="state in ['approved', 'superseded']"/>
+                            <field name="superseded_by_id" invisible="not superseded_by_id"/>
+                        </group>
+                    </group>
+                    <group><field name="change_reason"/><field name="snapshot_hash"/></group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hjig_evidence_list" model="ir.ui.view">
+        <field name="name">hjig.evidence.link.list</field>
+        <field name="model">hjig.evidence.link</field>
+        <field name="arch" type="xml">
+            <list decoration-success="verification_state == 'accepted'" decoration-danger="verification_state == 'rejected'">
+                <field name="code"/><field name="project_id"/><field name="target_ref"/>
+                <field name="evidence_type"/><field name="source_party"/><field name="source_date"/>
+                <field name="verification_state"/><field name="verifier_id"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_evidence_form" model="ir.ui.view">
+        <field name="name">hjig.evidence.link.form</field>
+        <field name="model">hjig.evidence.link</field>
+        <field name="arch" type="xml">
+            <form string="Evidence">
+                <header>
+                    <button name="action_accept" string="Accept Evidence" type="object" class="btn-primary"/>
+                    <button name="action_reject" string="Reject Evidence" type="object"/>
+                    <field name="verification_state" widget="statusbar" statusbar_visible="unverified,accepted,rejected"/>
+                </header>
+                <sheet>
+                    <div class="oe_title"><h1><field name="code"/></h1></div>
+                    <group>
+                        <group><field name="project_id"/><field name="target_ref"/><field name="evidence_type"/><field name="source_party"/><field name="source_date"/><field name="revision"/></group>
+                        <group><field name="attachment_id"/><field name="source_url" widget="url"/><field name="verifier_id"/><field name="verification_date"/></group>
+                    </group>
+                    <field name="notes"/>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hjig_approval_list" model="ir.ui.view">
+        <field name="name">hjig.approval.list</field>
+        <field name="model">hjig.approval</field>
+        <field name="arch" type="xml">
+            <list decoration-success="state == 'approved'" decoration-danger="state == 'rejected'">
+                <field name="code"/><field name="project_id"/><field name="target_ref"/>
+                <field name="approval_type"/><field name="authority_designation_id"/>
+                <field name="requested_by_id"/><field name="requested_date"/><field name="state"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_approval_form" model="ir.ui.view">
+        <field name="name">hjig.approval.form</field>
+        <field name="model">hjig.approval</field>
+        <field name="arch" type="xml">
+            <form string="Controlled Approval">
+                <header>
+                    <button name="action_approve" string="Approve" type="object" class="btn-primary" invisible="state != 'pending'" groups="new_hongyijig_custom.group_hjig_governance_approver"/>
+                    <button name="action_reject" string="Reject" type="object" invisible="state != 'pending'" groups="new_hongyijig_custom.group_hjig_governance_approver"/>
+                    <field name="state" widget="statusbar" statusbar_visible="pending,approved,rejected,cancelled"/>
+                </header>
+                <sheet>
+                    <div class="oe_title"><h1><field name="code"/></h1></div>
+                    <group>
+                        <group><field name="project_id" readonly="1"/><field name="target_ref" readonly="1"/><field name="approval_type" readonly="1"/><field name="authority_designation_id" readonly="1"/></group>
+                        <group><field name="requested_by_id"/><field name="requested_date"/><field name="approver_id"/><field name="decision_date"/></group>
+                    </group>
+                    <group string="Submission Snapshot" invisible="not request_snapshot_hash">
+                        <field name="request_snapshot_hash"/><field name="request_snapshot" groups="new_hongyijig_custom.group_hjig_governance_approver,project.group_project_manager"/>
+                    </group>
+                    <field name="decision_reason" placeholder="Required when rejecting"/>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hjig_transition_log_list" model="ir.ui.view">
+        <field name="name">hjig.transition.log.list</field>
+        <field name="model">hjig.transition.log</field>
+        <field name="arch" type="xml">
+            <list create="false" edit="false" delete="false">
+                <field name="transition_date"/><field name="project_id"/><field name="target_ref"/>
+                <field name="from_state"/><field name="to_state"/><field name="decision"/>
+                <field name="actor_id"/><field name="approval_id"/><field name="reason" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_hjig_baseline" model="ir.actions.act_window">
+        <field name="name">Controlled Baselines</field><field name="res_model">hjig.baseline</field><field name="view_mode">list,form</field>
+    </record>
+    <record id="action_hjig_evidence" model="ir.actions.act_window">
+        <field name="name">Evidence</field><field name="res_model">hjig.evidence.link</field><field name="view_mode">list,form</field>
+    </record>
+    <record id="action_hjig_approval" model="ir.actions.act_window">
+        <field name="name">Approvals</field><field name="res_model">hjig.approval</field><field name="view_mode">list,form</field>
+    </record>
+    <record id="action_hjig_transition_log" model="ir.actions.act_window">
+        <field name="name">Transition History</field><field name="res_model">hjig.transition.log</field><field name="view_mode">list</field>
+    </record>
+
+    <menuitem id="menu_hjig_governance_foundation" name="Governance" parent="project.menu_main_pm" sequence="84" groups="project.group_project_user"/>
+    <menuitem id="menu_hjig_baseline" name="Controlled Baselines" parent="menu_hjig_governance_foundation" action="action_hjig_baseline" sequence="10"/>
+    <menuitem id="menu_hjig_evidence" name="Evidence" parent="menu_hjig_governance_foundation" action="action_hjig_evidence" sequence="20"/>
+    <menuitem id="menu_hjig_approval" name="Approvals" parent="menu_hjig_governance_foundation" action="action_hjig_approval" sequence="30"/>
+    <menuitem id="menu_hjig_transition_log" name="Transition History" parent="menu_hjig_governance_foundation" action="action_hjig_transition_log" sequence="40"/>
+
+    <record id="view_project_form_hjig_foundation" model="ir.ui.view">
+        <field name="name">project.project.form.hjig.foundation</field>
+        <field name="model">project.project</field>
+        <field name="inherit_id" ref="project.edit_project"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_open_hjig_sor" type="object" class="oe_stat_button" icon="fa-list-alt">
+                    <field name="hjig_sor_count" widget="statinfo" string="SOR"/>
+                </button>
+                <button name="action_open_hjig_baselines" type="object" class="oe_stat_button" icon="fa-lock">
+                    <field name="hjig_baseline_count" widget="statinfo" string="Baselines"/>
+                </button>
+                <button name="action_open_hjig_gates" type="object" class="oe_stat_button" icon="fa-check-square-o">
+                    <field name="hjig_gate_count" widget="statinfo" string="Gates"/>
+                </button>
+                <button name="action_open_hjig_tooling" type="object" class="oe_stat_button" icon="fa-cogs">
+                    <field name="hjig_tooling_execution_count" widget="statinfo" string="China Tooling"/>
+                </button>
+                <button name="action_open_hjig_inspections" type="object" class="oe_stat_button" icon="fa-search">
+                    <field name="hjig_inspection_count" widget="statinfo" string="Inspections"/>
+                </button>
+                <button name="action_open_hjig_commercial_links" type="object" class="oe_stat_button" icon="fa-money"
+                        groups="new_hongyijig_custom.group_hjig_commercial_user">
+                    <field name="hjig_commercial_link_count" widget="statinfo" string="Commercial"/>
+                </button>
+            </xpath>
+            <xpath expr="//sheet/notebook" position="inside">
+                <page string="Hongyi Team" name="hjig_project_team">
+                    <group>
+                        <group string="Programme Route">
+                            <field name="hjig_programme" readonly="1"/>
+                            <field name="hjig_allowed_stage_ids" invisible="1"/>
+                            <field name="hjig_current_stage_id" readonly="1"/>
+                            <field name="hjig_programme_change_status" readonly="1"/>
+                            <field name="hjig_programme_change_approval_id" readonly="1"/>
+                        </group>
+                        <group string="Controlled Route Change" groups="project.group_project_manager">
+                            <field name="hjig_pending_programme" readonly="hjig_programme_change_status == 'pending'"/>
+                            <field name="hjig_programme_change_authority_id" readonly="hjig_programme_change_status == 'pending'"/>
+                            <field name="hjig_programme_change_reason" readonly="hjig_programme_change_status == 'pending'"/>
+                            <field name="hjig_programme_commercial_review" readonly="hjig_programme_change_status == 'pending'"/>
+                            <button name="action_request_hjig_programme_change" string="Request Route Change" type="object" class="btn-primary" invisible="hjig_programme_change_status == 'pending'"/>
+                            <button name="action_apply_hjig_programme_change" string="Apply Route Decision" type="object" class="btn-primary" invisible="hjig_programme_change_status != 'pending'"/>
+                        </group>
+                        <group string="Governed Team">
+                            <field name="hjig_authorized_user_ids" widget="many2many_tags" groups="project.group_project_manager"/>
+                        </group>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

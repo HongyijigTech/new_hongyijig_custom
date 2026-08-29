@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo noupdate="1">
+    <record id="seq_hjig_baseline" model="ir.sequence">
+        <field name="name">Hongyi Controlled Baseline</field>
+        <field name="code">hjig.baseline</field>
+        <field name="prefix">BL-%(year)s-</field>
+        <field name="padding">5</field>
+    </record>
+    <record id="seq_hjig_evidence" model="ir.sequence">
+        <field name="name">Hongyi Evidence</field>
+        <field name="code">hjig.evidence.link</field>
+        <field name="prefix">EV-%(year)s-</field>
+        <field name="padding">5</field>
+    </record>
+    <record id="seq_hjig_approval" model="ir.sequence">
+        <field name="name">Hongyi Controlled Approval</field>
+        <field name="code">hjig.approval</field>
+        <field name="prefix">AP-%(year)s-</field>
+        <field name="padding">5</field>
+    </record>
+</odoo>

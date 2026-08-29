@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo noupdate="1">
+    <record id="seq_hjig_ai_assistance" model="ir.sequence"><field name="name">Hongyi AI Assistance Log</field><field name="code">hjig.ai.assistance.log</field><field name="prefix">AI-%(year)s-</field><field name="padding">6</field></record>
+</odoo>

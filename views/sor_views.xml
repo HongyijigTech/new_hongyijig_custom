@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_hjig_sor_list" model="ir.ui.view">
+        <field name="name">hjig.sor.list</field>
+        <field name="model">hjig.sor</field>
+        <field name="arch" type="xml">
+            <list decoration-success="state == 'frozen'" decoration-danger="state == 'rejected'" decoration-muted="state == 'superseded'">
+                <field name="code"/><field name="project_id"/><field name="customer_id"/>
+                <field name="industry"/><field name="intake_route"/><field name="revision"/>
+                <field name="requirement_count"/><field name="open_clarification_count"/><field name="state"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_sor_form" model="ir.ui.view">
+        <field name="name">hjig.sor.form</field>
+        <field name="model">hjig.sor</field>
+        <field name="arch" type="xml">
+            <form string="Statement of Requirements">
+                <header>
+                    <button name="action_start_mapping" string="Start Mapping" type="object" class="btn-primary" invisible="state not in ['draft', 'rejected']"/>
+                    <button name="action_submit_review" string="Submit for Freeze" type="object" class="btn-primary" invisible="state not in ['draft', 'mapping', 'rejected']"/>
+                    <button name="action_apply_decision" string="Apply Approval Decision" type="object" class="btn-primary" invisible="state != 'review'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,mapping,review,frozen,rejected,superseded"/>
+                </header>
+                <sheet>
+                    <div class="oe_title"><h1><field name="code"/></h1><h2><field name="title"/></h2></div>
+                    <group>
+                        <group string="SOR Identity">
+                            <field name="project_id" readonly="state in ['frozen', 'superseded']"/>
+                            <field name="customer_id"/>
+                            <field name="industry" readonly="state in ['frozen', 'superseded']"/>
+                            <field name="intake_route" readonly="state in ['frozen', 'superseded']"/>
+                            <field name="revision" readonly="state in ['frozen', 'superseded']"/>
+                            <field name="owner_id" readonly="state in ['frozen', 'superseded']"/>
+                        </group>
+                        <group string="Source and Approval">
+                            <field name="source_reference" readonly="state in ['frozen', 'superseded']"/>
+                            <field name="source_url" widget="url" readonly="state in ['frozen', 'superseded']"/>
+                            <field name="source_attachment_ids" widget="many2many_binary" readonly="state in ['frozen', 'superseded']"/>
+                            <field name="effective_date" readonly="state in ['frozen', 'superseded']"/>
+                            <field name="approval_authority_designation_id" readonly="state in ['frozen', 'superseded']"/>
+                            <field name="baseline_id" readonly="1"/>
+                        </group>
+                    </group>
+                    <group string="Service Boundary">
+                        <field name="no_product_warranty"/>
+                        <field name="installation_support_scope" readonly="state in ['frozen', 'superseded']"/>
+                    </group>
+                    <notebook>
+                        <page string="Requirements">
+                            <field name="requirement_ids" readonly="state in ['frozen', 'superseded']">
+                                <list editable="bottom">
+                                    <field name="sequence" widget="handle"/><field name="requirement_id"/>
+                                    <field name="category"/><field name="requirement_text"/>
+                                    <field name="declaration_state"/><field name="priority"/>
+                                    <field name="source_reference"/><field name="owner_id"/>
+                                    <field name="clarification_due_date"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Notes"><field name="notes"/></page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hjig_sor_requirement_form" model="ir.ui.view">
+        <field name="name">hjig.sor.requirement.form</field>
+        <field name="model">hjig.sor.requirement</field>
+        <field name="arch" type="xml">
+            <form string="SOR Requirement">
+                <sheet>
+                    <div class="oe_title"><h1><field name="requirement_id"/></h1></div>
+                    <group>
+                        <group><field name="sor_id"/><field name="category"/><field name="declaration_state"/><field name="priority"/><field name="owner_id"/><field name="clarification_due_date"/></group>
+                        <group><field name="source_reference"/><field name="requirement_text"/><field name="acceptance_criteria"/></group>
+                    </group>
+                    <notebook>
+                        <page string="Phase Verification">
+                            <field name="verification_ids">
+                                <list editable="bottom">
+                                    <field name="phase"/><field name="check_required"/>
+                                    <field name="verification_method"/><field name="required_evidence"/>
+                                    <field name="responsible_designation_id"/><field name="due_date"/>
+                                    <field name="status"/><field name="verified_by_id"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Notes"><field name="notes"/></page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hjig_sor_verification_form" model="ir.ui.view">
+        <field name="name">hjig.sor.requirement.verification.form</field>
+        <field name="model">hjig.sor.requirement.verification</field>
+        <field name="arch" type="xml">
+            <form string="Requirement Verification">
+                <header>
+                    <button name="action_pass" string="Pass" type="object" class="btn-primary" invisible="status != 'pending'"/>
+                    <button name="action_fail" string="Fail" type="object" invisible="status != 'pending'"/>
+                    <button name="action_reopen_failed" string="Reopen Failed Verification" type="object" invisible="status != 'fail'" groups="new_hongyijig_custom.group_hjig_governance_approver"/>
+                    <field name="status" widget="statusbar" statusbar_visible="pending,pass,fail,waived"/>
+                </header>
+                <sheet><group><group><field name="requirement_id"/><field name="phase"/><field name="check_required"/><field name="responsible_designation_id"/><field name="due_date"/><field name="cycle"/></group><group><field name="verification_method"/><field name="required_evidence"/><field name="evidence_ids" widget="many2many_tags"/><field name="verified_by_id"/><field name="verified_date"/></group></group><field name="reverification_reason"/><field name="notes"/><field name="audit_history_json" readonly="1"/></sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_hjig_sor" model="ir.actions.act_window">
+        <field name="name">SOR Register</field><field name="res_model">hjig.sor</field><field name="view_mode">list,form</field>
+    </record>
+    <menuitem id="menu_hjig_sor" name="SOR Register" parent="menu_hjig_governance_foundation" action="action_hjig_sor" sequence="5"/>
+</odoo>
