@@ -26,6 +26,7 @@ class TestProjectDocumentGovernance(TransactionCase):
             "name": "LaunchGuard Controlled Project",
             "hjig_project_record_type": "customer",
             "x_project_code": "hj-tst-2099-9001",
+            "hjig_authorized_user_ids": [(6, 0, [cls.owner.id, cls.approver.id])],
         })
         cls.owner_designation = cls.env["hjig.governance.designation"].create({
             "code": "TEST-OWNER",
