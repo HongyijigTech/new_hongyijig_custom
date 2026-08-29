@@ -2,7 +2,7 @@
 
 **Classification:** Hongyi Internal — Confidential  
 **Business context:** ₹100 CR Revenue Plan  
-**Release state:** Clone-validated staging release candidate; production remains on HOLD until staging UAT passes
+**Release state:** Deployed to staging; visual UAT remains pending and production remains on HOLD
 **Module:** `new_hongyijig_custom`  
 **Odoo target:** 19.0  
 
@@ -235,4 +235,16 @@ UAT is not complete until evidence proves:
 
 ## 17. Honest release boundary
 
-This package is a clone-validated staging release candidate. Static Python/XML/CSV validation, source audit, authoritative-model discovery and the disposable-clone Odoo upgrade are complete. The clone ran 126 post-install test methods with zero failures and zero errors, retained every required authoritative carrier, and loaded 11 readiness templates with 57 checklist items. Browser UAT and the controlled real-staging upgrade remain pending; production must stay on HOLD.
+This package is deployed to staging. Static Python/XML/CSV validation, source audit, authoritative-model discovery, the disposable-clone Odoo upgrade and the controlled real-staging upgrade are complete. The clone ran 126 post-install test methods with zero failures and zero errors, retained every required authoritative carrier, and loaded 11 readiness templates with 57 checklist items. Automated browser control of the HTTP staging URL was blocked by the organisation's browser policy, so human visual UAT remains pending; production must stay on HOLD.
+
+## 18. Staging deployment evidence — 29 August 2026
+
+- Functional release commit: `2ffd5fdbf3a1bf77ea01d3dd0dccdf7a56301eed`.
+- Installed module/version: `new_hongyijig_custom` / `19.0.3.2.0`.
+- Disposable clone: 126 post-install test methods, 0 failures, 0 errors.
+- Live staging: service active from 10:50:56 IST; `/web/login` returned HTTP 303; latest 300 log lines contained 0 ERROR/CRITICAL entries.
+- Live integrity: 15 SOP masters, 56 form/record masters, 11 readiness templates and 57 checklist items.
+- Preserved carriers: Mould Planning, Mould Parts, legacy inspection reports, Final Mould Plans, Risk, Design Challenges, ECN and SourceBridge all remained in the Odoo registry; all ten Project smart-button routes resolved to their correct Project-scoped models.
+- Rollback evidence: database, filestore, configuration and pre-deployment active-module backups are retained under `/home/hongyi-jig-erp/releases/backups/20260829_095013` and `/home/hongyi-jig-erp/releases/rollback/2ffd5fd_predeploy_20260829_1048`.
+- Production boundary: `odoo-production.service` remained active and was not stopped, upgraded or reconfigured.
+- Pending release gate: a human must complete visual role/programme UAT on staging before any production decision.
