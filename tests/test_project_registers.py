@@ -22,6 +22,10 @@ class TestProjectRegisters(TransactionCase):
             "name": "Register Outsider", "login": "register.outsider@test.invalid",
             "group_ids": [(6, 0, [cls.env.ref("project.group_project_user").id])],
         })
+        cls.commercial_user = cls.env["res.users"].create({
+            "name": "Register Commercial User", "login": "register.commercial@test.invalid",
+            "group_ids": [(6, 0, [cls.env.ref("new_hongyijig_custom.group_hjig_commercial_user").id])],
+        })
         cls.owner_designation = cls.env["hjig.governance.designation"].create({
             "code": "REGISTER-TEST-OWNER", "name": "Register Test Owner", "category": "engineering",
             "holder_ids": [(6, 0, [cls.owner.id])],
@@ -33,6 +37,7 @@ class TestProjectRegisters(TransactionCase):
         cls.project = cls.env["project.project"].create({
             "name": "Register Test Project", "hjig_project_record_type": "customer",
             "x_project_code": "HJ-REG-2026-0001",
+            "hjig_authorized_user_ids": [(6, 0, [cls.owner.id, cls.approver.id, cls.commercial_user.id])],
         })
         for designation, holder in (
             (cls.owner_designation, cls.owner),
@@ -242,6 +247,25 @@ class TestProjectRegisters(TransactionCase):
             ecn.with_user(self.outsider).with_context(allow_ecn_workflow=True).write({
                 "status": "review", "submitted_by_id": self.outsider.id,
             })
+
+    def test_ecn_commercial_fields_are_restricted(self):
+        mould, _part = self._approved_mould()
+        ecn = self.env["hjig.project.ecn"].create({
+            "project_id": self.project.id, "description": "Commercially restricted ECN",
+            "component_name": "Housing", "change_reason": "Customer change",
+            "impacted_mould_ids": [(6, 0, [mould.id])],
+            "raised_by_designation_id": self.owner_designation.id,
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+            "supplier_cost": 100.0, "customer_cost": 150.0,
+        })
+        with self.assertRaises(AccessError):
+            ecn.with_user(self.owner).read(["supplier_cost", "customer_cost"])
+        with self.assertRaises(AccessError):
+            ecn.with_user(self.owner).write({"supplier_cost": 125.0})
+        values = ecn.with_user(self.commercial_user).read(["supplier_cost", "customer_cost"])[0]
+        self.assertEqual(values["supplier_cost"], 100.0)
+        self.assertEqual(values["customer_cost"], 150.0)
 
     def test_private_project_registers_follow_project_visibility(self):
         private_project = self.env["project.project"].create({

@@ -517,26 +517,42 @@ class HjigProjectEcn(models.Model):
     raised_by_designation_id = fields.Many2one("hjig.governance.designation", required=True, ondelete="restrict", tracking=True)
     raised_date = fields.Date(required=True, default=fields.Date.context_today, tracking=True)
     currency_id = fields.Many2one(related="project_id.company_id.currency_id", store=True, readonly=True)
-    supplier_cost = fields.Monetary(currency_field="currency_id", tracking=True)
+    supplier_cost = fields.Monetary(
+        currency_field="currency_id",
+        tracking=True,
+        groups="new_hongyijig_custom.group_hjig_commercial_user",
+    )
     supplier_lead_time_days = fields.Integer(tracking=True)
     supplier_approval_status = fields.Selection(
         [("not_required", "Not Required"), ("pending", "Pending"), ("approved", "Approved"), ("rejected", "Rejected")],
         required=True, default="pending", tracking=True,
     )
-    supplier_approval_evidence_url = fields.Char(tracking=True)
+    supplier_approval_evidence_url = fields.Char(
+        tracking=True,
+        groups="new_hongyijig_custom.group_hjig_commercial_user",
+    )
     supplier_evidence_ids = fields.Many2many(
         "ir.attachment", "hjig_ecn_supplier_attachment_rel", "ecn_id", "attachment_id",
         string="Supplier Approval Evidence",
+        groups="new_hongyijig_custom.group_hjig_commercial_user",
     )
-    customer_cost = fields.Monetary(currency_field="currency_id", tracking=True)
+    customer_cost = fields.Monetary(
+        currency_field="currency_id",
+        tracking=True,
+        groups="new_hongyijig_custom.group_hjig_commercial_user",
+    )
     customer_approval_status = fields.Selection(
         [("not_required", "Not Required"), ("pending", "Pending"), ("approved", "Approved"), ("rejected", "Rejected")],
         required=True, default="pending", tracking=True,
     )
-    customer_approval_evidence_url = fields.Char(tracking=True)
+    customer_approval_evidence_url = fields.Char(
+        tracking=True,
+        groups="new_hongyijig_custom.group_hjig_commercial_user",
+    )
     customer_evidence_ids = fields.Many2many(
         "ir.attachment", "hjig_ecn_customer_attachment_rel", "ecn_id", "attachment_id",
         string="Customer Approval Evidence",
+        groups="new_hongyijig_custom.group_hjig_commercial_user",
     )
     customer_approval_date = fields.Date(tracking=True)
     status = fields.Selection(
@@ -580,9 +596,16 @@ class HjigProjectEcn(models.Model):
 
     def _check_approval_requirements(self):
         for ecn in self:
+            confidential = ecn.sudo()
             for party, status, attachments, url in (
-                (_("Supplier"), ecn.supplier_approval_status, ecn.supplier_evidence_ids, ecn.supplier_approval_evidence_url),
-                (_("Customer"), ecn.customer_approval_status, ecn.customer_evidence_ids, ecn.customer_approval_evidence_url),
+                (
+                    _("Supplier"), ecn.supplier_approval_status,
+                    confidential.supplier_evidence_ids, confidential.supplier_approval_evidence_url,
+                ),
+                (
+                    _("Customer"), ecn.customer_approval_status,
+                    confidential.customer_evidence_ids, confidential.customer_approval_evidence_url,
+                ),
             ):
                 if status not in ("approved", "not_required"):
                     raise ValidationError(_("%s approval must be Approved or Not Required.") % party)
