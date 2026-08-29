@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Preserve legacy document records/actions while removing the duplicate menu route. -->
+    <function model="ir.ui.menu" name="_hjig_consolidate_legacy_document_control_menu"/>
+</odoo>

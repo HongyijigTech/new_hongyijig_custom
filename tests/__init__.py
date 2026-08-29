@@ -3,3 +3,10 @@ from . import test_native_forms
 from . import test_programme_template
 from . import test_programme_session
 from . import test_project_registers
+from . import test_foundation
+from . import test_sor
+from . import test_checklist_gate
+from . import test_execution_quality
+from . import test_commercial_bridge
+from . import test_knowledge_ai
+from . import test_ui_compatibility

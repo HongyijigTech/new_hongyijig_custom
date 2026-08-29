@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo noupdate="1">
+    <record id="seq_hjig_sor" model="ir.sequence">
+        <field name="name">Hongyi SOR</field>
+        <field name="code">hjig.sor</field>
+        <field name="prefix">SOR-%(year)s-</field>
+        <field name="padding">5</field>
+    </record>
+</odoo>
