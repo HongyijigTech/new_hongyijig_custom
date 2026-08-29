@@ -172,6 +172,29 @@ class TestProjectDocumentGovernance(TransactionCase):
         with self.assertRaises(UserError):
             document.with_user(self.owner).action_submit_review()
 
+    def test_planned_resource_does_not_grant_login_authority(self):
+        project = self.env["project.project"].create({
+            "name": "Pre-Seat Planning Project",
+            "hjig_project_record_type": "customer",
+            "x_project_code": "HJ-TST-2099-9011",
+        })
+        resource = self.env["hjig.planned.team.resource"].create({
+            "name": "Future Tool Engineer",
+            "resource_type": "internal",
+            "planned_capacity": 2,
+        })
+        assignment = self.env["hjig.project.designation.assignment"].create({
+            "project_id": project.id,
+            "designation_id": self.owner_designation.id,
+            "planned_resource_ids": [(6, 0, [resource.id])],
+        })
+        self.assertEqual(assignment.staffing_status, "planned")
+        self.assertFalse(assignment.holder_ids)
+        self.assertFalse(self.owner_designation._holders_for_project(project))
+        document = self._create_document(project_id=project.id)
+        with self.assertRaises(UserError):
+            document.with_user(self.owner).action_submit_review()
+
     def test_status_cannot_bypass_workflow(self):
         document = self._create_document()
         with self.assertRaises(ValidationError):

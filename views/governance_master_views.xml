@@ -130,6 +130,8 @@
                 <field name="project_id"/>
                 <field name="designation_id"/>
                 <field name="holder_ids" widget="many2many_tags"/>
+                <field name="planned_resource_ids" widget="many2many_tags" optional="show"/>
+                <field name="staffing_status" optional="show"/>
                 <field name="effective_from" optional="show"/>
                 <field name="effective_to" optional="show"/>
                 <field name="active" optional="show"/>
@@ -146,7 +148,9 @@
                         <group string="Project Authority">
                             <field name="project_id"/>
                             <field name="designation_id"/>
+                            <field name="planned_resource_ids" widget="many2many_tags"/>
                             <field name="holder_ids" widget="many2many_tags"/>
+                            <field name="staffing_status" readonly="1"/>
                         </group>
                         <group string="Validity">
                             <field name="effective_from"/>
@@ -166,6 +170,32 @@
         <field name="view_mode">list,form</field>
     </record>
 
+    <record id="view_hjig_planned_team_resource_list" model="ir.ui.view">
+        <field name="name">hjig.planned.team.resource.list</field>
+        <field name="model">hjig.planned.team.resource</field>
+        <field name="arch" type="xml">
+            <list string="Planned Team Resources" default_order="resource_type, name">
+                <field name="name"/><field name="resource_type"/><field name="email"/>
+                <field name="planned_capacity"/><field name="active" optional="show"/>
+            </list>
+        </field>
+    </record>
+    <record id="view_hjig_planned_team_resource_form" model="ir.ui.view">
+        <field name="name">hjig.planned.team.resource.form</field>
+        <field name="model">hjig.planned.team.resource</field>
+        <field name="arch" type="xml">
+            <form string="Planned Team Resource"><sheet><group>
+                <field name="name"/><field name="resource_type"/><field name="email"/>
+                <field name="planned_capacity"/><field name="active"/>
+            </group><group string="Planning Notes"><field name="notes" nolabel="1"/></group></sheet><chatter/></form>
+        </field>
+    </record>
+    <record id="action_hjig_planned_team_resource" model="ir.actions.act_window">
+        <field name="name">Planned Team Resources</field>
+        <field name="res_model">hjig.planned.team.resource</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
     <menuitem id="menu_hjig_artifact_master" name="SOP &amp; Form Master" parent="menu_hjig_document_control"
               action="action_hjig_artifact_master" sequence="30"/>
     <menuitem id="menu_hjig_launchguard_stage" name="LaunchGuard Stages" parent="menu_hjig_document_control"
@@ -176,4 +206,7 @@
     <menuitem id="menu_hjig_project_designation_assignment" name="Project Designation Assignments"
               parent="menu_hjig_document_control" action="action_hjig_project_designation_assignment"
               sequence="60" groups="project.group_project_manager"/>
+    <menuitem id="menu_hjig_planned_team_resource" name="Planned Team Resources"
+              parent="menu_hjig_document_control" action="action_hjig_planned_team_resource"
+              sequence="70" groups="project.group_project_manager"/>
 </odoo>
