@@ -494,7 +494,7 @@
     </record>
 
     <record id="action_hjig_inspection_report" model="ir.actions.act_window">
-        <field name="name">Native Inspection Reports</field>
+        <field name="name">Visual / Assembly / Dimensional Reports</field>
         <field name="res_model">hjig.inspection.report</field>
         <field name="view_mode">list,form</field>
     </record>
@@ -505,7 +505,7 @@
               parent="menu_hjig_native_project_forms" action="action_hjig_mould_plan" sequence="10"/>
     <menuitem id="menu_hjig_assemblies" name="Project Assemblies"
               parent="menu_hjig_native_project_forms" action="action_hjig_assembly" sequence="20"/>
-    <menuitem id="menu_hjig_inspection_reports" name="Inspection Reports"
+    <menuitem id="menu_hjig_inspection_reports" name="Visual / Assembly / Dimensional Reports"
               parent="menu_hjig_native_project_forms" action="action_hjig_inspection_report" sequence="30"/>
     <menuitem id="menu_hjig_native_form_templates" name="Form Templates"
               parent="menu_hjig_native_project_forms" action="action_hjig_native_form_template" sequence="40"

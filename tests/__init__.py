@@ -9,3 +9,4 @@ from . import test_checklist_gate
 from . import test_execution_quality
 from . import test_commercial_bridge
 from . import test_knowledge_ai
+from . import test_ui_compatibility

@@ -2,7 +2,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 {
     'name': 'HongyiJigTechNew',
-    'version': '19.0.3.2.0',
+    'version': '19.0.3.2.1',
     'summary': 'Hongyijig Tech New',
     'sequence': 10,
     'description': """
@@ -29,6 +29,7 @@ Hongyijig Tech
              'data/hjig.inspection.checkpoint.master.csv',
              'data/native_form_template_data.xml',
              'data/checklist_template_data.xml',
+             'data/ui_compatibility.xml',
              'views/crm_lead.xml',
              'views/risk_Report_temp.xml',
              'views/email_template.xml',
