@@ -59,11 +59,12 @@ class TestChecklistGate(TransactionCase):
         checklist = self.env["hjig.checklist"].create({
             "project_id": self.project.id, "target_ref": self._target(), "template_id": self.template.id,
         })
-        self.assertEqual(len(checklist.response_ids), 1)
+        self.assertEqual(len(checklist.response_ids), len(self.template.item_ids))
+        response = checklist.response_ids[:1]
         with self.assertRaises(ValidationError):
-            checklist.response_ids.action_pass()
+            response.action_pass()
         with self.assertRaises(ValidationError):
-            checklist.response_ids.action_fail()
+            response.action_fail()
         with self.assertRaises(ValidationError):
             checklist.action_mark_ready()
 
@@ -260,7 +261,7 @@ class TestChecklistGate(TransactionCase):
             "project_id": self.project.id, "target_ref": self._target(),
             "template_id": self.template.id,
         })
-        response = checklist.response_ids
+        response = checklist.response_ids[:1]
         response.evidence_ids = first_evidence
         response.with_user(self.approver).action_fail()
         with self.assertRaises(ValidationError):

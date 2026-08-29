@@ -4,8 +4,6 @@ import re
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
-from .workflow_guard import is_workflow_context, workflow_context
-
 
 PROJECT_CODE_PATTERN = re.compile(r"^HJ-[A-Z0-9]{2,6}-\d{4}-\d{4}$")
 
@@ -166,6 +164,14 @@ class HjigProjectDocument(models.Model):
         index=True,
         tracking=True,
     )
+    mould_id = fields.Many2one(
+        "x_mould",
+        string="Mould Scope",
+        ondelete="restrict",
+        index=True,
+        tracking=True,
+        help="Required for per-mould gate evidence; leave blank for project-basis evidence.",
+    )
     document_class = fields.Selection(
         [
             ("master_reference", "Master / Reference"),
@@ -259,9 +265,15 @@ class HjigProjectDocument(models.Model):
         "register_id", "project_id", "artifact_master_id", "stage_id", "register_type",
         "document_class", "title", "document_type", "external_document_number", "revision",
         "owner_designation_id", "approver_designation_id", "owner_id", "approver_id",
-        "effective_date", "drive_url", "sor_reference", "gate_reference",
+        "effective_date", "drive_url", "sor_reference", "gate_reference", "mould_id",
         "ecn_reference", "supersedes_id", "superseded_by_id", "notes", "status",
     }
+
+    @api.constrains("project_id", "mould_id")
+    def _check_mould_scope(self):
+        for document in self.filtered("mould_id"):
+            if document.mould_id.x_project_id != document.project_id:
+                raise ValidationError(_("The controlled-document mould must belong to the same project."))
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -359,13 +371,13 @@ class HjigProjectDocument(models.Model):
                 )
 
     def write(self, vals):
-        if "status" in vals and not is_workflow_context(self.env):
+        if "status" in vals and not self.env.context.get("allow_document_workflow"):
             for document in self:
                 if vals["status"] != document.status:
                     raise ValidationError(
                         _("Document status may only change through the controlled workflow actions.")
                     )
-        if not is_workflow_context(self.env):
+        if not self.env.context.get("allow_document_supersede"):
             changed = self._CONTROLLED_FIELDS.intersection(vals)
             locked = self.filtered(lambda document: document.status in ("approved", "superseded"))
             if changed and locked:
@@ -383,11 +395,13 @@ class HjigProjectDocument(models.Model):
         for document in self:
             if document.status != "draft":
                 raise UserError(_("Only Draft documents can be submitted for review."))
-            if self.env.user not in document.owner_designation_id.holder_ids:
+            if not document.owner_designation_id._user_holds_for_project(
+                self.env.user, document.project_id
+            ):
                 raise UserError(
                     _("Only a current holder of the Owner Designation may submit this document.")
                 )
-            document.with_context(**workflow_context()).write({
+            document.with_context(allow_document_workflow=True).write({
                 "owner_id": self.env.user.id,
                 "status": "review",
             })
@@ -398,7 +412,9 @@ class HjigProjectDocument(models.Model):
         for document in self:
             if document.status != "review":
                 raise UserError(_("Only documents Under Review can be approved."))
-            if self.env.user not in document.approver_designation_id.holder_ids:
+            if not document.approver_designation_id._user_holds_for_project(
+                self.env.user, document.project_id
+            ):
                 raise ValidationError(
                     _("Only a current holder of the Approver Designation may approve this document.")
                 )
@@ -413,11 +429,14 @@ class HjigProjectDocument(models.Model):
                     raise ValidationError(_("The superseded document must currently be Approved."))
                 if not document.ecn_reference:
                     raise ValidationError(_("An ECN / Change Reference is required when superseding an approved document."))
-                document.supersedes_id.with_context(**workflow_context()).write({
+                document.supersedes_id.with_context(
+                    allow_document_supersede=True,
+                    allow_document_workflow=True,
+                ).write({
                     "status": "superseded",
                     "superseded_by_id": document.id,
                 })
-            document.with_context(**workflow_context()).write({
+            document.with_context(allow_document_workflow=True).write({
                 "approver_id": self.env.user.id,
                 "status": "approved",
             })

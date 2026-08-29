@@ -1,0 +1,697 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_hjig_programme_template_list" model="ir.ui.view">
+        <field name="name">hjig.programme.template.list</field>
+        <field name="model">hjig.programme.template</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="code"/>
+                <field name="name"/>
+                <field name="execution_mode"/>
+                <field name="owner_designation_id"/>
+                <field name="approver_designation_id"/>
+                <field name="active"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_programme_template_form" model="ir.ui.view">
+        <field name="name">hjig.programme.template.form</field>
+        <field name="model">hjig.programme.template</field>
+        <field name="arch" type="xml">
+            <form string="Programme Template">
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_open_versions" type="object" class="oe_stat_button"
+                                icon="fa-sitemap" string="Open Versions"/>
+                    </div>
+                    <div class="oe_title"><h1><field name="name"/></h1></div>
+                    <group>
+                        <group>
+                            <field name="code"/>
+                            <field name="owner_designation_id"/>
+                            <field name="approver_designation_id"/>
+                            <field name="execution_mode"/>
+                        </group>
+                        <group><field name="active"/></group>
+                    </group>
+                    <field name="description"/>
+                    <notebook>
+                        <page string="Governed Versions">
+                            <field name="version_ids" context="{'default_template_id': id}">
+                                <list open_form_view="1">
+                                    <field name="version"/>
+                                    <field name="state"/>
+                                    <field name="is_current"/>
+                                    <field name="effective_from"/>
+                                    <field name="effective_to"/>
+                                    <field name="source_project_id"/>
+                                    <field name="definition_hash"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hjig_programme_version_list" model="ir.ui.view">
+        <field name="name">hjig.programme.template.version.list</field>
+        <field name="model">hjig.programme.template.version</field>
+        <field name="arch" type="xml">
+            <list decoration-success="state == 'approved'" decoration-muted="state == 'retired'">
+                <field name="name"/>
+                <field name="state"/>
+                <field name="execution_mode"/>
+                <field name="is_current"/>
+                <field name="effective_from"/>
+                <field name="source_project_id"/>
+                <field name="definition_hash"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_programme_version_form" model="ir.ui.view">
+        <field name="name">hjig.programme.template.version.form</field>
+        <field name="model">hjig.programme.template.version</field>
+        <field name="arch" type="xml">
+            <form string="Programme Version">
+                <header>
+                    <button name="action_submit_review" string="Submit for Review" type="object"
+                            class="btn-primary" invisible="state != 'draft'"/>
+                    <button name="action_approve" string="Approve and Freeze" type="object"
+                            class="btn-primary" groups="new_hongyijig_custom.group_hjig_document_controller"
+                            invisible="state != 'review'"/>
+                    <button name="action_retire" string="Retire" type="object"
+                            groups="new_hongyijig_custom.group_hjig_document_controller"
+                            invisible="state != 'approved'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,review,approved,retired"/>
+                </header>
+                <sheet>
+                    <div class="oe_title"><h1><field name="name" readonly="1"/></h1></div>
+                    <group>
+                        <group>
+                            <field name="template_id" readonly="state in ['approved', 'retired']"/>
+                            <field name="version" readonly="state in ['approved', 'retired']"/>
+                            <field name="source_project_id" readonly="state in ['approved', 'retired']"/>
+                            <field name="legacy_source_database" readonly="1"/>
+                            <field name="legacy_source_project_id" readonly="1"/>
+                            <field name="legacy_source_task_count" readonly="1"/>
+                            <field name="execution_mode" readonly="1"/>
+                            <field name="dependency_review_status" readonly="state in ['approved', 'retired']"/>
+                            <field name="evidence_review_status" readonly="state in ['approved', 'retired']"/>
+                            <field name="timing_review_status" readonly="state in ['approved', 'retired']"/>
+                        </group>
+                        <group>
+                            <field name="effective_from" readonly="state in ['approved', 'retired']"/>
+                            <field name="effective_to" readonly="state in ['approved', 'retired']"/>
+                            <field name="is_current" readonly="1"/>
+                            <field name="approved_by_id" readonly="1"/>
+                            <field name="approved_on" readonly="1"/>
+                            <field name="definition_hash" readonly="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Route Controls / Gates" invisible="execution_mode == 'advisory_sessions'">
+                            <field name="gate_line_ids" readonly="state in ['approved', 'retired']">
+                                <list editable="bottom">
+                                    <field name="sequence"/>
+                                    <field name="stage_id"/>
+                                    <field name="required"/>
+                                    <field name="closure_variant"/>
+                                    <field name="execution_basis"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Activities" invisible="execution_mode == 'advisory_sessions'">
+                            <field name="activity_line_ids" readonly="state in ['approved', 'retired']">
+                                <list editable="bottom">
+                                    <field name="sequence"/>
+                                    <field name="code"/>
+                                    <field name="name"/>
+                                    <field name="gate_line_id"/>
+                                    <field name="owner_designation_id"/>
+                                    <field name="approver_designation_id"/>
+                                    <field name="offset_days"/>
+                                    <field name="duration_days"/>
+                                    <field name="execution_basis"/>
+                                    <field name="conditional" optional="show"/>
+                                    <field name="legacy_master_codes" optional="show"/>
+                                    <field name="source_task_id" optional="hide"/>
+                                    <field name="legacy_source_task_id" optional="show"/>
+                                    <field name="legacy_source_stage_id" optional="hide"/>
+                                    <field name="legacy_source_stage_name" optional="hide"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Scoped Dependency Rules" invisible="execution_mode == 'advisory_sessions'">
+                            <field name="dependency_rule_ids" readonly="state in ['approved', 'retired']">
+                                <list editable="bottom">
+                                    <field name="legacy_source_rule_id"/>
+                                    <field name="predecessor_activity_id"/>
+                                    <field name="predecessor_basis"/>
+                                    <field name="successor_activity_id"/>
+                                    <field name="successor_basis"/>
+                                    <field name="rule_type"/>
+                                    <field name="scope_matching_rule" optional="show"/>
+                                    <field name="source_reference" optional="hide"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Required SOPs and Forms" invisible="execution_mode == 'advisory_sessions'">
+                            <field name="artifact_rule_ids" readonly="state in ['approved', 'retired']">
+                                <list editable="bottom">
+                                    <field name="stage_id"/>
+                                    <field name="artifact_master_id"/>
+                                    <field name="artifact_code" string="Artifact Code"/>
+                                    <field name="artifact_type" string="Type"/>
+                                    <field name="mandatory"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Gate Checklist Template" invisible="execution_mode == 'advisory_sessions'">
+                            <field name="checklist_item_ids" readonly="state in ['approved', 'retired']">
+                                <list editable="bottom" open_form_view="1">
+                                    <field name="sequence"/>
+                                    <field name="code"/>
+                                    <field name="gate_line_id"/>
+                                    <field name="subhead"/>
+                                    <field name="item_text"/>
+                                    <field name="mandatory"/>
+                                    <field name="conditional"/>
+                                    <field name="evidence_required"/>
+                                    <field name="sign_required" optional="show"/>
+                                    <field name="execution_basis"/>
+                                    <field name="linked_activity_id" optional="show"/>
+                                    <field name="evidence_artifact_id" optional="show"/>
+                                    <field name="owner_designation_id"/>
+                                    <field name="approver_designation_id"/>
+                                    <field name="source_reference" optional="hide"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Advisory Session Template" invisible="execution_mode != 'advisory_sessions'">
+                            <field name="session_line_ids" readonly="state in ['approved', 'retired']">
+                                <list editable="bottom" open_form_view="1">
+                                    <field name="sequence"/>
+                                    <field name="code"/>
+                                    <field name="name"/>
+                                    <field name="stage_id"/>
+                                    <field name="indicative_duration"/>
+                                    <field name="framework_artifact_id"/>
+                                    <field name="owner_designation_id"/>
+                                    <field name="approver_designation_id"/>
+                                    <field name="legacy_source_task_ids" optional="show"/>
+                                    <field name="source_reference" optional="hide"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hjig_programme_run_list" model="ir.ui.view">
+        <field name="name">hjig.programme.run.list</field>
+        <field name="model">hjig.programme.run</field>
+        <field name="arch" type="xml">
+            <list create="false" delete="false">
+                <field name="name"/>
+                <field name="sale_order_id"/>
+                <field name="project_id"/>
+                <field name="template_version_id"/>
+                <field name="execution_mode"/>
+                <field name="state"/>
+                <field name="activated_on"/>
+                <field name="definition_hash"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_programme_run_form" model="ir.ui.view">
+        <field name="name">hjig.programme.run.form</field>
+        <field name="model">hjig.programme.run</field>
+        <field name="arch" type="xml">
+            <form string="Programme Run" create="false" delete="false">
+                <sheet>
+                    <div class="oe_title"><h1><field name="name" readonly="1"/></h1></div>
+                    <group>
+                        <group>
+                            <field name="sale_order_id"/>
+                            <field name="project_id"/>
+                            <field name="template_version_id"/>
+                            <field name="execution_mode" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="state" readonly="1"/>
+                            <field name="activated_on"/>
+                            <field name="activated_by_id"/>
+                            <field name="definition_hash" readonly="1"/>
+                        </group>
+                    </group>
+                    <button name="action_generate_execution" type="object" string="Generate Governed Execution"
+                            class="btn-primary" invisible="state != 'draft' or execution_mode == 'advisory_sessions'"/>
+                    <button name="action_close_run" type="object" string="Close Programme Run"
+                            class="btn-primary" invisible="state != 'generated'"/>
+                    <button name="action_sync_mould_execution" type="object" string="Sync Approved Moulds"
+                            invisible="state != 'generated' or execution_mode == 'advisory_sessions'"/>
+                    <notebook>
+                        <page string="Conditional Scope" invisible="execution_mode == 'advisory_sessions' or not scope_decision_ids">
+                            <field name="scope_decision_ids" readonly="state != 'draft'">
+                                <list create="false" delete="false" editable="bottom"
+                                      decoration-warning="decision == 'pending'"
+                                      decoration-success="decision == 'include'"
+                                      decoration-muted="decision == 'exclude'">
+                                    <field name="activity_code"/>
+                                    <field name="activity_name"/>
+                                    <field name="execution_basis"/>
+                                    <field name="decision"/>
+                                    <field name="reason"/>
+                                    <field name="decided_by_id"/>
+                                    <field name="decided_on"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Route Controls / Gates" invisible="execution_mode == 'advisory_sessions'">
+                            <field name="gate_ids">
+                                <list create="false" delete="false">
+                                    <field name="sequence"/>
+                                    <field name="stage_id"/>
+                                    <field name="mould_id"/>
+                                    <field name="required"/>
+                                    <field name="state" widget="badge"/>
+                                    <field name="approved_by_id"/>
+                                    <field name="approved_on"/>
+                                    <button name="action_refresh_readiness" type="object" string="Check"/>
+                                    <button name="action_approve_gate" type="object" string="Approve"
+                                            groups="new_hongyijig_custom.group_hjig_document_controller"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Generated Activities" invisible="execution_mode == 'advisory_sessions'">
+                            <field name="task_ids">
+                                <list create="false" delete="false">
+                                    <field name="sequence"/>
+                                    <field name="name"/>
+                                    <field name="hjig_governance_stage_id"/>
+                                    <field name="hjig_execution_basis"/>
+                                    <field name="hjig_mould_id"/>
+                                    <field name="hjig_part_id"/>
+                                    <field name="hjig_owner_designation_id"/>
+                                    <field name="hjig_approver_designation_id"/>
+                                    <field name="stage_id"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Required SOPs and Forms" invisible="execution_mode == 'advisory_sessions'">
+                            <field name="artifact_requirement_ids">
+                                <list create="false" delete="false">
+                                    <field name="stage_id"/>
+                                    <field name="artifact_master_id"/>
+                                    <field name="mandatory"/>
+                                    <field name="status"/>
+                                    <field name="project_document_id"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Gate Checklists" invisible="execution_mode == 'advisory_sessions'">
+                            <field name="checklist_instance_ids">
+                                <list create="false" delete="false" open_form_view="1"
+                                      decoration-success="status == 'pass'"
+                                      decoration-danger="status == 'fail'"
+                                      decoration-muted="status == 'na'">
+                                    <field name="run_gate_id"/>
+                                    <field name="mould_id"/>
+                                    <field name="code"/>
+                                    <field name="subhead"/>
+                                    <field name="item_text"/>
+                                    <field name="mandatory"/>
+                                    <field name="status" widget="badge"/>
+                                    <field name="evidence_document_id"/>
+                                    <field name="owner_designation_id"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="ToolLock Lite Sessions" invisible="execution_mode != 'advisory_sessions'">
+                            <field name="session_ids">
+                                <list create="false" delete="false" open_form_view="1"
+                                      decoration-success="state == 'accepted'">
+                                    <field name="sequence"/>
+                                    <field name="code"/>
+                                    <field name="name"/>
+                                    <field name="indicative_duration"/>
+                                    <field name="delivery_mode"/>
+                                    <field name="scheduled_on"/>
+                                    <field name="state" widget="badge"/>
+                                    <field name="framework_document_id"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="SourceBridge">
+                            <field name="sourcebridge_engagement_ids"/>
+                        </page>
+                        <page string="Frozen Snapshot">
+                            <field name="snapshot_json" widget="json" readonly="1"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hjig_programme_run_session_list" model="ir.ui.view">
+        <field name="name">hjig.programme.run.session.list</field>
+        <field name="model">hjig.programme.run.session</field>
+        <field name="arch" type="xml">
+            <list create="false" delete="false" decoration-success="state == 'accepted'">
+                <field name="project_id"/>
+                <field name="sequence"/>
+                <field name="code"/>
+                <field name="name"/>
+                <field name="delivery_mode"/>
+                <field name="scheduled_on"/>
+                <field name="state" widget="badge"/>
+                <field name="owner_designation_id"/>
+                <field name="approver_designation_id"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_programme_run_session_form" model="ir.ui.view">
+        <field name="name">hjig.programme.run.session.form</field>
+        <field name="model">hjig.programme.run.session</field>
+        <field name="arch" type="xml">
+            <form string="ToolLock Lite Advisory Session" create="false" delete="false">
+                <header>
+                    <button name="action_mark_delivered" type="object" string="Record Delivery"
+                            class="btn-primary" invisible="state != 'planned'"/>
+                    <button name="action_accept" type="object" string="Accept Session"
+                            class="btn-primary" invisible="state != 'delivered'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="planned,delivered,accepted"/>
+                </header>
+                <sheet>
+                    <div class="oe_title"><h1><field name="code" readonly="1"/> — <field name="name" readonly="1"/></h1></div>
+                    <group>
+                        <group>
+                            <field name="run_id"/>
+                            <field name="project_id"/>
+                            <field name="indicative_duration"/>
+                            <field name="delivery_mode" readonly="state != 'planned'"/>
+                            <field name="scheduled_on" readonly="state != 'planned'"/>
+                        </group>
+                        <group>
+                            <field name="owner_designation_id"/>
+                            <field name="approver_designation_id"/>
+                            <field name="framework_artifact_id"/>
+                            <field name="stage_id"/>
+                            <field name="framework_document_id" readonly="state != 'planned'"
+                                   domain="[('project_id', '=', project_id), ('stage_id', '=', stage_id), ('artifact_master_id', '=', framework_artifact_id), ('status', '=', 'approved')]"/>
+                        </group>
+                    </group>
+                    <group string="Delivery Record">
+                        <field name="delivery_note" readonly="state != 'planned'"/>
+                        <field name="delivered_by_id"/>
+                        <field name="delivered_on"/>
+                    </group>
+                    <group string="Acceptance">
+                        <field name="acceptance_note" readonly="state != 'delivered'"/>
+                        <field name="accepted_by_id"/>
+                        <field name="accepted_on"/>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hjig_checklist_instance_list" model="ir.ui.view">
+        <field name="name">hjig.programme.checklist.instance.list</field>
+        <field name="model">hjig.programme.checklist.instance</field>
+        <field name="arch" type="xml">
+            <list create="false" delete="false" decoration-success="status == 'pass'"
+                  decoration-danger="status == 'fail'" decoration-muted="status == 'na'">
+                <field name="project_id"/>
+                <field name="run_gate_id"/>
+                <field name="mould_id"/>
+                <field name="code"/>
+                <field name="subhead"/>
+                <field name="item_text"/>
+                <field name="mandatory"/>
+                <field name="status" widget="badge"/>
+                <field name="owner_designation_id"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_checklist_instance_form" model="ir.ui.view">
+        <field name="name">hjig.programme.checklist.instance.form</field>
+        <field name="model">hjig.programme.checklist.instance</field>
+        <field name="arch" type="xml">
+            <form string="Gate Checklist Item" create="false" delete="false">
+                <header>
+                    <button name="action_mark_pass" type="object" string="Record Pass" class="btn-primary"/>
+                    <button name="action_mark_fail" type="object" string="Record Fail"/>
+                    <button name="action_mark_na" type="object" string="Approve N/A" invisible="not conditional"/>
+                    <field name="status" widget="statusbar" statusbar_visible="pending,pass,fail,na"/>
+                </header>
+                <sheet>
+                    <div class="oe_title"><h1><field name="code" readonly="1"/></h1></div>
+                    <group>
+                        <group>
+                            <field name="project_id"/>
+                            <field name="run_gate_id"/>
+                            <field name="mould_id"/>
+                            <field name="subhead"/>
+                            <field name="mandatory"/>
+                            <field name="conditional"/>
+                        </group>
+                        <group>
+                            <field name="owner_designation_id"/>
+                            <field name="approver_designation_id"/>
+                            <field name="evidence_required"/>
+                            <field name="sign_required"/>
+                            <field name="ticked_by_id"/>
+                            <field name="ticked_on"/>
+                        </group>
+                    </group>
+                    <group string="Checklist Requirement"><field name="item_text" nolabel="1"/></group>
+                    <group string="Controlled Result">
+                        <field name="evidence_document_id"
+                               domain="[('project_id', '=', project_id), ('mould_id', '=', mould_id), ('status', '=', 'approved')]"/>
+                        <field name="remarks"/>
+                        <field name="automatic_disposition"/>
+                        <field name="disposition_approved_by_id"/>
+                        <field name="disposition_approved_on"/>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_hjig_checklist_instances" model="ir.actions.act_window">
+        <field name="name">Gate Checklist Instances</field>
+        <field name="res_model">hjig.programme.checklist.instance</field>
+        <field name="view_mode">list,form</field>
+    </record>
+    <record id="action_hjig_programme_run_sessions" model="ir.actions.act_window">
+        <field name="name">ToolLock Lite Sessions</field>
+        <field name="res_model">hjig.programme.run.session</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="action_hjig_programme_templates" model="ir.actions.act_window">
+        <field name="name">Programme Templates</field>
+        <field name="res_model">hjig.programme.template</field>
+        <field name="view_mode">list,form</field>
+    </record>
+    <record id="action_hjig_programme_versions" model="ir.actions.act_window">
+        <field name="name">Programme Versions</field>
+        <field name="res_model">hjig.programme.template.version</field>
+        <field name="view_mode">list,form</field>
+    </record>
+    <record id="action_hjig_programme_runs" model="ir.actions.act_window">
+        <field name="name">Programme Runs</field>
+        <field name="res_model">hjig.programme.run</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem id="menu_hjig_programme_governance" name="Programme Governance"
+              parent="project.menu_main_pm" sequence="84" groups="project.group_project_user"/>
+    <menuitem id="menu_hjig_programme_templates" name="Programme Templates"
+              parent="menu_hjig_programme_governance" action="action_hjig_programme_templates" sequence="10"/>
+    <menuitem id="menu_hjig_programme_versions" name="Programme Versions"
+              parent="menu_hjig_programme_governance" action="action_hjig_programme_versions" sequence="20"/>
+    <menuitem id="menu_hjig_programme_runs" name="Programme Runs"
+              parent="menu_hjig_programme_governance" action="action_hjig_programme_runs" sequence="30"/>
+    <menuitem id="menu_hjig_checklist_instances" name="Gate Checklists"
+              parent="menu_hjig_programme_governance" action="action_hjig_checklist_instances" sequence="35"/>
+    <menuitem id="menu_hjig_programme_run_sessions" name="ToolLock Lite Sessions"
+              parent="menu_hjig_programme_governance" action="action_hjig_programme_run_sessions" sequence="36"/>
+
+    <record id="view_sale_order_form_hjig_programme" model="ir.ui.view">
+        <field name="name">sale.order.form.hjig.programme</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet/notebook" position="inside">
+                <page string="Programme Activation" name="hjig_programme_activation">
+                    <group>
+                        <group>
+                            <field name="hjig_programme_version_id" readonly="hjig_programme_run_id"/>
+                            <field name="hjig_project_code" placeholder="HJ-LGC-2026-0001"
+                                   readonly="hjig_programme_run_id"/>
+                            <field name="hjig_order_punch_pdf_url" widget="url"
+                                   readonly="hjig_programme_run_id"/>
+                            <field name="hjig_commercial_pdf_url" widget="url"
+                                   readonly="hjig_programme_run_id"/>
+                        </group>
+                        <group>
+                            <field name="hjig_project_id"/>
+                            <field name="hjig_programme_run_id"/>
+                        </group>
+                    </group>
+                    <button name="action_activate_hjig_programme" type="object"
+                            string="Activate Governed Programme" class="btn-primary"
+                            invisible="hjig_programme_run_id"/>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_project_form_hjig_programme" model="ir.ui.view">
+        <field name="name">project.project.form.hjig.programme</field>
+        <field name="model">project.project</field>
+        <field name="inherit_id" ref="project.edit_project"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet/notebook" position="inside">
+                <page string="Programme Run" name="hjig_programme_run">
+                    <field name="hjig_programme_run_count" invisible="1"/>
+                    <field name="hjig_programme_run_ids">
+                        <list create="false" delete="false">
+                            <field name="name"/>
+                            <field name="sale_order_id"/>
+                            <field name="template_version_id"/>
+                            <field name="state"/>
+                            <field name="activated_on"/>
+                            <field name="definition_hash"/>
+                        </list>
+                    </field>
+                    <separator string="Optional SourceBridge Engagements"/>
+                    <field name="sourcebridge_engagement_ids"/>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_project_task_form_hjig_programme" model="ir.ui.view">
+        <field name="name">project.task.form.hjig.programme</field>
+        <field name="model">project.task</field>
+        <field name="inherit_id" ref="project.view_task_form2"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet/notebook" position="inside">
+                <page string="Programme Governance" name="hjig_task_programme_governance">
+                    <group>
+                        <group>
+                            <field name="hjig_programme_run_id" readonly="1"/>
+                            <field name="hjig_template_activity_id" readonly="1"/>
+                            <field name="hjig_governance_stage_id"/>
+                        </group>
+                        <group>
+                            <field name="hjig_owner_designation_id"/>
+                            <field name="hjig_approver_designation_id"/>
+                        </group>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_hjig_sourcebridge_engagement_list" model="ir.ui.view">
+        <field name="name">hjig.sourcebridge.engagement.list</field>
+        <field name="model">hjig.sourcebridge.engagement</field>
+        <field name="arch" type="xml">
+            <list><field name="code"/><field name="name"/><field name="project_id"/>
+                <field name="programme_run_id"/><field name="state" widget="badge"/></list>
+        </field>
+    </record>
+    <record id="view_hjig_sourcebridge_engagement_form" model="ir.ui.view">
+        <field name="name">hjig.sourcebridge.engagement.form</field>
+        <field name="model">hjig.sourcebridge.engagement</field>
+        <field name="arch" type="xml">
+            <form string="SourceBridge Engagement">
+                <header>
+                    <button name="action_activate" type="object" string="Activate" class="btn-primary"
+                            invisible="state != 'draft'"/>
+                    <button name="action_close" type="object" string="Close" class="btn-primary"
+                            invisible="state != 'active'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,active,closed"/>
+                </header>
+                <sheet>
+                    <div class="oe_title"><h1><field name="name"/></h1></div>
+                    <group><group><field name="code"/><field name="project_id"/><field name="programme_run_id"/>
+                        <field name="sale_order_id"/></group><group><field name="owner_designation_id"/>
+                        <field name="approver_designation_id"/><field name="active"/></group></group>
+                    <notebook><page string="Sourcing Components"><field name="component_ids">
+                        <list editable="bottom"><field name="sequence"/><field name="code"/><field name="name"/>
+                            <field name="category"/><field name="quantity"/><field name="status" widget="badge"/>
+                            <button name="action_accept" type="object" string="Accept"/></list>
+                    </field></page></notebook>
+                </sheet><chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hjig_portfolio_guard_list" model="ir.ui.view">
+        <field name="name">hjig.portfolio.guard.list</field>
+        <field name="model">hjig.portfolio.guard</field>
+        <field name="arch" type="xml">
+            <list><field name="name"/><field name="partner_id"/><field name="sale_order_id"/>
+                <field name="state" widget="badge"/></list>
+        </field>
+    </record>
+    <record id="view_hjig_portfolio_guard_form" model="ir.ui.view">
+        <field name="name">hjig.portfolio.guard.form</field>
+        <field name="model">hjig.portfolio.guard</field>
+        <field name="arch" type="xml">
+            <form string="PortfolioGuard Retainership">
+                <header>
+                    <button name="action_activate" type="object" string="Activate" class="btn-primary"
+                            invisible="state != 'draft'"/>
+                    <button name="action_close" type="object" string="Close" class="btn-primary"
+                            invisible="state != 'active'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,active,closed"/>
+                </header>
+                <sheet><div class="oe_title"><h1><field name="name"/></h1></div>
+                    <group><group><field name="partner_id"/><field name="sale_order_id"/></group>
+                        <group><field name="owner_designation_id"/><field name="approver_designation_id"/>
+                            <field name="active"/></group></group>
+                    <notebook><page string="Governed Projects"><field name="programme_run_ids">
+                        <list><field name="name"/><field name="project_id"/><field name="template_version_id"/>
+                            <field name="state" widget="badge"/></list>
+                    </field></page></notebook>
+                </sheet><chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_hjig_sourcebridge_engagements" model="ir.actions.act_window">
+        <field name="name">SourceBridge Engagements</field>
+        <field name="res_model">hjig.sourcebridge.engagement</field>
+        <field name="view_mode">list,form</field>
+    </record>
+    <record id="action_hjig_portfolio_guards" model="ir.actions.act_window">
+        <field name="name">PortfolioGuard Retainerships</field>
+        <field name="res_model">hjig.portfolio.guard</field>
+        <field name="view_mode">list,form</field>
+    </record>
+    <menuitem id="menu_hjig_sourcebridge_engagements" name="SourceBridge"
+              parent="menu_hjig_programme_governance" action="action_hjig_sourcebridge_engagements" sequence="40"/>
+    <menuitem id="menu_hjig_portfolio_guards" name="PortfolioGuard"
+              parent="menu_hjig_programme_governance" action="action_hjig_portfolio_guards" sequence="50"/>
+</odoo>

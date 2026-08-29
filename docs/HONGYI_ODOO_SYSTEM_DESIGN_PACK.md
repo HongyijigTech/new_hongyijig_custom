@@ -2,7 +2,7 @@
 
 **Classification:** Hongyi Internal — Confidential  
 **Business context:** ₹100 CR Revenue Plan  
-**Release state:** Staging release candidate; production remains on HOLD until clone tests and UAT pass  
+**Release state:** Clone-validated staging release candidate; production remains on HOLD until staging UAT passes
 **Module:** `new_hongyijig_custom`  
 **Odoo target:** 19.0  
 
@@ -30,7 +30,7 @@ The operating pattern is:
 | Project identity | Reuse `project.project` as the cockpit and project security boundary. |
 | Project planning | Reuse native Odoo Project tasks and milestones; approve baselines through `hjig.baseline`. |
 | SOR | Use a structured SOR plus the original customer document. Support customer-SOR and Hongyi-guided routes. |
-| Existing engineering records | Discover and link compatible installed models at runtime. Do not create replacement Mould Planning, Part, BOP, Risk, Design Challenge or ECN registers. |
+| Existing engineering records | Preserve the installed native forms inside `new_hongyijig_custom`, then discover and link compatible carriers at runtime. Do not create replacement Mould Planning, Part, BOP, Risk, Design Challenge or ECN registers. |
 | Stage forms | Use operational records as facts and checklist/gate records as verification. A governance form is a view or evidence package, not a second data-entry system. |
 | Customer/supplier ledgers | Link to native Odoo sales, purchase and accounting documents. Do not maintain duplicate financial ledgers. |
 | ECN | Treat as an exception after freeze. Link engineering impact to customer commercial approval and supplier commercial cost. |
@@ -83,6 +83,8 @@ If a compatible carrier is absent from staging, the item is a deployment prerequ
 
 Read-only staging registry discovery on 29 August 2026 confirmed `x_mould`, `x_mould_part`, `hjig.final.mould.plan`, `hjig.mould.register`, `hjig.project.risk`, `s.series.risk`, `hjig.project.issue`, `hjig.project.ecn` and `hjig.sourcebridge.component`. Runtime field inspection confirmed that `hjig.mould.register` and `s.series.risk` do not have a deterministic Project relationship and therefore must not be offered as governed targets; their Project-linked alternatives remain authoritative. `hjig.sourcebridge.component` is Project-resolvable through its engagement. No native BOP model was present, so the controlled-document-and-baseline route above is the required staging implementation.
 
+Clone validation also confirmed that the authoritative Mould Planning, inspection, programme, Risk, Design Challenge, ECN and SourceBridge models are supplied by the currently installed `new_hongyijig_custom` module itself. The deployment package therefore uses a **preservation merge**: the staging 1.28 operational forms, security, data and migrations remain in the module, and the new governed foundation is added to them. A replacement-only package is prohibited because it would remove the Python registry definitions behind existing records and views.
+
 ## 6. SOR operating flow
 
 ### Route A — customer has its own SOR
@@ -121,7 +123,7 @@ AI/readiness calculations may identify missing evidence, but only the designated
 
 ## 8. Forms and SOP delivery rule
 
-The governed catalogue contains 13 SOP masters and 42 form/record masters. The workbook reference is the field/template source; the Odoo carrier determines how the employee uses it.
+The core operating catalogue contains 13 SOP masters and 42 form/record masters. The preservation merge retains the programme-specific and ToolLock assets already installed on staging, producing 15 SOP and 56 form/record masters in the validated clone. The workbook reference is the field/template source; the Odoo carrier determines how the employee uses it.
 
 Three delivery types apply:
 
@@ -209,7 +211,7 @@ Production must remain untouched. The required path is:
 3. Back up staging database, filestore, configuration and active module.
 4. Restore a disposable clone database.
 5. Disable clone cron, outgoing mail and fetchmail.
-6. Install/upgrade only this module on the clone and execute the tagged post-install tests.
+6. Install/upgrade the preservation-merged module on the clone and execute both the retained operational-form tests and the new governed-foundation tests.
 7. Run browser UAT by role and programme.
 8. Upgrade the real staging database only after clone GO and an agreed maintenance window.
 9. Never stop or alter `odoo-production.service`.
@@ -233,4 +235,4 @@ UAT is not complete until evidence proves:
 
 ## 17. Honest release boundary
 
-This package is a source-level staging release candidate. Static Python/XML/CSV validation and source audit are complete. Runtime completion requires the disposable-clone Odoo test run, authoritative-model discovery against the staging registry, and browser UAT. Those items must not be represented as complete before their evidence exists.
+This package is a clone-validated staging release candidate. Static Python/XML/CSV validation, source audit, authoritative-model discovery and the disposable-clone Odoo upgrade are complete. The clone ran 126 post-install test methods with zero failures and zero errors, retained every required authoritative carrier, and loaded 11 readiness templates with 57 checklist items. Browser UAT and the controlled real-staging upgrade remain pending; production must stay on HOLD.

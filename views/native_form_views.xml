@@ -1,0 +1,532 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_hjig_native_form_template_list" model="ir.ui.view">
+        <field name="name">hjig.native.form.template.list</field>
+        <field name="model">hjig.native.form.template</field>
+        <field name="arch" type="xml">
+            <list string="Native Form Templates" default_order="sequence, code">
+                <field name="sequence" widget="handle"/>
+                <field name="code"/>
+                <field name="name"/>
+                <field name="form_kind"/>
+                <field name="artifact_master_id"/>
+                <field name="stage_id"/>
+                <field name="revision"/>
+                <field name="active" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_native_form_template_form" model="ir.ui.view">
+        <field name="name">hjig.native.form.template.form</field>
+        <field name="model">hjig.native.form.template</field>
+        <field name="arch" type="xml">
+            <form string="Native Form Template">
+                <sheet>
+                    <div class="oe_title"><h1><field name="name"/></h1></div>
+                    <group>
+                        <group string="Template Identity">
+                            <field name="code"/>
+                            <field name="form_kind"/>
+                            <field name="revision"/>
+                            <field name="sequence"/>
+                            <field name="active"/>
+                        </group>
+                        <group string="Governance Mapping">
+                            <field name="artifact_master_id"/>
+                            <field name="stage_id"/>
+                            <field name="source_tab_name"/>
+                        </group>
+                    </group>
+                    <group string="Purpose"><field name="description" nolabel="1"/></group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_hjig_native_form_template" model="ir.actions.act_window">
+        <field name="name">Native Form Templates</field>
+        <field name="res_model">hjig.native.form.template</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="view_hjig_inspection_checkpoint_master_list" model="ir.ui.view">
+        <field name="name">hjig.inspection.checkpoint.master.list</field>
+        <field name="model">hjig.inspection.checkpoint.master</field>
+        <field name="arch" type="xml">
+            <list string="Controlled Inspection Checkpoints" default_order="form_kind, sequence">
+                <field name="form_kind"/>
+                <field name="sequence"/>
+                <field name="phase" optional="show"/>
+                <field name="category"/>
+                <field name="checkpoint_text"/>
+                <field name="default_not_required" optional="hide"/>
+                <field name="source_specification" optional="show"/>
+                <field name="source_url" widget="url" optional="hide"/>
+                <field name="active" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_inspection_checkpoint_master_form" model="ir.ui.view">
+        <field name="name">hjig.inspection.checkpoint.master.form</field>
+        <field name="model">hjig.inspection.checkpoint.master</field>
+        <field name="arch" type="xml">
+            <form string="Controlled Inspection Checkpoint">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="form_kind"/>
+                            <field name="sequence"/>
+                            <field name="phase" invisible="form_kind != 'assembly'"/>
+                            <field name="category"/>
+                        </group>
+                        <group>
+                            <field name="source_specification"/>
+                            <field name="source_url" widget="url"/>
+                            <field name="default_not_required"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <group string="Approved Checkpoint Text"><field name="checkpoint_text" nolabel="1"/></group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_hjig_inspection_checkpoint_master" model="ir.actions.act_window">
+        <field name="name">Inspection Checkpoint Master</field>
+        <field name="res_model">hjig.inspection.checkpoint.master</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="view_x_mould_part_list" model="ir.ui.view">
+        <field name="name">x.mould.part.native.list</field>
+        <field name="model">x_mould_part</field>
+        <field name="arch" type="xml">
+            <list string="Component / Part Planning" editable="bottom">
+                <field name="x_sequence" widget="handle"/>
+                <field name="x_part_number"/>
+                <field name="x_name"/>
+                <field name="x_part_category"/>
+                <field name="x_material_master_id"/>
+                <field name="x_part_material" optional="hide"/>
+                <field name="x_part_weight_grams"/>
+                <field name="x_qps"/>
+                <field name="x_cavity_plan" optional="show"/>
+                <field name="x_visual_inspection_applicability" optional="show"/>
+                <field name="x_dimensional_inspection_applicability" optional="show"/>
+                <field name="x_assumption_status"/>
+                <field name="x_completion_percent" widget="progressbar"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_x_mould_part_form" model="ir.ui.view">
+        <field name="name">x.mould.part.native.form</field>
+        <field name="model">x_mould_part</field>
+        <field name="arch" type="xml">
+            <form string="Mould Planning Component / Part">
+                <sheet>
+                    <div class="oe_title"><h1><field name="x_name" placeholder="Part Name"/></h1></div>
+                    <group>
+                        <group string="Part Identity">
+                            <field name="x_mould_id"/>
+                            <field name="x_project_id" readonly="1"/>
+                            <field name="x_part_number"/>
+                            <field name="x_part_category"/>
+                            <field name="x_part_picture" widget="image" class="oe_avatar"/>
+                            <field name="x_source_version"/>
+                        </group>
+                        <group string="Planning Control">
+                            <field name="x_sequence"/>
+                            <field name="x_assumption_status"/>
+                            <field name="x_completion_percent" widget="progressbar" readonly="1"/>
+                            <field name="x_missing_fields" readonly="1"/>
+                            <field name="x_active"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Material &amp; Finish">
+                            <group>
+                                <group>
+                                    <field name="x_surface_finish_type"/>
+                                    <field name="x_surface_finish_id" options="{'no_create': True, 'no_create_edit': True}"/>
+                                    <field name="x_surface_grade_code" readonly="1"/>
+                                    <field name="x_surface_details"/>
+                                </group>
+                                <group>
+                                    <field name="x_material_master_id" options="{'no_create': True, 'no_create_edit': True}"/>
+                                    <field name="x_part_material" readonly="1"/>
+                                    <field name="x_material_reference"/>
+                                    <field name="x_standard_shrinkage"/>
+                                    <field name="x_customer_shrinkage"/>
+                                    <field name="x_part_weight_grams"/>
+                                    <field name="x_qps"/>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="Mould Configuration">
+                            <group>
+                                <group>
+                                    <field name="x_cavity_plan"/>
+                                    <field name="x_mould_configuration" invisible="1"/>
+                                    <field name="x_cavitation" invisible="1"/>
+                                    <field name="x_mould_base_steel_id" options="{'no_create': True, 'no_create_edit': True}"/>
+                                    <field name="x_mould_base_steel_grade" readonly="1"/>
+                                </group>
+                                <group>
+                                    <field name="x_runner_type"/>
+                                    <field name="x_gate_type_id" options="{'no_create': True, 'no_create_edit': True}"/>
+                                    <field name="x_gate_type" readonly="1"/>
+                                    <field name="x_gate_specifications"/>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="Inspection Applicability">
+                            <group>
+                                <field name="x_visual_inspection_applicability"/>
+                                <field name="x_dimensional_inspection_applicability"/>
+                            </group>
+                        </page>
+                        <page string="Core &amp; Cavity Steel">
+                            <group>
+                                <group string="Core Steel">
+                                    <field name="x_core_steel_id" options="{'no_create': True, 'no_create_edit': True}"/>
+                                    <field name="x_core_steel_brand" readonly="1"/>
+                                    <field name="x_core_steel_grade" readonly="1"/>
+                                    <field name="x_core_steel_usage" readonly="1"/>
+                                </group>
+                                <group string="Cavity Steel">
+                                    <field name="x_cavity_steel_id" options="{'no_create': True, 'no_create_edit': True}"/>
+                                    <field name="x_cavity_steel_brand" readonly="1"/>
+                                    <field name="x_cavity_steel_grade" readonly="1"/>
+                                    <field name="x_cavity_steel_usage" readonly="1"/>
+                                </group>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_x_mould_native_list" model="ir.ui.view">
+        <field name="name">x.mould.native.list</field>
+        <field name="model">x_mould</field>
+        <field name="arch" type="xml">
+            <list string="Mould Planning Forms" default_order="x_project_id, x_mould_number">
+                <field name="x_mould_number"/>
+                <field name="x_name"/>
+                <field name="x_project_id"/>
+                <field name="x_plan_revision"/>
+                <field name="x_mould_configuration"/>
+                <field name="x_cavitation"/>
+                <field name="x_part_count"/>
+                <field name="x_completion_percent" widget="progressbar"/>
+                <field name="x_workflow_state" widget="badge"/>
+                <field name="x_owner_designation_id" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_x_mould_native_form" model="ir.ui.view">
+        <field name="name">x.mould.native.form</field>
+        <field name="model">x_mould</field>
+        <field name="arch" type="xml">
+            <form string="Mould Planning Form">
+                <header>
+                    <button name="action_submit_review" type="object" string="Submit for Review" class="btn-primary" invisible="x_workflow_state != 'draft'"/>
+                    <button name="action_approve" type="object" string="Approve &amp; Lock" class="btn-primary" invisible="x_workflow_state != 'review'"/>
+                    <field name="x_workflow_state" widget="statusbar" statusbar_visible="draft,review,approved,superseded"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box"/>
+                    <div class="oe_title"><h1><field name="x_name" placeholder="Mould Name / Description"/></h1></div>
+                    <group>
+                        <group string="Project and Form Identity">
+                            <field name="x_project_id"/>
+                            <field name="x_mould_number"/>
+                            <field name="x_mould_description"/>
+                            <field name="x_template_id"/>
+                            <field name="x_plan_revision"/>
+                            <field name="x_mould_configuration"/>
+                            <field name="x_cavitation" readonly="x_mould_configuration != 'multi'"/>
+                        </group>
+                        <group string="Governed Authority">
+                            <field name="x_owner_designation_id"/>
+                            <field name="x_approver_designation_id"/>
+                            <field name="x_submitted_by_id"/>
+                            <field name="x_approved_by_id"/>
+                            <field name="x_effective_date"/>
+                            <field name="x_mould_planning_status"/>
+                            <field name="x_active"/>
+                        </group>
+                    </group>
+                    <group string="Completeness">
+                        <field name="x_completion_percent" widget="progressbar" readonly="1"/>
+                        <field name="x_missing_fields" readonly="1"/>
+                    </group>
+                    <notebook>
+                        <page string="Component / Part Planning">
+                            <field name="x_part_ids" context="{'default_x_mould_id': id}" readonly="x_workflow_state != 'draft'"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_hjig_mould_plan" model="ir.actions.act_window">
+        <field name="name">Mould Planning Forms</field>
+        <field name="res_model">x_mould</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="view_hjig_assembly_list" model="ir.ui.view">
+        <field name="name">hjig.assembly.list</field>
+        <field name="model">hjig.assembly</field>
+        <field name="arch" type="xml">
+            <list string="Project Assemblies" default_order="project_id, code">
+                <field name="code"/>
+                <field name="name"/>
+                <field name="project_id"/>
+                <field name="part_ids" widget="many2many_tags"/>
+                <field name="inspection_applicability"/>
+                <field name="active" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_assembly_form" model="ir.ui.view">
+        <field name="name">hjig.assembly.form</field>
+        <field name="model">hjig.assembly</field>
+        <field name="arch" type="xml">
+            <form string="Project Assembly">
+                <sheet>
+                    <div class="oe_title"><h1><field name="name" placeholder="Assembly Name"/></h1></div>
+                    <group>
+                        <field name="code"/>
+                        <field name="project_id"/>
+                        <field name="inspection_applicability"/>
+                        <field name="active"/>
+                    </group>
+                    <group string="Parts Involved">
+                        <field name="part_ids" widget="many2many_tags" domain="[('x_project_id', '=', project_id)]"/>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_hjig_assembly" model="ir.actions.act_window">
+        <field name="name">Project Assemblies</field>
+        <field name="res_model">hjig.assembly</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="view_hjig_inspection_point_form" model="ir.ui.view">
+        <field name="name">hjig.inspection.point.form</field>
+        <field name="model">hjig.inspection.point</field>
+        <field name="arch" type="xml">
+            <form string="Inspection Point">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="point_number"/>
+                            <field name="sequence"/>
+                            <field name="checkpoint_master_id" invisible="1"/>
+                            <field name="category" readonly="1"/>
+                            <field name="phase" readonly="1" invisible="report_type != 'assembly'"/>
+                            <field name="not_required"/>
+                            <field name="description" readonly="checkpoint_master_id"/>
+                            <field name="involved_part_ids" widget="many2many_tags" domain="[('x_project_id', '=', project_id)]"/>
+                        </group>
+                        <group><field name="picture" widget="image"/></group>
+                    </group>
+                    <field name="project_id" invisible="1"/>
+                    <field name="report_type" invisible="1"/>
+                    <field name="trial_result_ids">
+                        <list editable="bottom" create="false" delete="false">
+                            <field name="trial_stage"/>
+                            <field name="plan_date"/>
+                            <field name="actual_date"/>
+                            <field name="status"/>
+                            <field name="remarks"/>
+                        </list>
+                    </field>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hjig_dimensional_line_form" model="ir.ui.view">
+        <field name="name">hjig.dimensional.line.form</field>
+        <field name="model">hjig.dimensional.line</field>
+        <field name="arch" type="xml">
+            <form string="Dimension and Measurements">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="dimension_number"/>
+                            <field name="critical_dimension"/>
+                            <field name="drawing_dimension_mm"/>
+                            <field name="tolerance_minus_mm"/>
+                            <field name="tolerance_plus_mm"/>
+                        </group>
+                        <group>
+                            <field name="min_dimension_mm" readonly="1"/>
+                            <field name="max_dimension_mm" readonly="1"/>
+                            <field name="method_master_id"/>
+                            <field name="method_used" optional="hide"/>
+                        </group>
+                    </group>
+                    <field name="measurement_ids">
+                        <list editable="bottom">
+                            <field name="trial_stage"/>
+                            <field name="cavity_number"/>
+                            <field name="measurement_taken"/>
+                            <field name="actual_dimension_mm"/>
+                            <field name="result" widget="badge" readonly="1"/>
+                            <field name="remarks"/>
+                        </list>
+                    </field>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hjig_inspection_report_list" model="ir.ui.view">
+        <field name="name">hjig.inspection.report.list</field>
+        <field name="model">hjig.inspection.report</field>
+        <field name="arch" type="xml">
+            <list string="Native Inspection Reports" default_order="project_id, report_number desc">
+                <field name="report_number"/>
+                <field name="project_id"/>
+                <field name="report_type"/>
+                <field name="mould_id"/>
+                <field name="part_id"/>
+                <field name="assembly_id" optional="show"/>
+                <field name="assembly_name" optional="show"/>
+                <field name="revision"/>
+                <field name="report_date"/>
+                <field name="workflow_state" widget="badge"/>
+                <field name="overall_status" widget="badge" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_inspection_report_form" model="ir.ui.view">
+        <field name="name">hjig.inspection.report.form</field>
+        <field name="model">hjig.inspection.report</field>
+        <field name="arch" type="xml">
+            <form string="Native Inspection Report">
+                <header>
+                    <button name="action_submit_review" type="object" string="Submit for Review" class="btn-primary" invisible="workflow_state != 'draft'"/>
+                    <button name="action_approve" type="object" string="Approve &amp; Lock" class="btn-primary" invisible="workflow_state != 'review'"/>
+                    <field name="workflow_state" widget="statusbar" statusbar_visible="draft,review,approved,superseded"/>
+                </header>
+                <sheet>
+                    <div class="oe_title"><h1><field name="report_number"/></h1></div>
+                    <group>
+                        <group string="Report Identity">
+                            <field name="project_id"/>
+                            <field name="project_code"/>
+                            <field name="template_id" domain="[('form_kind', '!=', 'mould_plan')]"/>
+                            <field name="report_type" readonly="1"/>
+                            <field name="revision"/>
+                            <field name="report_date"/>
+                            <field name="report_status"/>
+                            <field name="overall_status" widget="badge" readonly="1"/>
+                        </group>
+                        <group string="Subject and Authority">
+                            <field name="mould_id" domain="[('x_project_id', '=', project_id)]"/>
+                            <field name="part_id" domain="[('x_project_id', '=', project_id)]" invisible="report_type == 'assembly'"/>
+                            <field name="assembly_id" domain="[('project_id', '=', project_id)]" invisible="report_type != 'assembly'"/>
+                            <field name="assembly_name" readonly="1" invisible="report_type != 'assembly'"/>
+                            <field name="owner_designation_id"/>
+                            <field name="approver_designation_id"/>
+                            <field name="submitted_by_id"/>
+                            <field name="approved_by_id"/>
+                            <field name="effective_date"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Visual / Assembly Inspection Points" invisible="report_type == 'dimensional'">
+                            <field name="point_ids" context="{'default_report_id': id}" readonly="workflow_state != 'draft'">
+                                <list>
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="point_number"/>
+                                    <field name="category"/>
+                                    <field name="phase" optional="show"/>
+                                    <field name="not_required"/>
+                                    <field name="description"/>
+                                    <field name="involved_part_ids" widget="many2many_tags" optional="show"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Dimensional Inspection" invisible="report_type != 'dimensional'">
+                            <field name="dimension_line_ids" context="{'default_report_id': id}" readonly="workflow_state != 'draft'">
+                                <list>
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="dimension_number"/>
+                                    <field name="critical_dimension"/>
+                                    <field name="drawing_dimension_mm"/>
+                                    <field name="tolerance_minus_mm"/>
+                                    <field name="tolerance_plus_mm"/>
+                                    <field name="min_dimension_mm"/>
+                                    <field name="max_dimension_mm"/>
+                                    <field name="method_master_id" options="{'no_create': True, 'no_create_edit': True}"/>
+                                    <field name="method_used" readonly="1"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Notes"><field name="notes"/></page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_hjig_inspection_report" model="ir.actions.act_window">
+        <field name="name">Native Inspection Reports</field>
+        <field name="res_model">hjig.inspection.report</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem id="menu_hjig_native_project_forms" name="Native Project Forms"
+              parent="project.menu_main_pm" sequence="86" groups="project.group_project_user"/>
+    <menuitem id="menu_hjig_mould_plans" name="Mould Planning Forms"
+              parent="menu_hjig_native_project_forms" action="action_hjig_mould_plan" sequence="10"/>
+    <menuitem id="menu_hjig_assemblies" name="Project Assemblies"
+              parent="menu_hjig_native_project_forms" action="action_hjig_assembly" sequence="20"/>
+    <menuitem id="menu_hjig_inspection_reports" name="Inspection Reports"
+              parent="menu_hjig_native_project_forms" action="action_hjig_inspection_report" sequence="30"/>
+    <menuitem id="menu_hjig_native_form_templates" name="Form Templates"
+              parent="menu_hjig_native_project_forms" action="action_hjig_native_form_template" sequence="40"
+              groups="project.group_project_manager"/>
+    <menuitem id="menu_hjig_inspection_checkpoint_master" name="Inspection Checkpoint Master"
+              parent="menu_hjig_native_project_forms" action="action_hjig_inspection_checkpoint_master" sequence="50"
+              groups="project.group_project_manager"/>
+
+    <record id="view_project_form_hjig_native_forms" model="ir.ui.view">
+        <field name="name">project.project.form.hjig.native.forms</field>
+        <field name="model">project.project</field>
+        <field name="inherit_id" ref="project.edit_project"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_open_hjig_mould_plans" type="object" class="oe_stat_button" icon="fa-cubes">
+                    <field name="hjig_mould_plan_count" widget="statinfo" string="Mould Plans"/>
+                </button>
+                <button name="action_open_hjig_inspection_reports" type="object" class="oe_stat_button" icon="fa-check-square-o">
+                    <field name="hjig_inspection_report_count" widget="statinfo" string="Inspection Reports"/>
+                </button>
+            </xpath>
+        </field>
+    </record>
+</odoo>

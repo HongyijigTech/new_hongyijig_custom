@@ -30,9 +30,9 @@ class HjigGovernanceDesignation(models.Model):
         "hjig_designation_user_rel",
         "designation_id",
         "user_id",
-        string="Current Role Holders",
+        string="Template-Level Holders",
         tracking=True,
-        help="Users currently authorised to act for this designation. Approval authority follows the designation, not a hard-coded person.",
+        help="Default authority for programme-template governance. Customer-project execution uses Project Designation Assignments instead.",
     )
     description = fields.Text()
     active = fields.Boolean(default=True, tracking=True)
@@ -54,20 +54,50 @@ class HjigGovernanceDesignation(models.Model):
             vals["code"] = vals["code"].strip().upper()
         return super().write(vals)
 
+    def _holders_for_project(self, project):
+        """Resolve authority inside one project; never leak global holders across projects."""
+        self.ensure_one()
+        if not project:
+            return self.holder_ids
+        assignment = self.env["hjig.project.designation.assignment"].search([
+            ("project_id", "=", project.id),
+            ("designation_id", "=", self.id),
+            ("active", "=", True),
+        ], limit=1)
+        if not assignment:
+            return self.env["res.users"]
+        today = fields.Date.context_today(self)
+        if assignment.effective_from and assignment.effective_from > today:
+            return self.env["res.users"]
+        if assignment.effective_to and assignment.effective_to < today:
+            return self.env["res.users"]
+        return assignment.holder_ids
+
+    def _user_holds_for_project(self, user, project):
+        self.ensure_one()
+        return user in self._holders_for_project(project)
+
 
 class HjigLaunchguardStage(models.Model):
     _name = "hjig.launchguard.stage"
-    _description = "LaunchGuard Governance Stage"
+    _description = "Programme Governance Stage"
     _inherit = ["mail.thread", "mail.activity.mixin"]
     _order = "sequence, code"
 
     code = fields.Char(required=True, index=True, tracking=True)
+    legacy_code = fields.Char(
+        index=True,
+        tracking=True,
+        help="Legacy Studio/native-stage code retained for governed migration traceability.",
+    )
     name = fields.Char(required=True, tracking=True)
     sequence = fields.Integer(required=True, default=10, index=True)
     stage_type = fields.Selection(
         [
             ("activation", "Project Activation"),
             ("technical_gate", "Technical Gate"),
+            ("milestone", "Route Milestone / Direct Entry Control"),
+            ("advisory_session", "Advisory Session"),
             ("closure", "Project Closure"),
         ],
         required=True,
@@ -92,7 +122,7 @@ class HjigLaunchguardStage(models.Model):
     def write(self, vals):
         if vals.get("code"):
             vals["code"] = vals["code"].strip().upper()
-        governed_fields = {"code", "name", "sequence", "stage_type"}
+        governed_fields = {"code", "legacy_code", "name", "sequence", "stage_type"}
         if governed_fields.intersection(vals) and self.env["hjig.project.document"].search_count([
             ("stage_id", "in", self.ids),
         ]):

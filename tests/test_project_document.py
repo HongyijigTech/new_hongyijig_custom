@@ -25,7 +25,7 @@ class TestProjectDocumentGovernance(TransactionCase):
         cls.project = cls.env["project.project"].create({
             "name": "LaunchGuard Controlled Project",
             "hjig_project_record_type": "customer",
-            "x_project_code": "hj-lgc-2026-0001",
+            "x_project_code": "hj-tst-2099-9001",
         })
         cls.owner_designation = cls.env["hjig.governance.designation"].create({
             "code": "TEST-OWNER",
@@ -39,6 +39,15 @@ class TestProjectDocumentGovernance(TransactionCase):
             "category": "governance",
             "holder_ids": [(6, 0, [cls.approver.id])],
         })
+        cls.env["hjig.project.designation.assignment"].create([{
+            "project_id": cls.project.id,
+            "designation_id": cls.owner_designation.id,
+            "holder_ids": [(6, 0, [cls.owner.id])],
+        }, {
+            "project_id": cls.project.id,
+            "designation_id": cls.approver_designation.id,
+            "holder_ids": [(6, 0, [cls.approver.id])],
+        }])
         cls.stage = cls.env["hjig.launchguard.stage"].create({
             "code": "TEST-GATE",
             "name": "Test Gate",
@@ -75,12 +84,12 @@ class TestProjectDocumentGovernance(TransactionCase):
         return self.env["hjig.project.document"].create(values)
 
     def test_project_code_is_normalized_and_unique(self):
-        self.assertEqual(self.project.x_project_code, "HJ-LGC-2026-0001")
+        self.assertEqual(self.project.x_project_code, "HJ-TST-2099-9001")
         with self.assertRaises(UniqueViolation), self.env.cr.savepoint():
             self.env["project.project"].create({
                 "name": "Duplicate Code",
                 "hjig_project_record_type": "customer",
-                "x_project_code": "HJ-LGC-2026-0001",
+                "x_project_code": "HJ-TST-2099-9001",
             })
 
     def test_customer_project_requires_valid_code(self):
