@@ -14,7 +14,7 @@ Hongyijig Tech
     'depends': ['base', 'mail', 'crm', 'contacts', 'sale_crm', 'project'],
     'data': ['security/legacy_security.xml',
              'security/security.xml',
-             'security/legacy_ir.model.access.csv',
+             'security/legacy/ir.model.access.csv',
              'security/ir.model.access.csv',
              'data/project_document_sequence.xml',
              'data/native_form_sequence.xml',
