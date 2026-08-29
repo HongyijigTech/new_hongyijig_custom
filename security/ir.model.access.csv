@@ -8,6 +8,9 @@
 "access_hjig_project_designation_user","project designation assignment user","model_hjig_project_designation_assignment","project.group_project_user",1,0,0,0
 "access_hjig_project_designation_manager","project designation assignment manager","model_hjig_project_designation_assignment","project.group_project_manager",1,1,1,1
 "access_hjig_project_designation_controller","project designation assignment controller","model_hjig_project_designation_assignment","new_hongyijig_custom.group_hjig_document_controller",1,0,0,0
+"access_hjig_planned_team_resource_user","planned team resource user","model_hjig_planned_team_resource","project.group_project_user",1,0,0,0
+"access_hjig_planned_team_resource_manager","planned team resource manager","model_hjig_planned_team_resource","project.group_project_manager",1,1,1,1
+"access_hjig_planned_team_resource_controller","planned team resource controller","model_hjig_planned_team_resource","new_hongyijig_custom.group_hjig_document_controller",1,0,0,0
 "access_hjig_launchguard_stage_user","hjig.launchguard.stage user","model_hjig_launchguard_stage","project.group_project_user",1,0,0,0
 "access_hjig_launchguard_stage_manager","hjig.launchguard.stage manager","model_hjig_launchguard_stage","project.group_project_manager",1,1,1,1
 "access_hjig_launchguard_stage_controller","hjig.launchguard.stage controller","model_hjig_launchguard_stage","new_hongyijig_custom.group_hjig_document_controller",1,0,0,0

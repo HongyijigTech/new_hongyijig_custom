@@ -3,6 +3,39 @@ from odoo import _, api, fields, models
 from odoo.exceptions import ValidationError
 
 
+class HjigPlannedTeamResource(models.Model):
+    _name = "hjig.planned.team.resource"
+    _description = "Planned Team Resource"
+    _inherit = ["mail.thread", "mail.activity.mixin"]
+    _order = "resource_type, name"
+
+    name = fields.Char(required=True, tracking=True)
+    email = fields.Char(tracking=True)
+    resource_type = fields.Selection(
+        [
+            ("internal", "Internal Team"),
+            ("customer", "Customer Representative"),
+            ("supplier", "Supplier Representative"),
+        ],
+        required=True,
+        default="internal",
+        tracking=True,
+    )
+    planned_capacity = fields.Integer(
+        string="Planned Concurrent Projects",
+        default=1,
+        help="Planning limit only. This does not create an Odoo login or grant workflow authority.",
+        tracking=True,
+    )
+    active = fields.Boolean(default=True, tracking=True)
+    notes = fields.Text()
+
+    @api.constrains("planned_capacity")
+    def _check_planned_capacity(self):
+        if self.filtered(lambda resource: resource.planned_capacity < 1):
+            raise ValidationError(_("Planned project capacity must be at least one."))
+
+
 class HjigProjectDesignationAssignment(models.Model):
     _name = "hjig.project.designation.assignment"
     _description = "Project Designation Assignment"
@@ -23,6 +56,20 @@ class HjigProjectDesignationAssignment(models.Model):
         string="Authorised Role Holders",
         tracking=True,
     )
+    planned_resource_ids = fields.Many2many(
+        "hjig.planned.team.resource",
+        "hjig_project_designation_planned_resource_rel",
+        "assignment_id",
+        "resource_id",
+        string="Planned Resources (No Login)",
+        tracking=True,
+        help="Staffing plan only. Planned resources cannot execute or approve Odoo workflows.",
+    )
+    staffing_status = fields.Selection(
+        [("missing", "Missing"), ("planned", "Planned - No Login"), ("ready", "Execution Ready")],
+        compute="_compute_staffing_status",
+        store=True,
+    )
     active = fields.Boolean(default=True, tracking=True)
     effective_from = fields.Date(default=fields.Date.context_today, tracking=True)
     effective_to = fields.Date(tracking=True)
@@ -33,11 +80,20 @@ class HjigProjectDesignationAssignment(models.Model):
         "A designation may have only one governed assignment record per project.",
     )
 
-    @api.constrains("active", "holder_ids", "effective_from", "effective_to")
+    @api.depends("holder_ids", "planned_resource_ids")
+    def _compute_staffing_status(self):
+        for assignment in self:
+            assignment.staffing_status = (
+                "ready" if assignment.holder_ids
+                else "planned" if assignment.planned_resource_ids
+                else "missing"
+            )
+
+    @api.constrains("active", "holder_ids", "planned_resource_ids", "effective_from", "effective_to")
     def _check_assignment_control(self):
         for assignment in self:
-            if assignment.active and not assignment.holder_ids:
-                raise ValidationError(_("An active project designation requires at least one role holder."))
+            if assignment.active and not (assignment.holder_ids or assignment.planned_resource_ids):
+                raise ValidationError(_("An active project designation requires an authorised holder or a planned resource."))
             if (
                 assignment.effective_from
                 and assignment.effective_to
@@ -46,7 +102,10 @@ class HjigProjectDesignationAssignment(models.Model):
                 raise ValidationError(_("The assignment end date cannot precede its start date."))
 
     def write(self, vals):
-        governed = {"project_id", "designation_id", "holder_ids", "active", "effective_from", "effective_to"}
+        governed = {
+            "project_id", "designation_id", "holder_ids", "planned_resource_ids",
+            "active", "effective_from", "effective_to",
+        }
         if governed.intersection(vals) and not self.env.user.has_group("project.group_project_manager"):
             raise ValidationError(_("Only a Project Administrator may change project designation authority."))
         return super().write(vals)
