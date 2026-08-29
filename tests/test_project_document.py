@@ -251,5 +251,15 @@ class TestProjectDocumentGovernance(TransactionCase):
             "approval_authority_designation_id": self.approver_designation.id,
         })
         self.assertEqual(bop_document.artifact_master_id.code, "FRM-004")
+        self.assertTrue(bop_document.is_bop_record)
+        with self.assertRaises(ValidationError):
+            bop_document._check_bop_approval_readiness()
+        bop_document.write({
+            "bop_frozen_count": 12,
+            "bop_customer_freeze_confirmed": True,
+            "bop_lock_date": "2026-08-29",
+        })
+        bop_document._check_bop_approval_readiness()
+        self.assertEqual(bop_document.bop_readiness, "frozen")
         self.assertEqual(bop_baseline.target_ref, bop_document)
         self.assertEqual(bop_baseline.baseline_type, "bop")

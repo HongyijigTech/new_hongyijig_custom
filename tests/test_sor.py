@@ -82,6 +82,42 @@ class TestHongyiSor(TransactionCase):
                 "requirement_text": "Material requirement", "declaration_state": False,
             })
 
+    def test_automotive_guided_template_loads_sectioned_phase_mapped_requirements(self):
+        sor = self._create_sor(revision="R10")
+        sor.action_load_approved_template()
+        self.assertEqual(sor.guided_template_code, "HONGYI-MASTER-AUTOMOTIVE-SOR")
+        self.assertTrue(sor.guided_template_url.startswith("https://docs.google.com/document/"))
+        self.assertGreaterEqual(len(sor.requirement_ids), 20)
+        scope = sor.requirement_ids.filtered(lambda row: row.requirement_id == "AUTO-02.02")
+        self.assertEqual(scope.section_code, "2")
+        self.assertEqual(set(scope.verification_ids.mapped("phase")), {"design", "prototype", "trial"})
+        self.assertEqual(scope.declaration_state, "pending")
+
+    def test_medical_template_requires_order_punch_and_loads_only_selected_domain(self):
+        sor = self._create_sor(
+            revision="R11", industry="medical", title="Medical SOR",
+            source_reference="SOR-MED-CE-HA-v2.1",
+        )
+        with self.assertRaises(ValidationError):
+            sor.action_load_approved_template()
+        sor.order_punch_confirmed = True
+        sor.action_load_approved_template()
+        domain = sor.requirement_ids.filtered(lambda row: row.requirement_id == "MCH-18.01")
+        self.assertIn("Medical Devices", domain.requirement_text)
+        self.assertNotIn("Home Appliances —", domain.requirement_text)
+        self.assertGreaterEqual(len(sor.requirement_ids), 30)
+
+    def test_option_c_requires_explicit_engineering_scope(self):
+        sor = self._create_sor(
+            revision="R12", industry="consumer_electronics", title="CE SOR",
+            source_reference="SOR-MED-CE-HA-v2.1", order_punch_confirmed=True,
+            engineering_responsibility="hjig_coordinated",
+        )
+        requirement = self._add_specified_requirement(sor)
+        requirement.requirement_id = "CE-1"
+        with self.assertRaises(ValidationError):
+            sor.action_submit_review()
+
     def test_specified_requirement_needs_phase_allocation(self):
         sor = self._create_sor()
         self.env["hjig.sor.requirement"].create({

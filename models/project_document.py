@@ -263,6 +263,16 @@ class HjigProjectDocument(models.Model):
         ondelete="restrict",
     )
     notes = fields.Text()
+    is_bop_record = fields.Boolean(compute="_compute_bop_summary", store=True, index=True)
+    bop_frozen_count = fields.Integer(string="Frozen BOP Items", tracking=True)
+    bop_envelope_count = fields.Integer(string="Envelope-only BOP Items", tracking=True)
+    bop_pending_count = fields.Integer(string="Pending BOP Items", tracking=True)
+    bop_readiness = fields.Selection(
+        [("pending", "Engineering HOLD"), ("envelope", "Envelope Only"), ("frozen", "Frozen")],
+        compute="_compute_bop_summary", store=True,
+    )
+    bop_customer_freeze_confirmed = fields.Boolean(string="Customer Freeze Confirmed", tracking=True)
+    bop_lock_date = fields.Date(string="BOP Lock Date", tracking=True)
 
     _register_id_unique = models.Constraint(
         "UNIQUE(register_id)",
@@ -280,7 +290,39 @@ class HjigProjectDocument(models.Model):
         "effective_date", "drive_url", "sor_reference", "gate_reference", "mould_id",
         "signature_status", "signature_reference", "signed_on",
         "ecn_reference", "supersedes_id", "superseded_by_id", "notes", "status",
+        "bop_frozen_count", "bop_envelope_count", "bop_pending_count",
+        "bop_customer_freeze_confirmed", "bop_lock_date",
     }
+
+    @api.depends("artifact_master_id", "artifact_master_id.code", "bop_frozen_count", "bop_envelope_count", "bop_pending_count")
+    def _compute_bop_summary(self):
+        for document in self:
+            document.is_bop_record = document.artifact_master_id.code == "FRM-004"
+            if not document.is_bop_record or document.bop_pending_count:
+                document.bop_readiness = "pending"
+            elif document.bop_envelope_count:
+                document.bop_readiness = "envelope"
+            elif document.bop_frozen_count:
+                document.bop_readiness = "frozen"
+            else:
+                document.bop_readiness = "pending"
+
+    @api.constrains("bop_frozen_count", "bop_envelope_count", "bop_pending_count")
+    def _check_bop_counts(self):
+        for document in self:
+            if min(document.bop_frozen_count, document.bop_envelope_count, document.bop_pending_count) < 0:
+                raise ValidationError(_("BOP readiness counts cannot be negative."))
+
+    def _check_bop_approval_readiness(self):
+        for document in self.filtered("is_bop_record"):
+            if document.bop_pending_count:
+                raise ValidationError(_("A BOP Lock Record with Pending items is an engineering HOLD and cannot be approved."))
+            if document.bop_envelope_count:
+                raise ValidationError(_("Envelope-only BOP items must be resolved to Frozen before BOP approval."))
+            if not document.bop_frozen_count:
+                raise ValidationError(_("At least one Frozen BOP item is required before BOP approval."))
+            if not document.bop_customer_freeze_confirmed or not document.bop_lock_date:
+                raise ValidationError(_("Customer freeze confirmation and BOP Lock Date are required before BOP approval."))
 
     @api.constrains("project_id", "mould_id")
     def _check_mould_scope(self):
@@ -447,6 +489,7 @@ class HjigProjectDocument(models.Model):
                 raise ValidationError(_("The same user cannot submit and approve a document."))
             if not document.effective_date:
                 raise ValidationError(_("Effective Date is required before approval."))
+            document._check_bop_approval_readiness()
             if document.supersedes_id:
                 if document.supersedes_id.status != "approved":
                     raise ValidationError(_("The superseded document must currently be Approved."))

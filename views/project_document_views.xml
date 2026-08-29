@@ -83,6 +83,15 @@
                         <field name="sor_reference" readonly="status in ['approved', 'superseded']"/>
                         <field name="gate_reference" readonly="status in ['approved', 'superseded']"/>
                     </group>
+                    <group string="BOP Readiness and Freeze" invisible="not is_bop_record">
+                        <field name="is_bop_record" invisible="1"/>
+                        <field name="bop_frozen_count" readonly="status in ['approved', 'superseded']"/>
+                        <field name="bop_envelope_count" readonly="status in ['approved', 'superseded']"/>
+                        <field name="bop_pending_count" readonly="status in ['approved', 'superseded']"/>
+                        <field name="bop_readiness" readonly="1"/>
+                        <field name="bop_customer_freeze_confirmed" readonly="status in ['approved', 'superseded']"/>
+                        <field name="bop_lock_date" readonly="status in ['approved', 'superseded']"/>
+                    </group>
                     <group string="Notes">
                         <field name="notes" nolabel="1" readonly="status in ['approved', 'superseded']"/>
                     </group>

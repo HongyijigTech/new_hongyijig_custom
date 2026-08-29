@@ -28,6 +28,86 @@ PHASE_SELECTION = [
 ]
 
 
+AUTOMOTIVE_TEMPLATE_URL = "https://docs.google.com/document/d/1Q55pzs7BGJckDrM_PoNsg89O8rGfNGikgAY9Xbbxz1w/edit"
+MED_CE_HA_TEMPLATE_URL = "https://docs.google.com/document/d/1e2CnHb2iRsk_PmiAmYYIDZXPBhph9j-jf-xCyhXMCwc/edit"
+
+
+def _prompt(code, section, title, text, category="technical", phases=("design",), options=False, priority="normal"):
+    return {
+        "code": code, "section": section, "title": title, "text": text,
+        "category": category, "phases": phases, "options": options or "",
+        "priority": priority,
+    }
+
+
+# Guided intake prompts only: each answer becomes one governed SOR requirement.
+# Downstream BOP, mould planning, risk, ECN and inspection forms remain separate.
+AUTOMOTIVE_GUIDED_PROMPTS = [
+    _prompt("AUTO-01.01", "1", "Programme Summary", "Project, vehicle model/variant, market and customer programme owner", "scope", ("concept",)),
+    _prompt("AUTO-01.02", "1", "Programme Summary", "A/B/C-class surfaces, master sections, adjacent CAD and styling freeze status", "documentation", ("concept", "design"), "Yes / No for each item", "critical"),
+    _prompt("AUTO-01.03", "1", "Programme Summary", "Programme milestones, target dates, owners and acceptance criteria", "scope", ("concept", "closure")),
+    _prompt("AUTO-02.01", "2", "Part Description & Scope", "Part list: name, category, new/modified, visibility class and quantity per vehicle", "scope", ("concept", "design"), priority="critical"),
+    _prompt("AUTO-02.02", "2", "Part Description & Scope", "Interfaces, adjacent parts, assembly sequence, known issues and assembly CAD", "technical", ("design", "prototype", "trial"), priority="critical"),
+    _prompt("AUTO-02.03", "2", "Part Description & Scope", "Assembly method and required reference visuals", "technical", ("design", "prototype", "trial"), "Clips / Screws / Ultrasonic welding / Snap-fit / Adhesive / Other"),
+    _prompt("AUTO-03.01", "3", "Material Specifications", "Material grade, supplier, colour, shrinkage and required TDS/SDS/restricted-substance evidence", "technical", ("design", "tooling", "trial"), priority="critical"),
+    _prompt("AUTO-03.02", "3", "Material Specifications", "UV, heat, chemical and impact performance requirements", "quality", ("design", "prototype", "final_sample")),
+    _prompt("AUTO-04.01", "4", "Engineering Requirements", "Wall thickness, draft angle, ISO tolerance and GD&T requirements", "technical", ("design", "tooling", "trial")),
+    _prompt("AUTO-04.02", "4", "Engineering Requirements", "Temperature, UV, vibration and sealing/IP exposure conditions", "technical", ("design", "prototype", "final_sample")),
+    _prompt("AUTO-05.01", "5", "Finish, Texture & Appearance", "Visibility class, texture supplier/depth/direction, paint, gloss and film thickness", "quality", ("design", "trial", "final_sample")),
+    _prompt("AUTO-05.02", "5", "Finish, Texture & Appearance", "Viewing distance, lighting and defect rejection criteria", "quality", ("trial", "final_sample"), priority="critical"),
+    _prompt("AUTO-06.01", "6", "DFM Requirements", "Required DFM deliverables and customer approval workflow", "documentation", ("design", "tooling"), priority="critical"),
+    _prompt("AUTO-07.01", "7", "Tooling Requirements", "Tool class, production volume, steel, hardness, inserts, runner, cooling, ejection and shrinkage", "technical", ("design", "tooling", "trial"), priority="critical"),
+    _prompt("AUTO-07.02", "7", "Tooling Requirements", "T0, T1 and T-Final trial locations, outputs and acceptance criteria", "quality", ("trial", "final_sample")),
+    _prompt("AUTO-08.01", "8", "Validation Requirements", "Appearance, dimensional/CMM, GD&T, fitment, gap/flush and assembly-force validation", "quality", ("trial", "final_sample"), priority="critical"),
+    _prompt("AUTO-08.02", "8", "Validation Requirements", "PPAP/ISIR level and required evidence", "documentation", ("final_sample", "shipment"), "PPAP Level 3 / Customer-specific / Not required"),
+    _prompt("AUTO-09.01", "9", "Quality & Governance", "Applicable APQP stages, governance meetings and approval workflow", "responsibility", ("concept", "design", "tooling", "trial", "closure")),
+    _prompt("AUTO-10.01", "10", "Risk Register Link", "Project-specific risks to be transferred to the existing Risk Register", "documentation", ("concept", "design", "tooling", "trial")),
+    _prompt("AUTO-11.01", "11", "Packaging & Logistics", "Packing, pallet, labelling and logistics requirements", "logistics", ("shipment",)),
+    _prompt("AUTO-12.01", "12", "Service & Governance Boundary", "Installation/corrective-action support scope and explicit no-product-warranty boundary", "commercial", ("concept", "installation", "closure"), priority="critical"),
+    _prompt("AUTO-13.01", "13", "Required Attachments", "CAD, drawings, adjacent CAD, material data, colour/texture plaques, benchmarks, packaging and DFMEA attachments", "documentation", ("concept", "design")),
+]
+
+
+MED_CE_HA_GUIDED_PROMPTS = [
+    _prompt("MCH-03.01", "3", "Benchmark Samples", "Benchmark samples for style/form, function, fitment, finish and other purposes", "documentation", ("concept", "design"), priority="critical"),
+    _prompt("MCH-03.02", "3", "Benchmark Samples", "Sample return/retention policy, retention period and written declaration if no benchmark exists", "responsibility", ("concept", "closure")),
+    _prompt("MCH-04.01", "4", "Part Scope & Product Description", "Tentative mould count and part-wise mould breakup; final lock occurs at TG-01", "scope", ("concept", "design"), priority="critical"),
+    _prompt("MCH-04.02", "4", "Part Scope & Product Description", "Part list: name, category, new/modified, visibility class and assembly function", "scope", ("concept", "design"), priority="critical"),
+    _prompt("MCH-05.01", "5", "Programme Milestones", "Target dates and customer/HJIG owners for the approved milestone chain", "scope", ("concept", "design", "prototype", "tooling", "trial", "final_sample")),
+    _prompt("MCH-06.01", "6", "Engineering Responsibility", "Engineering responsibility option and, for Option C, the agreed HJIG engineering coordination scope", "responsibility", ("concept", "design"), "Option A — Customer / Option B — Customer-appointed third party / Option C — HJIG-coordinated scope", "critical"),
+    _prompt("MCH-07.01", "7", "Style, Size & Weight Lock", "Overall product size, target weight/range and weight criticality", "technical", ("design", "prototype", "final_sample"), priority="critical"),
+    _prompt("MCH-07.02", "7", "Style, Size & Weight Lock", "Visual approval method, surface finish, colour plaque, gloss, paint thickness, branding and texture reference", "quality", ("design", "trial", "final_sample"), priority="critical"),
+    _prompt("MCH-08.01", "8", "BOP Readiness & Freeze", "Reference the existing BOP Lock Record and confirm every BOP has quantity, weight, datasheet, CAD and size status", "documentation", ("concept", "design"), priority="critical"),
+    _prompt("MCH-08.02", "8", "BOP Readiness & Freeze", "BOP status: Frozen, Envelope Only or Pending; Pending places engineering on HOLD", "technical", ("concept", "design", "prototype"), "Frozen / Envelope Only / Pending", "critical"),
+    _prompt("MCH-09.01", "9", "Assembly, Serviceability & Fitment", "Assembly method, sealing/IP, insert/over-moulding, adjacent parts and functional interfaces", "technical", ("design", "prototype", "trial"), priority="critical"),
+    _prompt("MCH-09.02", "9", "Assembly, Serviceability & Fitment", "End-user/technician serviceability, accessible components, opening method and service cycles", "technical", ("design", "prototype", "final_sample")),
+    _prompt("MCH-09.03", "9", "Assembly, Serviceability & Fitment", "Gate/runner/parting/ejector mark location and visibility acceptance", "quality", ("design", "tooling", "trial"), priority="critical"),
+    _prompt("MCH-09.04", "9", "Assembly, Serviceability & Fitment", "Step-by-step assembly sequence and involved BOP/parts", "technical", ("design", "prototype", "trial")),
+    _prompt("MCH-09.05", "9", "Assembly, Serviceability & Fitment", "Gap/flush, play, snap retention force and fitment criteria", "quality", ("prototype", "trial", "final_sample")),
+    _prompt("MCH-10.01", "10", "Material Specification", "Plastic material, alternate material, colour, shrinkage and HJIG recommendation requirement", "technical", ("design", "tooling", "trial"), priority="critical"),
+    _prompt("MCH-10.02", "10", "Material Specification", "UV, heat, chemical, flame, food-contact, RoHS and biodegradable requirements", "quality", ("design", "prototype", "final_sample")),
+    _prompt("MCH-11.01", "11", "Environmental Exposure", "Operating/storage temperature, humidity, UV, vibration, chemicals, altitude and pressure", "technical", ("design", "prototype", "final_sample")),
+    _prompt("MCH-11.02", "11", "Environmental Exposure", "Body contact, sterilisation and drop/impact exposure", "quality", ("design", "prototype", "final_sample")),
+    _prompt("MCH-12.01", "12", "Appearance Inspection", "Viewing distance, lighting, golden sample and defect acceptance criteria", "quality", ("trial", "final_sample"), priority="critical"),
+    _prompt("MCH-13.01", "13", "Dimensional & First Article", "Tolerance standard, GD&T, critical dimensions and non-critical variance", "quality", ("design", "trial", "final_sample"), priority="critical"),
+    _prompt("MCH-13.02", "13", "Dimensional & First Article", "FAI/ISIR and CMM scope, standard, approver and completion gate", "documentation", ("trial", "final_sample", "shipment")),
+    _prompt("MCH-14.01", "14", "DFM Requirements", "Required Moldflow, warpage, sink, gate, parting/slide, draft, cooling and ejection deliverables", "documentation", ("design", "tooling"), priority="critical"),
+    _prompt("MCH-15.01", "15", "Functional Testing", "Product function, T0/T1/T-Final test method, conditions and acceptance basis", "quality", ("prototype", "trial", "final_sample"), priority="critical"),
+    _prompt("MCH-15.02", "15", "Functional Testing", "Physical prototype and CAE requirement plus written prototype approval", "documentation", ("prototype", "tooling")),
+    _prompt("MCH-16.01", "16", "Moulding Machine Assumptions", "Machine ownership/outsourcing, tonnage, shot capacity, tie bars, clamp and ejection", "technical", ("design", "tooling"), priority="critical"),
+    _prompt("MCH-16.02", "16", "Moulding Machine Assumptions", "Automation, hot-runner controller, maximum injection pressure and cycle-time assumption", "technical", ("design", "tooling", "trial")),
+    _prompt("MCH-17.01", "17", "Regulatory & Certification WBS", "Applicable certifications, responsibility and required WBS", "responsibility", ("concept", "design", "final_sample"), "BIS/IS / CE / FDA / IEC 60601 / IP / EMI-EMC / RoHS-WEEE / UL-ETL / Energy Star / Other", "critical"),
+    _prompt("MCH-18.01", "18", "Domain-Specific Requirements", "Medical, Home Appliance or Consumer Electronics domain-specific declarations", "technical", ("concept", "design", "prototype", "final_sample"), priority="critical"),
+    _prompt("MCH-19.01", "19", "Tooling Requirements", "Annual volume, tool life, tool class/steel, runner type and delivery model", "technical", ("design", "tooling", "shipment")),
+    _prompt("MCH-20.01", "20", "Trials, Samples & Validation", "T0/T1/T-Final location, acceptance criteria, sample quantity and additional-trial boundary", "quality", ("trial", "final_sample"), priority="critical"),
+    _prompt("MCH-21.01", "21", "Change Management", "Customer acceptance that any post-lock change is a formal ECN with cost/timeline/trial impact", "commercial", ("design", "tooling", "trial", "final_sample"), priority="critical"),
+    _prompt("MCH-22.01", "22", "Packaging & Logistics", "Packing, bagging, label, pallet, origin and handling requirements", "logistics", ("shipment",)),
+    _prompt("MCH-23.01", "23", "Governance Boundary", "No HJIG product/tool warranty; record only governance and contracted installation/corrective-action support", "commercial", ("concept", "installation", "closure"), priority="critical"),
+    _prompt("MCH-24.01", "24", "Responsibility Boundaries", "Customer acceptance of the HJIG/customer responsibility matrix", "responsibility", ("concept", "closure"), priority="critical"),
+    _prompt("MCH-25.01", "25", "Customer Declaration & Sign-Off", "Customer declaration and authorised sign-off of the complete frozen SOR", "documentation", ("concept",), priority="critical"),
+]
+
+
 class HjigTargetMixin(models.AbstractModel):
     _inherit = "hjig.target.mixin"
 
@@ -70,6 +150,25 @@ class HjigSor(models.Model):
     source_attachment_ids = fields.Many2many(
         "ir.attachment", "hjig_sor_attachment_rel", "sor_id", "attachment_id", string="Source Documents"
     )
+    guided_template_code = fields.Char(readonly=True, copy=False, tracking=True)
+    guided_template_url = fields.Char(readonly=True, copy=False)
+    order_punch_confirmed = fields.Boolean(
+        string="Approved Order Punch Confirmed",
+        tracking=True,
+        help="The MED/CE/HA guided SOR may be issued only after the approved order is punched.",
+    )
+    engineering_responsibility = fields.Selection(
+        [
+            ("customer", "Option A — Engineering by Customer"),
+            ("third_party", "Option B — Customer-appointed Third Party"),
+            ("hjig_coordinated", "Option C — HJIG-coordinated Agreed Scope"),
+        ],
+        tracking=True,
+    )
+    engineering_scope = fields.Text(string="Option C Engineering Scope", tracking=True)
+    customer_signoff_name = fields.Char(tracking=True)
+    customer_signoff_designation = fields.Char(tracking=True)
+    customer_signoff_date = fields.Date(tracking=True)
     owner_id = fields.Many2one("res.users", required=True, default=lambda self: self.env.user, tracking=True)
     approval_authority_designation_id = fields.Many2one(
         "hjig.governance.designation", required=True, ondelete="restrict", tracking=True
@@ -114,7 +213,10 @@ class HjigSor(models.Model):
     _LOCKED_FIELDS = {
         "project_id", "industry", "intake_route", "title", "revision", "source_reference",
         "source_url", "source_attachment_ids", "owner_id", "approval_authority_designation_id",
-        "effective_date", "installation_support_scope", "notes",
+        "effective_date", "installation_support_scope", "notes", "guided_template_code",
+        "guided_template_url", "order_punch_confirmed", "engineering_responsibility",
+        "engineering_scope", "customer_signoff_name", "customer_signoff_designation",
+        "customer_signoff_date",
     }
 
     @api.depends("requirement_ids", "requirement_ids.declaration_state")
@@ -176,12 +278,85 @@ class HjigSor(models.Model):
             sor.with_context(**workflow_context()).write({"state": "mapping"})
             sor._log_transition(previous_state, "mapping", "mapping_started")
 
+    def action_load_approved_template(self):
+        """Load controlled prompts while retaining the existing downstream forms."""
+        requirement_model = self.env["hjig.sor.requirement"]
+        verification_model = self.env["hjig.sor.requirement.verification"]
+        for sor in self:
+            if sor.intake_route != "hongyi_guided":
+                raise UserError(_("Template loading is only for Route B — Hongyi guided SORs."))
+            if sor.state not in ("draft", "mapping"):
+                raise UserError(_("The approved template can only be loaded in Draft or Mapping state."))
+            if sor.requirement_ids:
+                raise UserError(_("Requirements already exist. Continue mapping the existing rows."))
+            if sor.industry != "automotive" and not sor.order_punch_confirmed:
+                raise ValidationError(_("Confirm the approved Order Punch before issuing the MED/CE/HA SOR."))
+
+            if sor.industry == "automotive":
+                prompts = AUTOMOTIVE_GUIDED_PROMPTS
+                template_code = "HONGYI-MASTER-AUTOMOTIVE-SOR"
+                template_url = AUTOMOTIVE_TEMPLATE_URL
+            else:
+                prompts = MED_CE_HA_GUIDED_PROMPTS
+                template_code = "SOR-MED-CE-HA-v2.1"
+                template_url = MED_CE_HA_TEMPLATE_URL
+
+            domain_labels = {
+                "medical": "Medical Devices",
+                "home_appliances": "Home Appliances",
+                "consumer_electronics": "Consumer Electronics",
+            }
+            for sequence, prompt in enumerate(prompts, 1):
+                prompt_text = prompt["text"]
+                if prompt["code"] == "MCH-18.01":
+                    prompt_text = "%s — %s" % (domain_labels[sor.industry], prompt_text)
+                requirement = requirement_model.create({
+                    "sor_id": sor.id,
+                    "sequence": sequence * 10,
+                    "requirement_id": prompt["code"],
+                    "template_key": prompt["code"],
+                    "section_code": prompt["section"],
+                    "section_title": prompt["title"],
+                    "category": prompt["category"],
+                    "requirement_text": prompt_text,
+                    "response_options": prompt["options"],
+                    "declaration_state": "pending",
+                    "source_reference": "Section %s" % prompt["section"],
+                    "priority": prompt["priority"],
+                    "owner_id": sor.owner_id.id,
+                    "clarification_due_date": sor.effective_date or fields.Date.context_today(sor),
+                })
+                for phase in prompt["phases"]:
+                    verification_model.create({
+                        "requirement_id": requirement.id,
+                        "phase": phase,
+                        "check_required": True,
+                        "verification_method": "Review the frozen SOR declaration against accepted evidence.",
+                        "required_evidence": "Accepted evidence for %s at %s" % (prompt["code"], phase),
+                        "responsible_designation_id": sor.approval_authority_designation_id.id,
+                    })
+            sor.write({"guided_template_code": template_code, "guided_template_url": template_url})
+        return True
+
     def _check_ready_for_review(self):
         for sor in self:
             if not sor.requirement_ids:
                 raise ValidationError(_("At least one SOR requirement is required."))
             if not sor.effective_date:
                 raise ValidationError(_("Effective Date is required before SOR review."))
+            if sor.guided_template_code and not (
+                (sor.customer_signoff_name or "").strip()
+                and (sor.customer_signoff_designation or "").strip()
+                and sor.customer_signoff_date
+            ):
+                raise ValidationError(_("Customer sign-off name, designation and date are required before guided SOR review."))
+            if sor.industry != "automotive":
+                if not sor.order_punch_confirmed:
+                    raise ValidationError(_("The approved Order Punch must be confirmed before SOR review."))
+                if not sor.engineering_responsibility:
+                    raise ValidationError(_("Engineering responsibility Option A, B or C is required."))
+                if sor.engineering_responsibility == "hjig_coordinated" and not (sor.engineering_scope or "").strip():
+                    raise ValidationError(_("Option C requires the agreed HJIG engineering coordination scope."))
             for requirement in sor.requirement_ids:
                 requirement._check_review_readiness()
 
@@ -249,6 +424,9 @@ class HjigSorRequirement(models.Model):
     project_id = fields.Many2one(related="sor_id.project_id", store=True, readonly=True, index=True)
     company_id = fields.Many2one(related="sor_id.company_id", store=True, readonly=True, index=True)
     requirement_id = fields.Char(required=True, index=True, tracking=True)
+    template_key = fields.Char(readonly=True, copy=False, index=True)
+    section_code = fields.Char(index=True, tracking=True)
+    section_title = fields.Char(tracking=True)
     category = fields.Selection(
         [
             ("scope", "Scope / Deliverable"),
@@ -263,6 +441,8 @@ class HjigSorRequirement(models.Model):
         tracking=True,
     )
     requirement_text = fields.Text(required=True, tracking=True)
+    response_options = fields.Text(readonly=True)
+    customer_declaration = fields.Text(tracking=True)
     declaration_state = fields.Selection(
         [
             ("specified", "Specified"),
@@ -311,6 +491,8 @@ class HjigSorRequirement(models.Model):
     def _check_review_readiness(self):
         self.ensure_one()
         if self.declaration_state == "specified":
+            if self.template_key and not (self.customer_declaration or "").strip():
+                raise ValidationError(_("Template requirement %s needs the customer's declaration.") % self.requirement_id)
             if not (self.acceptance_criteria or "").strip():
                 raise ValidationError(_("Specified requirement %s needs acceptance criteria.") % self.requirement_id)
             if not self.verification_ids.filtered("check_required"):
