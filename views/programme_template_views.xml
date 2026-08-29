@@ -93,20 +93,38 @@
                     <div class="oe_title"><h1><field name="name" readonly="1"/></h1></div>
                     <group>
                         <group>
-                            <field name="template_id" readonly="state in ['approved', 'retired']"/>
-                            <field name="version" readonly="state in ['approved', 'retired']"/>
-                            <field name="source_project_id" readonly="state in ['approved', 'retired']"/>
+                            <field name="template_id" readonly="state != 'draft'"/>
+                            <field name="version" readonly="state != 'draft'"/>
+                            <field name="source_project_id" readonly="state != 'draft'"/>
                             <field name="legacy_source_database" readonly="1"/>
                             <field name="legacy_source_project_id" readonly="1"/>
                             <field name="legacy_source_task_count" readonly="1"/>
                             <field name="execution_mode" readonly="1"/>
-                            <field name="dependency_review_status" readonly="state in ['approved', 'retired']"/>
-                            <field name="evidence_review_status" readonly="state in ['approved', 'retired']"/>
-                            <field name="timing_review_status" readonly="state in ['approved', 'retired']"/>
+                            <field name="dependency_review_status" readonly="1"/>
+                            <field name="dependency_review_evidence" readonly="state != 'draft'"/>
+                            <button name="action_verify_dependency_review" string="Verify Dependencies" type="object"
+                                    groups="new_hongyijig_custom.group_hjig_document_controller"
+                                    invisible="state != 'draft' or dependency_review_status == 'verified'"/>
+                            <field name="dependency_reviewed_by_id" readonly="1" invisible="dependency_review_status != 'verified'"/>
+                            <field name="dependency_reviewed_on" readonly="1" invisible="dependency_review_status != 'verified'"/>
+                            <field name="evidence_review_status" readonly="1"/>
+                            <field name="evidence_review_evidence" readonly="state != 'draft'"/>
+                            <button name="action_verify_evidence_review" string="Verify Evidence Map" type="object"
+                                    groups="new_hongyijig_custom.group_hjig_document_controller"
+                                    invisible="state != 'draft' or evidence_review_status == 'verified'"/>
+                            <field name="evidence_reviewed_by_id" readonly="1" invisible="evidence_review_status != 'verified'"/>
+                            <field name="evidence_reviewed_on" readonly="1" invisible="evidence_review_status != 'verified'"/>
+                            <field name="timing_review_status" readonly="1"/>
+                            <field name="timing_review_evidence" readonly="state != 'draft'"/>
+                            <button name="action_verify_timing_review" string="Verify Timing" type="object"
+                                    groups="new_hongyijig_custom.group_hjig_document_controller"
+                                    invisible="state != 'draft' or timing_review_status == 'verified'"/>
+                            <field name="timing_reviewed_by_id" readonly="1" invisible="timing_review_status != 'verified'"/>
+                            <field name="timing_reviewed_on" readonly="1" invisible="timing_review_status != 'verified'"/>
                         </group>
                         <group>
-                            <field name="effective_from" readonly="state in ['approved', 'retired']"/>
-                            <field name="effective_to" readonly="state in ['approved', 'retired']"/>
+                            <field name="effective_from" readonly="state != 'draft'"/>
+                            <field name="effective_to" readonly="state != 'draft'"/>
                             <field name="is_current" readonly="1"/>
                             <field name="approved_by_id" readonly="1"/>
                             <field name="approved_on" readonly="1"/>
@@ -115,7 +133,7 @@
                     </group>
                     <notebook>
                         <page string="Route Controls / Gates" invisible="execution_mode == 'advisory_sessions'">
-                            <field name="gate_line_ids" readonly="state in ['approved', 'retired']">
+                            <field name="gate_line_ids" readonly="state != 'draft'">
                                 <list editable="bottom">
                                     <field name="sequence"/>
                                     <field name="stage_id"/>
@@ -126,7 +144,7 @@
                             </field>
                         </page>
                         <page string="Activities" invisible="execution_mode == 'advisory_sessions'">
-                            <field name="activity_line_ids" readonly="state in ['approved', 'retired']">
+                            <field name="activity_line_ids" readonly="state != 'draft'">
                                 <list editable="bottom">
                                     <field name="sequence"/>
                                     <field name="code"/>
@@ -138,6 +156,10 @@
                                     <field name="duration_days"/>
                                     <field name="execution_basis"/>
                                     <field name="conditional" optional="show"/>
+                                    <field name="commercial_control_required" optional="show"/>
+                                    <field name="commercial_customer_record_min" optional="hide"/>
+                                    <field name="commercial_supplier_record_min" optional="hide"/>
+                                    <field name="commercial_no_impact_allowed" optional="hide"/>
                                     <field name="legacy_master_codes" optional="show"/>
                                     <field name="source_task_id" optional="hide"/>
                                     <field name="legacy_source_task_id" optional="show"/>
@@ -147,7 +169,7 @@
                             </field>
                         </page>
                         <page string="Scoped Dependency Rules" invisible="execution_mode == 'advisory_sessions'">
-                            <field name="dependency_rule_ids" readonly="state in ['approved', 'retired']">
+                            <field name="dependency_rule_ids" readonly="state != 'draft'">
                                 <list editable="bottom">
                                     <field name="legacy_source_rule_id"/>
                                     <field name="predecessor_activity_id"/>
@@ -161,7 +183,7 @@
                             </field>
                         </page>
                         <page string="Required SOPs and Forms" invisible="execution_mode == 'advisory_sessions'">
-                            <field name="artifact_rule_ids" readonly="state in ['approved', 'retired']">
+                            <field name="artifact_rule_ids" readonly="state != 'draft'">
                                 <list editable="bottom">
                                     <field name="stage_id"/>
                                     <field name="artifact_master_id"/>
@@ -172,7 +194,7 @@
                             </field>
                         </page>
                         <page string="Gate Checklist Template" invisible="execution_mode == 'advisory_sessions'">
-                            <field name="checklist_item_ids" readonly="state in ['approved', 'retired']">
+                            <field name="checklist_item_ids" readonly="state != 'draft'">
                                 <list editable="bottom" open_form_view="1">
                                     <field name="sequence"/>
                                     <field name="code"/>
@@ -193,7 +215,7 @@
                             </field>
                         </page>
                         <page string="Advisory Session Template" invisible="execution_mode != 'advisory_sessions'">
-                            <field name="session_line_ids" readonly="state in ['approved', 'retired']">
+                            <field name="session_line_ids" readonly="state != 'draft'">
                                 <list editable="bottom" open_form_view="1">
                                     <field name="sequence"/>
                                     <field name="code"/>
@@ -606,6 +628,41 @@
                             <field name="hjig_owner_designation_id"/>
                             <field name="hjig_approver_designation_id"/>
                         </group>
+                    </group>
+                    <separator string="Commercial Milestone Control"
+                               invisible="not hjig_commercial_control_required"/>
+                    <group invisible="not hjig_commercial_control_required">
+                        <group>
+                            <field name="hjig_commercial_control_required" readonly="1"/>
+                            <field name="hjig_commercial_control_state" readonly="1"/>
+                            <field name="hjig_commercial_control_current" readonly="1"/>
+                            <field name="hjig_commercial_customer_record_min" readonly="1"/>
+                            <field name="hjig_commercial_supplier_record_min" readonly="1"/>
+                            <field name="hjig_commercial_no_impact_allowed" readonly="1"/>
+                        </group>
+                        <group groups="new_hongyijig_custom.group_hjig_commercial_user">
+                            <field name="hjig_commercial_control_outcome"
+                                   readonly="hjig_commercial_control_state in ['pending', 'cleared']"/>
+                            <field name="hjig_commercial_authority_designation_id"
+                                   readonly="hjig_commercial_control_state in ['pending', 'cleared']"/>
+                            <field name="hjig_commercial_control_approval_id" readonly="1"/>
+                            <field name="hjig_commercial_controlled_by_id" readonly="1"/>
+                            <field name="hjig_commercial_controlled_on" readonly="1"/>
+                        </group>
+                    </group>
+                    <group invisible="not hjig_commercial_control_required"
+                           groups="new_hongyijig_custom.group_hjig_commercial_user">
+                        <field name="hjig_commercial_link_ids" widget="many2many_tags"
+                               readonly="hjig_commercial_control_state in ['pending', 'cleared']"/>
+                        <field name="hjig_commercial_no_impact_reason"
+                               invisible="hjig_commercial_control_outcome != 'no_impact'"
+                               readonly="hjig_commercial_control_state in ['pending', 'cleared']"/>
+                        <button name="action_submit_hjig_commercial_control" type="object"
+                                string="Submit Commercial Milestone" class="btn-primary"
+                                invisible="hjig_commercial_control_state not in ['draft', 'rejected']"/>
+                        <button name="action_apply_hjig_commercial_control" type="object"
+                                string="Apply Commercial Decision" class="btn-primary"
+                                invisible="hjig_commercial_control_state != 'pending'"/>
                     </group>
                 </page>
             </xpath>

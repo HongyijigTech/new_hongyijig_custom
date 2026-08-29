@@ -6,6 +6,8 @@ import re
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
+from .workflow_guard import workflow_context
+
 
 class HjigProgrammeTemplate(models.Model):
     _name = "hjig.programme.template"
@@ -122,6 +124,12 @@ class HjigProgrammeTemplateVersion(models.Model):
         tracking=True,
         help="A verified status means the activity dependency map was reviewed against the approved programme DNA.",
     )
+    dependency_review_evidence = fields.Char(
+        string="Dependency Review Evidence", tracking=True,
+        help="Controlled document reference, Drive URL, or immutable export hash used for this verification.",
+    )
+    dependency_reviewed_by_id = fields.Many2one("res.users", readonly=True, copy=False, tracking=True)
+    dependency_reviewed_on = fields.Datetime(readonly=True, copy=False, tracking=True)
     evidence_review_status = fields.Selection(
         [("unreviewed", "Unreviewed"), ("verified", "Verified")],
         required=True,
@@ -129,6 +137,12 @@ class HjigProgrammeTemplateVersion(models.Model):
         tracking=True,
         help="A verified status means every mandatory SOP/Form requirement was reviewed gate by gate.",
     )
+    evidence_review_evidence = fields.Char(
+        string="Evidence-Map Review Evidence", tracking=True,
+        help="Controlled document reference, Drive URL, or immutable export hash used for this verification.",
+    )
+    evidence_reviewed_by_id = fields.Many2one("res.users", readonly=True, copy=False, tracking=True)
+    evidence_reviewed_on = fields.Datetime(readonly=True, copy=False, tracking=True)
     timing_review_status = fields.Selection(
         [("unreviewed", "Unreviewed"), ("verified", "Verified")],
         required=True,
@@ -139,6 +153,12 @@ class HjigProgrammeTemplateVersion(models.Model):
             "as an internal planning baseline. It is not a customer delivery commitment."
         ),
     )
+    timing_review_evidence = fields.Char(
+        string="Timing Review Evidence", tracking=True,
+        help="Controlled baseline reference or approval record supporting every internal planning duration.",
+    )
+    timing_reviewed_by_id = fields.Many2one("res.users", readonly=True, copy=False, tracking=True)
+    timing_reviewed_on = fields.Datetime(readonly=True, copy=False, tracking=True)
     approved_by_id = fields.Many2one("res.users", readonly=True, tracking=True)
     approved_on = fields.Datetime(readonly=True, tracking=True)
     definition_hash = fields.Char(readonly=True, copy=False, index=True)
@@ -154,10 +174,20 @@ class HjigProgrammeTemplateVersion(models.Model):
         for record in self:
             record.name = "%s v%s" % (record.template_id.name or "Programme", record.version or "")
 
+    @api.model_create_multi
+    def create(self, vals_list):
+        if not (self.env.context.get("hjig_programme_review_control") or self.env.is_superuser()):
+            for vals in vals_list:
+                if any(vals.get(field_name) == "verified" for field_name in (
+                    "dependency_review_status", "evidence_review_status", "timing_review_status",
+                )):
+                    raise ValidationError(_("A new programme version must begin with Unreviewed review controls."))
+        return super().create(vals_list)
+
     def _assert_mutable(self):
-        if self.filtered(lambda record: record.state in ("approved", "retired")):
+        if self.filtered(lambda record: record.state != "draft"):
             raise ValidationError(
-                _("Approved or retired programme versions are immutable. Create a new version instead.")
+                _("Only a Draft programme version may be edited. Review, Approved and Retired versions are immutable.")
             )
 
     def write(self, vals):
@@ -167,6 +197,7 @@ class HjigProgrammeTemplateVersion(models.Model):
             "gate_line_ids", "activity_line_ids", "artifact_rule_ids",
             "dependency_rule_ids", "checklist_item_ids",
             "dependency_review_status", "evidence_review_status", "timing_review_status",
+            "dependency_review_evidence", "evidence_review_evidence", "timing_review_evidence",
         }
         retiring = vals.get("state") == "retired"
         retirement_date_only = governed.intersection(vals).issubset({"effective_to"})
@@ -178,7 +209,101 @@ class HjigProgrammeTemplateVersion(models.Model):
             raise ValidationError(_("Use the governed programme lifecycle actions to change state."))
         if "is_current" in vals and not self.env.context.get("hjig_programme_lifecycle"):
             raise ValidationError(_("Current-version status is controlled by the approval lifecycle."))
-        return super().write(vals)
+        review_controlled = {
+            "dependency_review_status", "dependency_reviewed_by_id", "dependency_reviewed_on",
+            "evidence_review_status", "evidence_reviewed_by_id", "evidence_reviewed_on",
+            "timing_review_status", "timing_reviewed_by_id", "timing_reviewed_on",
+        }
+        if review_controlled.intersection(vals) and not (
+            self.env.context.get("hjig_programme_review_control") or self.env.is_superuser()
+        ):
+            raise ValidationError(_("Use the governed verification actions to change review status."))
+        result = super().write(vals)
+        review_invalidating = {
+            "template_id", "version", "source_project_id", "legacy_source_database",
+            "legacy_source_project_id", "legacy_source_task_count", "gate_line_ids",
+            "activity_line_ids", "artifact_rule_ids", "dependency_rule_ids", "checklist_item_ids",
+            "dependency_review_evidence", "evidence_review_evidence", "timing_review_evidence",
+        }
+        if review_invalidating.intersection(vals) and not self.env.context.get("hjig_programme_review_control"):
+            reviewed = self.filtered(
+                lambda record: record.state == "draft" and (
+                    record.dependency_reviewed_by_id
+                    or record.evidence_reviewed_by_id
+                    or record.timing_reviewed_by_id
+                )
+            )
+            if reviewed:
+                reviewed.with_context(hjig_programme_review_control=True).write({
+                    "dependency_review_status": "unreviewed",
+                    "dependency_reviewed_by_id": False,
+                    "dependency_reviewed_on": False,
+                    "evidence_review_status": "unreviewed",
+                    "evidence_reviewed_by_id": False,
+                    "evidence_reviewed_on": False,
+                    "timing_review_status": "unreviewed",
+                    "timing_reviewed_by_id": False,
+                    "timing_reviewed_on": False,
+                })
+        return result
+
+    def _assert_review_authority(self):
+        self.ensure_one()
+        user = self.env.user
+        if not user.has_group("new_hongyijig_custom.group_hjig_document_controller"):
+            raise UserError(_("Only a LaunchGuard Document Controller may verify a programme review."))
+        if user not in self.template_id.approver_designation_id.holder_ids:
+            raise UserError(_("You are not a current holder of the required programme approver designation."))
+        if self.state != "draft":
+            raise UserError(_("Reviews can be verified only while the programme version is Draft."))
+
+    def _verify_review(self, review_kind):
+        field_map = {
+            "dependency": ("dependency_review_status", "dependency_review_evidence", "dependency_reviewed_by_id", "dependency_reviewed_on"),
+            "evidence": ("evidence_review_status", "evidence_review_evidence", "evidence_reviewed_by_id", "evidence_reviewed_on"),
+            "timing": ("timing_review_status", "timing_review_evidence", "timing_reviewed_by_id", "timing_reviewed_on"),
+        }
+        for record in self:
+            record._assert_review_authority()
+            status_field, evidence_field, reviewer_field, reviewed_on_field = field_map[review_kind]
+            if not (record[evidence_field] or "").strip():
+                raise ValidationError(_("A controlled evidence reference is required before verification."))
+            if review_kind == "dependency":
+                if record.legacy_source_database and not record.dependency_rule_ids:
+                    raise ValidationError(_("Legacy programme DNA requires governed dependency-rule records."))
+                if record.dependency_rule_ids.filtered(lambda rule: not rule.predecessor_activity_id or not rule.successor_activity_id):
+                    raise ValidationError(_("Every dependency rule must map to both template activities."))
+                if len(record.activity_line_ids) > 1 and not record.activity_line_ids.mapped("predecessor_ids"):
+                    raise ValidationError(_("A multi-activity programme requires a dependency map."))
+            elif review_kind == "evidence":
+                missing_artifact = record.checklist_item_ids.filtered(
+                    lambda item: item.mandatory and item.evidence_required and not item.evidence_artifact_id
+                )
+                if missing_artifact:
+                    raise ValidationError(_("Every mandatory evidence checklist item requires a controlled artifact."))
+                uncontrolled_commercial = record.activity_line_ids.filtered(
+                    lambda item: re.match(r"^CM-\d{2}:", (item.name or "").upper())
+                    and not item.commercial_control_required
+                )
+                if uncontrolled_commercial:
+                    raise ValidationError(_("Every CM activity requires an explicit commercial milestone control."))
+            else:
+                if record.activity_line_ids.filtered(lambda activity: activity.duration_days <= 0):
+                    raise ValidationError(_("Every activity requires a positive internal planning duration."))
+            record.with_context(hjig_programme_review_control=True).write({
+                status_field: "verified", reviewer_field: self.env.user.id,
+                reviewed_on_field: fields.Datetime.now(),
+            })
+        return True
+
+    def action_verify_dependency_review(self):
+        return self._verify_review("dependency")
+
+    def action_verify_evidence_review(self):
+        return self._verify_review("evidence")
+
+    def action_verify_timing_review(self):
+        return self._verify_review("timing")
 
     def unlink(self):
         self._assert_mutable()
@@ -245,6 +370,12 @@ class HjigProgrammeTemplateVersion(models.Model):
                         "enter governed review until that content is completed and verified."
                     )
                 )
+            uncontrolled_commercial = record.activity_line_ids.filtered(
+                lambda activity: re.match(r"^CM-\d{2}:", (activity.name or "").upper())
+                and not activity.commercial_control_required
+            )
+            if uncontrolled_commercial:
+                raise ValidationError(_("Every CM activity requires an explicit commercial milestone control."))
             sequences = record.gate_line_ids.mapped("sequence")
             if len(sequences) != len(set(sequences)):
                 raise ValidationError(_("Gate sequences must be unique within a programme version."))
@@ -383,6 +514,10 @@ class HjigProgrammeTemplateVersion(models.Model):
                 "duration_days": line.duration_days,
                 "execution_basis": line.execution_basis,
                 "conditional": line.conditional,
+                "commercial_control_required": line.commercial_control_required,
+                "commercial_customer_record_min": line.commercial_customer_record_min,
+                "commercial_supplier_record_min": line.commercial_supplier_record_min,
+                "commercial_no_impact_allowed": line.commercial_no_impact_allowed,
                 "legacy_master_codes": line.legacy_master_codes,
                 "predecessors": sorted(line.predecessor_ids.mapped("code")),
                 "artifacts": sorted(line.required_artifact_ids.mapped("code")),
@@ -471,23 +606,51 @@ class ProgrammeVersionChildMixin(models.AbstractModel):
         version_id = vals.get("version_id")
         return self.env["hjig.programme.template.version"].browse(version_id).exists()
 
+    def _invalidate_version_reviews(self, versions):
+        versions = versions.filtered(
+            lambda version: version.state == "draft" and (
+                version.dependency_reviewed_by_id
+                or version.evidence_reviewed_by_id
+                or version.timing_reviewed_by_id
+            )
+        )
+        if versions:
+            versions.with_context(hjig_programme_review_control=True).write({
+                "dependency_review_status": "unreviewed",
+                "dependency_reviewed_by_id": False,
+                "dependency_reviewed_on": False,
+                "evidence_review_status": "unreviewed",
+                "evidence_reviewed_by_id": False,
+                "evidence_reviewed_on": False,
+                "timing_review_status": "unreviewed",
+                "timing_reviewed_by_id": False,
+                "timing_reviewed_on": False,
+            })
+
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
             version = self._version_from_values(vals)
-            if version and version.state in ("approved", "retired"):
-                raise ValidationError(_("Approved programme content cannot be extended."))
-        return super().create(vals_list)
+            if version and version.state != "draft":
+                raise ValidationError(_("Only Draft programme content can be extended."))
+        records = super().create(vals_list)
+        records._invalidate_version_reviews(records.mapped("version_id"))
+        return records
 
     def write(self, vals):
-        if self.mapped("version_id").filtered(lambda version: version.state in ("approved", "retired")):
-            raise ValidationError(_("Approved programme content is immutable."))
-        return super().write(vals)
+        if self.mapped("version_id").filtered(lambda version: version.state != "draft"):
+            raise ValidationError(_("Only Draft programme content can be edited."))
+        result = super().write(vals)
+        self._invalidate_version_reviews(self.mapped("version_id"))
+        return result
 
     def unlink(self):
-        if self.mapped("version_id").filtered(lambda version: version.state in ("approved", "retired")):
-            raise ValidationError(_("Approved programme content cannot be deleted."))
-        return super().unlink()
+        if self.mapped("version_id").filtered(lambda version: version.state != "draft"):
+            raise ValidationError(_("Only Draft programme content can be deleted."))
+        versions = self.mapped("version_id")
+        result = super().unlink()
+        self._invalidate_version_reviews(versions)
+        return result
 
 
 class HjigProgrammeTemplateGate(models.Model):
@@ -585,6 +748,22 @@ class HjigProgrammeTemplateActivity(models.Model):
         required=True,
     )
     conditional = fields.Boolean(default=False)
+    commercial_control_required = fields.Boolean(
+        default=False,
+        help="Requires a separately approved commercial milestone control before the gate can close.",
+    )
+    commercial_customer_record_min = fields.Integer(
+        default=0,
+        help="Minimum number of existing Verified customer commercial records required for this activity.",
+    )
+    commercial_supplier_record_min = fields.Integer(
+        default=0,
+        help="Minimum number of existing Verified supplier commercial records required for this activity.",
+    )
+    commercial_no_impact_allowed = fields.Boolean(
+        default=False,
+        help="Allows an independently approved No Commercial Impact decision instead of ledger records.",
+    )
     active = fields.Boolean(default=True)
 
     _version_code_unique = models.Constraint(
@@ -596,7 +775,48 @@ class HjigProgrammeTemplateActivity(models.Model):
         "A legacy task may be reconciled only once in a programme version.",
     )
 
-    @api.constrains("gate_line_id", "version_id", "predecessor_ids", "duration_days")
+    def _hjig_commercial_rule_defaults(self):
+        """Return the conservative ledger-control profile for a named CM activity."""
+        self.ensure_one()
+        name = (self.name or "").upper()
+        if not re.match(r"^CM-\d{2}:", name):
+            return {
+                "commercial_control_required": False,
+                "commercial_customer_record_min": 0,
+                "commercial_supplier_record_min": 0,
+                "commercial_no_impact_allowed": False,
+            }
+        customer_min = supplier_min = 0
+        no_impact_allowed = False
+        milestone = name[:5]
+        if milestone in ("CM-01", "CM-02", "CM-05", "CM-08"):
+            customer_min = 1
+        elif milestone == "CM-03":
+            supplier_min = 2  # approved PO plus the actual payment record
+        elif milestone in ("CM-04", "CM-09", "CM-11"):
+            supplier_min = 1
+        elif milestone == "CM-06":
+            customer_min = supplier_min = 1
+        elif milestone == "CM-07":
+            customer_min = 1
+            supplier_min = 0 if "DEMAND RAISED" in name else 1
+        elif milestone == "CM-10":
+            supplier_min = 1
+            no_impact_allowed = True
+        else:
+            raise ValidationError(_("Commercial milestone %s has no controlled ledger profile.") % milestone)
+        return {
+            "commercial_control_required": True,
+            "commercial_customer_record_min": customer_min,
+            "commercial_supplier_record_min": supplier_min,
+            "commercial_no_impact_allowed": no_impact_allowed,
+        }
+
+    @api.constrains(
+        "gate_line_id", "version_id", "predecessor_ids", "duration_days",
+        "commercial_control_required", "commercial_customer_record_min",
+        "commercial_supplier_record_min", "commercial_no_impact_allowed",
+    )
     def _check_activity_governance(self):
         for activity in self:
             if activity.gate_line_id.version_id != activity.version_id:
@@ -617,6 +837,22 @@ class HjigProgrammeTemplateActivity(models.Model):
                 frontier.extend(predecessor.predecessor_ids)
             if activity.duration_days < 0:
                 raise ValidationError(_("Activity duration cannot be negative."))
+            if activity.commercial_customer_record_min < 0 or activity.commercial_supplier_record_min < 0:
+                raise ValidationError(_("Commercial record minimums cannot be negative."))
+            if activity.commercial_control_required and not (
+                activity.commercial_customer_record_min
+                or activity.commercial_supplier_record_min
+                or activity.commercial_no_impact_allowed
+            ):
+                raise ValidationError(_(
+                    "A commercial-control activity needs a customer/supplier record minimum or an allowed No Impact route."
+                ))
+            if not activity.commercial_control_required and (
+                activity.commercial_customer_record_min
+                or activity.commercial_supplier_record_min
+                or activity.commercial_no_impact_allowed
+            ):
+                raise ValidationError(_("Commercial rules may be configured only on a commercial-control activity."))
             if activity.owner_designation_id == activity.approver_designation_id:
                 raise ValidationError(_("Activity owner and approver designations must be different."))
 
@@ -898,7 +1134,7 @@ class HjigProgrammeRun(models.Model):
                     if existing:
                         continue
                     scope_label = part.x_part_number if part else mould.x_mould_number if mould else False
-                    Task.create({
+                    Task.with_context(**workflow_context()).create({
                         "name": "%s%s" % (activity.name, " — %s" % scope_label if scope_label else ""),
                         "project_id": run.project_id.id,
                         "sequence": activity.sequence,
@@ -912,6 +1148,13 @@ class HjigProgrammeRun(models.Model):
                         "hjig_execution_scope_key": scope_key,
                         "hjig_mould_id": mould.id if mould else False,
                         "hjig_part_id": part.id if part else False,
+                        "hjig_commercial_control_required": activity.commercial_control_required,
+                        "hjig_commercial_customer_record_min": activity.commercial_customer_record_min,
+                        "hjig_commercial_supplier_record_min": activity.commercial_supplier_record_min,
+                        "hjig_commercial_no_impact_allowed": activity.commercial_no_impact_allowed,
+                        "hjig_commercial_control_state": (
+                            "draft" if activity.commercial_control_required else "not_required"
+                        ),
                     })
             stale = run.task_ids.filtered(
                 lambda task: task.hjig_template_activity_id not in included
@@ -1176,6 +1419,9 @@ class HjigProgrammeRunGate(models.Model):
         )
         if tasks.filtered(lambda task: not task.stage_id.fold):
             reasons.append(_("gate activities are not complete"))
+        commercial_tasks = tasks.filtered("hjig_commercial_control_required")
+        if commercial_tasks.filtered(lambda task: not task._hjig_commercial_control_is_current()):
+            reasons.append(_("commercial milestone controls are not approved or their source records changed"))
         artifacts = self.run_id.artifact_requirement_ids.filtered(
             lambda item: item.run_gate_id == self and item.mandatory
         )
@@ -1748,7 +1994,7 @@ class ProjectTask(models.Model):
 
     def write(self, vals):
         frozen = {
-            "hjig_programme_run_id", "hjig_template_activity_id", "hjig_governance_stage_id",
+            "project_id", "hjig_programme_run_id", "hjig_template_activity_id", "hjig_governance_stage_id",
             "hjig_owner_designation_id", "hjig_approver_designation_id",
             "hjig_execution_basis", "hjig_execution_scope_key", "hjig_mould_id", "hjig_part_id",
         }

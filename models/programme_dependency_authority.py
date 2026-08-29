@@ -351,5 +351,9 @@ class HjigProgrammeTemplateVersion(models.Model):
                         "The immediately preceding governed gate must close before this activity starts.",
                     )
 
-            version.write({"dependency_review_status": "unreviewed"})
+            version.with_context(hjig_programme_review_control=True).write({
+                "dependency_review_status": "unreviewed",
+                "dependency_reviewed_by_id": False,
+                "dependency_reviewed_on": False,
+            })
         return True

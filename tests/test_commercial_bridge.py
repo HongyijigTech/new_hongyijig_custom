@@ -42,6 +42,27 @@ class TestCommercialBridge(TransactionCase):
         values.update(extra)
         return self.env["hjig.commercial.link"].create(values)
 
+    def _verify_link(self, link):
+        link.with_user(self.owner).action_submit_review()
+        link.approval_id.with_user(self.approver).action_approve()
+        link.action_apply_decision()
+        return link
+
+    def _commercial_task(self, **extra):
+        values = {
+            "name": "CM-TEST: Governed Commercial Milestone",
+            "project_id": self.project.id,
+            "user_ids": [(6, 0, [self.owner.id])],
+            "hjig_commercial_control_required": True,
+            "hjig_commercial_customer_record_min": 1,
+            "hjig_commercial_supplier_record_min": 0,
+            "hjig_commercial_no_impact_allowed": False,
+            "hjig_commercial_control_state": "draft",
+            "hjig_commercial_authority_designation_id": self.designation.id,
+        }
+        values.update(extra)
+        return self.env["project.task"].sudo().create(values)
+
     def test_external_ledger_link_requires_source(self):
         with self.assertRaises(ValidationError):
             self._external_link(external_reference=False)
@@ -69,6 +90,45 @@ class TestCommercialBridge(TransactionCase):
             link.owner_id = self.approver
         with self.assertRaises(UserError):
             link.current_submission_id.unlink()
+
+    def test_commercial_milestone_clears_only_from_existing_verified_records(self):
+        link = self._verify_link(self._external_link(external_reference="CUSTOMER-INV-MILESTONE"))
+        task = self._commercial_task(hjig_commercial_link_ids=[(6, 0, [link.id])])
+        task.with_user(self.owner).action_submit_hjig_commercial_control()
+        self.assertEqual(task.hjig_commercial_control_state, "pending")
+        self.assertIn('"commercial_links":[{"entry_kind":"invoice"', task.hjig_commercial_control_approval_id.request_snapshot)
+        task.hjig_commercial_control_approval_id.with_user(self.approver).action_approve()
+        task.with_user(self.owner).action_apply_hjig_commercial_control()
+        self.assertEqual(task.hjig_commercial_control_state, "cleared")
+        self.assertTrue(task._hjig_commercial_control_is_current())
+        self.assertEqual(task.hjig_commercial_controlled_by_id, self.approver)
+        with self.assertRaises(ValidationError):
+            task.hjig_commercial_link_ids = [(5, 0, 0)]
+
+    def test_commercial_milestone_rejects_wrong_ledger_side(self):
+        customer_link = self._verify_link(self._external_link(external_reference="CUSTOMER-WRONG-SIDE"))
+        task = self._commercial_task(
+            hjig_commercial_customer_record_min=0,
+            hjig_commercial_supplier_record_min=1,
+            hjig_commercial_link_ids=[(6, 0, [customer_link.id])],
+        )
+        with self.assertRaises(ValidationError):
+            task.with_user(self.owner).action_submit_hjig_commercial_control()
+
+    def test_cm10_zero_impact_requires_independent_commercial_approval(self):
+        task = self._commercial_task(
+            name="CM-10: Standard Zero Percent Release",
+            hjig_commercial_customer_record_min=0,
+            hjig_commercial_supplier_record_min=1,
+            hjig_commercial_no_impact_allowed=True,
+            hjig_commercial_control_outcome="no_impact",
+            hjig_commercial_no_impact_reason="Standard contract has no CM-10 payment event.",
+        )
+        task.with_user(self.owner).action_submit_hjig_commercial_control()
+        task.hjig_commercial_control_approval_id.with_user(self.approver).action_approve()
+        task.with_user(self.owner).action_apply_hjig_commercial_control()
+        self.assertEqual(task.hjig_commercial_control_state, "cleared")
+        self.assertTrue(task._hjig_commercial_control_is_current())
 
     def test_rejection_applies_even_if_source_hash_changed(self):
         link = self._external_link(external_reference="CUSTOMER-INV-REJECT")

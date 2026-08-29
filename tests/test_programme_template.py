@@ -193,6 +193,58 @@ class TestProgrammeTemplateGovernance(TransactionCase):
         self.assertEqual(action["view_mode"], "list,form")
         self.assertEqual(action["domain"], [("template_id", "=", self.template.id)])
 
+    def test_review_verification_is_evidenced_authorised_and_invalidated_on_change(self):
+        draft = self.env["hjig.programme.template.version"].create({
+            "template_id": self.template.id,
+            "version": "2.0",
+            "effective_from": "2026-08-29",
+            "legacy_source_database": "legacy_test_db",
+            "legacy_source_project_id": 100,
+            "legacy_source_task_count": 2,
+            "dependency_review_evidence": "sha256:dependency-review-test",
+            "evidence_review_evidence": "sha256:evidence-review-test",
+            "timing_review_evidence": "APPROVED-TIMING-BASELINE-TEST",
+        })
+        gate = self.env["hjig.programme.template.gate"].create({
+            "version_id": draft.id, "stage_id": self.stage.id, "sequence": 10,
+        })
+        first = self.env["hjig.programme.template.activity"].create({
+            "version_id": draft.id, "code": "ACT-201", "name": "Review First Activity",
+            "sequence": 10, "gate_line_id": gate.id,
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+            "duration_days": 1,
+        })
+        second = self.env["hjig.programme.template.activity"].create({
+            "version_id": draft.id, "code": "ACT-202", "name": "Review Second Activity",
+            "sequence": 20, "gate_line_id": gate.id,
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+            "duration_days": 1, "predecessor_ids": [(6, 0, [first.id])],
+        })
+        self.env["hjig.programme.template.dependency.rule"].create({
+            "version_id": draft.id, "legacy_source_rule_id": 9201,
+            "predecessor_activity_id": first.id, "successor_activity_id": second.id,
+            "predecessor_basis": "project", "successor_basis": "project",
+            "rule_type": "a1", "scope_matching_rule": "PROJECT->PROJECT",
+            "aggregation_requirement": "Single predecessor",
+        })
+        with self.assertRaises(ValidationError):
+            draft.with_user(self.approver_user).write({"dependency_review_status": "verified"})
+        controlled = draft.with_user(self.approver_user)
+        controlled.action_verify_dependency_review()
+        controlled.action_verify_evidence_review()
+        controlled.action_verify_timing_review()
+        self.assertEqual(draft.dependency_reviewed_by_id, self.approver_user)
+        self.assertTrue(draft.dependency_reviewed_on)
+        self.assertEqual(draft.evidence_review_status, "verified")
+        self.assertEqual(draft.timing_review_status, "verified")
+        first.name = "Changed After Verification"
+        self.assertEqual(draft.dependency_review_status, "unreviewed")
+        self.assertEqual(draft.evidence_review_status, "unreviewed")
+        self.assertEqual(draft.timing_review_status, "unreviewed")
+        self.assertFalse(draft.dependency_reviewed_by_id)
+
     def test_pending_checklist_content_blocks_governed_review(self):
         draft = self.env["hjig.programme.template.version"].create({
             "template_id": self.template.id,
@@ -263,6 +315,8 @@ class TestProgrammeTemplateGovernance(TransactionCase):
             "source_version": "1.0",
         })
         version.action_submit_review()
+        with self.assertRaises(ValidationError):
+            version.activity_line_ids[0].name = "Changed During Review"
         with self.assertRaises(UserError):
             version.with_user(self.owner_user).action_approve()
 
