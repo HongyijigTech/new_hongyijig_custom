@@ -25,7 +25,7 @@ class TestProjectDocumentGovernance(TransactionCase):
         cls.project = cls.env["project.project"].create({
             "name": "LaunchGuard Controlled Project",
             "hjig_project_record_type": "customer",
-            "x_project_code": "hj-lgc-2026-0001",
+            "x_project_code": "hj-tst-2099-9002",
         })
         cls.owner_designation = cls.env["hjig.governance.designation"].create({
             "code": "TEST-OWNER",
@@ -39,6 +39,15 @@ class TestProjectDocumentGovernance(TransactionCase):
             "category": "governance",
             "holder_ids": [(6, 0, [cls.approver.id])],
         })
+        for designation, holder in (
+            (cls.owner_designation, cls.owner),
+            (cls.approver_designation, cls.approver),
+        ):
+            cls.env["hjig.project.designation.assignment"].create({
+                "project_id": cls.project.id,
+                "designation_id": designation.id,
+                "holder_ids": [(6, 0, [holder.id])],
+            })
         cls.stage = cls.env["hjig.launchguard.stage"].create({
             "code": "TEST-GATE",
             "name": "Test Gate",
@@ -75,12 +84,12 @@ class TestProjectDocumentGovernance(TransactionCase):
         return self.env["hjig.project.document"].create(values)
 
     def test_project_code_is_normalized_and_unique(self):
-        self.assertEqual(self.project.x_project_code, "HJ-LGC-2026-0001")
+        self.assertEqual(self.project.x_project_code, "HJ-TST-2099-9002")
         with self.assertRaises(UniqueViolation), self.env.cr.savepoint():
             self.env["project.project"].create({
                 "name": "Duplicate Code",
                 "hjig_project_record_type": "customer",
-                "x_project_code": "HJ-LGC-2026-0001",
+                "x_project_code": "HJ-TST-2099-9002",
             })
 
     def test_customer_project_requires_valid_code(self):
@@ -99,7 +108,7 @@ class TestProjectDocumentGovernance(TransactionCase):
     def test_project_code_locks_after_first_document(self):
         self._create_document()
         with self.assertRaises(ValidationError):
-            self.project.x_project_code = "HJ-LGC-2026-0002"
+            self.project.x_project_code = "HJ-TST-2099-9003"
 
     def test_master_reference_cannot_enter_customer_register(self):
         with self.assertRaises(ValidationError):
@@ -152,6 +161,39 @@ class TestProjectDocumentGovernance(TransactionCase):
         document = self._create_document()
         with self.assertRaises(UserError):
             document.action_submit_review()
+
+    def test_global_holder_has_no_authority_without_project_assignment(self):
+        other_project = self.env["project.project"].create({
+            "name": "Other Controlled Project",
+            "hjig_project_record_type": "customer",
+            "x_project_code": "HJ-TST-2099-9010",
+        })
+        document = self._create_document(project_id=other_project.id)
+        with self.assertRaises(UserError):
+            document.with_user(self.owner).action_submit_review()
+
+    def test_planned_resource_does_not_grant_login_authority(self):
+        project = self.env["project.project"].create({
+            "name": "Pre-Seat Planning Project",
+            "hjig_project_record_type": "customer",
+            "x_project_code": "HJ-TST-2099-9011",
+        })
+        resource = self.env["hjig.planned.team.resource"].create({
+            "name": "Future Tool Engineer",
+            "resource_type": "internal",
+            "planned_capacity": 2,
+        })
+        assignment = self.env["hjig.project.designation.assignment"].create({
+            "project_id": project.id,
+            "designation_id": self.owner_designation.id,
+            "planned_resource_ids": [(6, 0, [resource.id])],
+        })
+        self.assertEqual(assignment.staffing_status, "planned")
+        self.assertFalse(assignment.holder_ids)
+        self.assertFalse(self.owner_designation._holders_for_project(project))
+        document = self._create_document(project_id=project.id)
+        with self.assertRaises(UserError):
+            document.with_user(self.owner).action_submit_review()
 
     def test_status_cannot_bypass_workflow(self):
         document = self._create_document()
