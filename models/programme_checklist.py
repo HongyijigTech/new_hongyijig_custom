@@ -196,6 +196,8 @@ class HjigProgrammeChecklistInstance(models.Model):
                 not item.evidence_document_id or item.evidence_document_id.status != "approved"
             ):
                 raise ValidationError(_("Approved controlled evidence is required before recording Pass."))
+            if item.sign_required and item.evidence_document_id.signature_status != "complete":
+                raise ValidationError(_("Completed signature evidence is required before recording Pass."))
             item.with_context(hjig_checklist_workflow=True).write({
                 "status": "pass",
                 "ticked_by_id": self.env.user.id,

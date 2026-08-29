@@ -220,7 +220,8 @@ class HjigProgrammeTemplateVersion(models.Model):
         for record in self:
             if not record.gate_line_ids or not record.activity_line_ids:
                 raise ValidationError(_("A programme version requires at least one gate and one activity."))
-            if record.legacy_source_task_count and len(record.activity_line_ids) != record.legacy_source_task_count:
+            reconciled_legacy_count = len(record.activity_line_ids.filtered("legacy_source_task_id"))
+            if record.legacy_source_task_count and reconciled_legacy_count != record.legacy_source_task_count:
                 raise ValidationError(
                     _("The activity count must reconcile exactly to the verified legacy source count.")
                 )
@@ -379,6 +380,10 @@ class HjigProgrammeTemplateVersion(models.Model):
                 "gate": line.gate_line_id.stage_id.code,
                 "owner": line.owner_designation_id.code,
                 "approver": line.approver_designation_id.code,
+                "coordinator": line.coordinator_designation_id.code,
+                "support_designations": sorted(line.support_designation_ids.mapped("code")),
+                "authority_source_reference": line.authority_source_reference,
+                "authority_source_version": line.authority_source_version,
                 "offset_days": line.offset_days,
                 "duration_days": line.duration_days,
                 "execution_basis": line.execution_basis,
@@ -503,6 +508,7 @@ class HjigProgrammeTemplateGate(models.Model):
     stage_id = fields.Many2one(
         "hjig.launchguard.stage", required=True, ondelete="restrict", index=True
     )
+    stage_type = fields.Selection(related="stage_id.stage_type", store=True, readonly=True)
     sequence = fields.Integer(required=True, default=10)
     required = fields.Boolean(default=True)
     closure_variant = fields.Selection(
@@ -545,6 +551,21 @@ class HjigProgrammeTemplateActivity(models.Model):
     approver_designation_id = fields.Many2one(
         "hjig.governance.designation", required=True, ondelete="restrict"
     )
+    coordinator_designation_id = fields.Many2one(
+        "hjig.governance.designation",
+        ondelete="restrict",
+        help="Project-movement coordinator; this does not replace the accountable activity owner.",
+    )
+    support_designation_ids = fields.Many2many(
+        "hjig.governance.designation",
+        "hjig_programme_activity_support_designation_rel",
+        "activity_id",
+        "designation_id",
+        string="Supporting Designations",
+        help="Additional controlled roles required to support the accountable owner.",
+    )
+    authority_source_reference = fields.Char(readonly=True, copy=False)
+    authority_source_version = fields.Char(readonly=True, copy=False)
     offset_days = fields.Integer(default=0)
     duration_days = fields.Integer(
         default=1,
@@ -617,6 +638,11 @@ class HjigProgrammeTemplateActivity(models.Model):
                 frontier.extend(predecessor.predecessor_ids)
             if activity.duration_days < 0:
                 raise ValidationError(_("Activity duration cannot be negative."))
+
+    @api.constrains("owner_designation_id", "approver_designation_id")
+    def _check_activity_role_separation(self):
+        """Enforce role separation when either accountable role is assigned."""
+        for activity in self:
             if activity.owner_designation_id == activity.approver_designation_id:
                 raise ValidationError(_("Activity owner and approver designations must be different."))
 
@@ -852,6 +878,8 @@ class HjigProgrammeRun(models.Model):
                 | version.template_id.approver_designation_id
                 | version.activity_line_ids.mapped("owner_designation_id")
                 | version.activity_line_ids.mapped("approver_designation_id")
+                | version.activity_line_ids.mapped("coordinator_designation_id")
+                | version.activity_line_ids.mapped("support_designation_ids")
                 | version.checklist_item_ids.mapped("owner_designation_id")
                 | version.checklist_item_ids.mapped("approver_designation_id")
                 | version.artifact_rule_ids.mapped("artifact_master_id.owner_designation_id")
@@ -908,6 +936,8 @@ class HjigProgrammeRun(models.Model):
                         "hjig_governance_stage_id": activity.gate_line_id.stage_id.id,
                         "hjig_owner_designation_id": activity.owner_designation_id.id,
                         "hjig_approver_designation_id": activity.approver_designation_id.id,
+                        "hjig_coordinator_designation_id": activity.coordinator_designation_id.id,
+                        "hjig_support_designation_ids": [(6, 0, activity.support_designation_ids.ids)],
                         "hjig_execution_basis": activity.execution_basis,
                         "hjig_execution_scope_key": scope_key,
                         "hjig_mould_id": mould.id if mould else False,
@@ -1108,6 +1138,7 @@ class HjigProgrammeRunGate(models.Model):
     stage_id = fields.Many2one(
         "hjig.launchguard.stage", required=True, readonly=True, ondelete="restrict", index=True
     )
+    stage_type = fields.Selection(related="stage_id.stage_type", store=True, readonly=True)
     sequence = fields.Integer(required=True, readonly=True)
     required = fields.Boolean(default=True, readonly=True)
     mould_id = fields.Many2one("x_mould", ondelete="restrict", index=True, readonly=True)
@@ -1201,6 +1232,8 @@ class HjigProgrammeRunGate(models.Model):
         return True
 
     def action_approve_gate(self):
+        if self.filtered(lambda control: control.stage_type == "milestone"):
+            raise UserError(_("Use Confirm Milestone for a direct-entry or terminal milestone."))
         if not self.env.user.has_group("new_hongyijig_custom.group_hjig_document_controller"):
             raise UserError(_("Only an authorised Document Controller may approve a programme gate."))
         for gate in self:
@@ -1216,6 +1249,30 @@ class HjigProgrammeRunGate(models.Model):
                 "state": "approved",
                 "approved_by_id": self.env.user.id,
                 "approved_on": fields.Datetime.now(),
+            })
+        return True
+
+    def action_confirm_milestone(self):
+        for control in self:
+            if control.stage_type != "milestone":
+                raise UserError(_("Only a route milestone may use milestone confirmation."))
+            control.action_refresh_readiness()
+            if control.state != "ready":
+                raise ValidationError(
+                    _("Milestone cannot be confirmed: %s.")
+                    % ", ".join(control._blocking_reasons())
+                )
+            approvers = (
+                control.run_id.template_version_id.template_id.approver_designation_id
+                ._holders_for_project(control.run_id.project_id)
+            )
+            if self.env.user not in approvers:
+                raise UserError(_("You do not hold the required programme approver designation."))
+            control.with_context(hjig_gate_workflow=True).write({
+                "state": "approved",
+                "approved_by_id": self.env.user.id,
+                "approved_on": fields.Datetime.now(),
+                "approval_note": _("Controlled route milestone confirmed; this is not a formal GO / NO-GO gate."),
             })
         return True
 
@@ -1707,6 +1764,16 @@ class ProjectTask(models.Model):
     hjig_approver_designation_id = fields.Many2one(
         "hjig.governance.designation", ondelete="restrict", index=True, tracking=True
     )
+    hjig_coordinator_designation_id = fields.Many2one(
+        "hjig.governance.designation", ondelete="restrict", index=True, tracking=True
+    )
+    hjig_support_designation_ids = fields.Many2many(
+        "hjig.governance.designation",
+        "hjig_project_task_support_designation_rel",
+        "task_id",
+        "designation_id",
+        string="Supporting Designations",
+    )
     hjig_execution_basis = fields.Selection(
         [("project", "Project"), ("component", "Component"), ("mould", "Mould")],
         readonly=True,
@@ -1750,6 +1817,7 @@ class ProjectTask(models.Model):
         frozen = {
             "hjig_programme_run_id", "hjig_template_activity_id", "hjig_governance_stage_id",
             "hjig_owner_designation_id", "hjig_approver_designation_id",
+            "hjig_coordinator_designation_id", "hjig_support_designation_ids",
             "hjig_execution_basis", "hjig_execution_scope_key", "hjig_mould_id", "hjig_part_id",
         }
         if frozen.intersection(vals) and self.filtered(
