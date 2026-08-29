@@ -1,4 +1,4 @@
-"""Reconcile the inherited A-005 Risk Register activity to its controlled master roles."""
+"""Reconcile Draft programme authority and commercial controls idempotently."""
 
 from odoo import SUPERUSER_ID, api
 from odoo.exceptions import ValidationError
@@ -30,6 +30,17 @@ def migrate(cr, version):
         })
         changed_versions |= activity.version_id
 
+    commercial_changed_versions = env["hjig.programme.template.version"]
+    for activity in versions.mapped("activity_line_ids").filtered(
+        lambda item: (item.name or "").upper().startswith("CM-")
+    ):
+        commercial_values = activity._hjig_commercial_rule_defaults()
+        if any(activity[field_name] != value for field_name, value in commercial_values.items()):
+            activity.write(commercial_values)
+            commercial_changed_versions |= activity.version_id
+
+    changed_versions |= commercial_changed_versions
+
     if changed_versions:
         changed_versions.with_context(hjig_programme_review_control=True).write({
             "dependency_review_status": "unreviewed",
@@ -42,3 +53,8 @@ def migrate(cr, version):
             "timing_reviewed_by_id": False,
             "timing_reviewed_on": False,
         })
+
+    if commercial_changed_versions:
+        env["project.task"].search([
+            ("hjig_template_activity_id.version_id", "in", commercial_changed_versions.ids),
+        ])._hjig_sync_commercial_rule_from_template()
