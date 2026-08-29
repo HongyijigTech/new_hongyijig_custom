@@ -249,11 +249,12 @@ This package is deployed to staging. Static Python/XML/CSV validation, source au
 - Production boundary: `odoo-production.service` remained active and was not stopped, upgraded or reconfigured.
 - Pending release gate: a human must complete visual role/programme UAT on staging before any production decision.
 
-## 19. Candidate 19.0.3.4.0 — programme review and commercial milestone hardening
+## 19. Candidate 19.0.3.4.1 — programme review and commercial milestone hardening
 
-This candidate is local and **not yet deployed**. It adds two controls discovered during the exact five-programme technical review:
+This candidate is local and **not yet deployed**. It adds controls discovered during the exact five-programme technical review:
 
 - Programme dependency, evidence and timing status can be Verified only through an authorised action with a controlled evidence reference, named reviewer and timestamp. Any later Draft definition change invalidates the reviews. A version and all child content become immutable when submitted for Review.
+- The inherited A-005 Risk Register activity in Draft LGC, LGD, LGV and TLC is reconciled to the existing FRM-006 authority split: Project Manager owner and PMO Document Controller approver. No duplicate Risk Register is created.
 - Every `CM-xx` activity receives an explicit customer/supplier record requirement. Runtime tasks link existing `hjig.commercial.link` records; they do not duplicate the customer ledger, supplier ledger or ECN register. An independently approved No Commercial Impact route is available only where the template explicitly permits it, including standard zero-percent CM-10 cases. Gate readiness is withdrawn if a linked commercial source changes after approval.
 
 The migration applies the conservative CM profiles only to Draft LGC, LGD, LGV and TLC versions and returns Evidence Review to Unreviewed. It does not approve, activate or set an Effective From date. Full isolated-clone Odoo tests and staging deployment remain required before this candidate can supersede 19.0.3.3.2.
