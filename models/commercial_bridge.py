@@ -25,6 +25,28 @@ class HjigTargetMixin(models.AbstractModel):
         return super()._selection_target_model() + [("hjig.commercial.link", "Project Commercial Link")]
 
 
+class HjigApproval(models.Model):
+    _inherit = "hjig.approval"
+
+    def _check_decision_authority(self):
+        result = super()._check_decision_authority()
+        for approval in self:
+            target = approval.sudo().target_ref
+            commercial_task = (
+                approval.approval_type == "commercial"
+                and target
+                and target._name == "project.task"
+                and target.hjig_commercial_control_required
+            )
+            if commercial_task and not self.env.user.has_group(
+                "new_hongyijig_custom.group_hjig_commercial_user"
+            ):
+                raise UserError(_(
+                    "Commercial milestone decisions require Hongyi Commercial Records access."
+                ))
+        return result
+
+
 class HjigCommercialSubmission(models.Model):
     _name = "hjig.commercial.submission"
     _description = "Hongyi Immutable Commercial Submission Snapshot"
@@ -461,3 +483,268 @@ class HjigCommercialLink(models.Model):
             "actor_id": self.env.user.id,
             "approval_id": approval.id if approval else False,
         })
+
+
+class ProjectTask(models.Model):
+    _inherit = "project.task"
+
+    hjig_commercial_control_required = fields.Boolean(readonly=True, copy=False, index=True)
+    hjig_commercial_customer_record_min = fields.Integer(readonly=True, copy=False)
+    hjig_commercial_supplier_record_min = fields.Integer(readonly=True, copy=False)
+    hjig_commercial_no_impact_allowed = fields.Boolean(readonly=True, copy=False)
+    hjig_commercial_control_outcome = fields.Selection(
+        [("records", "Verified Commercial Records"), ("no_impact", "No Commercial Impact")],
+        default="records",
+        copy=False,
+        tracking=True,
+    )
+    hjig_commercial_link_ids = fields.Many2many(
+        "hjig.commercial.link",
+        "hjig_task_commercial_link_rel",
+        "task_id",
+        "commercial_link_id",
+        string="Existing Commercial Records",
+        copy=False,
+    )
+    hjig_commercial_no_impact_reason = fields.Text(copy=False, tracking=True)
+    hjig_commercial_authority_designation_id = fields.Many2one(
+        "hjig.governance.designation", ondelete="restrict", copy=False, tracking=True
+    )
+    hjig_commercial_control_state = fields.Selection(
+        [
+            ("not_required", "Not Required"),
+            ("draft", "Draft"),
+            ("pending", "Pending Approval"),
+            ("cleared", "Cleared"),
+            ("rejected", "Rejected"),
+        ],
+        default="not_required",
+        required=True,
+        copy=False,
+        index=True,
+        tracking=True,
+    )
+    hjig_commercial_control_approval_id = fields.Many2one(
+        "hjig.approval", readonly=True, copy=False, ondelete="restrict"
+    )
+    hjig_commercial_control_hash = fields.Char(readonly=True, copy=False, index=True)
+    hjig_commercial_controlled_by_id = fields.Many2one("res.users", readonly=True, copy=False)
+    hjig_commercial_controlled_on = fields.Datetime(readonly=True, copy=False)
+    hjig_commercial_control_current = fields.Boolean(
+        compute="_compute_hjig_commercial_control_current",
+        string="Commercial Control Current",
+    )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        controlled = {
+            "hjig_commercial_control_required", "hjig_commercial_customer_record_min",
+            "hjig_commercial_supplier_record_min", "hjig_commercial_no_impact_allowed",
+            "hjig_commercial_control_state", "hjig_commercial_control_approval_id",
+            "hjig_commercial_control_hash", "hjig_commercial_controlled_by_id",
+            "hjig_commercial_controlled_on",
+        }
+        if not is_workflow_context(self.env) and not self.env.is_superuser():
+            if any(controlled.intersection(vals) for vals in vals_list):
+                raise ValidationError(_("Commercial milestone identity is created only by programme generation."))
+        return super().create(vals_list)
+
+    def _compute_hjig_commercial_control_current(self):
+        for task in self:
+            task.hjig_commercial_control_current = task._hjig_commercial_control_is_current()
+
+    def _hjig_sync_commercial_rule_from_template(self):
+        """Backfill generated tasks after a governed template gains explicit CM rules."""
+        for task in self.filtered("hjig_template_activity_id"):
+            activity = task.hjig_template_activity_id
+            values = {
+                "hjig_commercial_control_required": activity.commercial_control_required,
+                "hjig_commercial_customer_record_min": activity.commercial_customer_record_min,
+                "hjig_commercial_supplier_record_min": activity.commercial_supplier_record_min,
+                "hjig_commercial_no_impact_allowed": activity.commercial_no_impact_allowed,
+            }
+            if activity.commercial_control_required and task.hjig_commercial_control_state == "not_required":
+                values["hjig_commercial_control_state"] = "draft"
+            elif not activity.commercial_control_required:
+                values["hjig_commercial_control_state"] = "not_required"
+            task.with_context(**workflow_context()).write(values)
+        return True
+
+    @api.constrains(
+        "project_id", "hjig_commercial_control_required", "hjig_commercial_customer_record_min",
+        "hjig_commercial_supplier_record_min", "hjig_commercial_no_impact_allowed",
+        "hjig_commercial_link_ids", "hjig_commercial_control_state",
+    )
+    def _check_hjig_commercial_task_control(self):
+        for task in self:
+            if task.hjig_commercial_customer_record_min < 0 or task.hjig_commercial_supplier_record_min < 0:
+                raise ValidationError(_("Commercial record minimums cannot be negative."))
+            if task.hjig_commercial_link_ids.filtered(lambda link: link.project_id != task.project_id):
+                raise ValidationError(_("Every linked commercial record must belong to the task project."))
+            if task.hjig_commercial_control_required and task.hjig_commercial_control_state == "not_required":
+                raise ValidationError(_("A required commercial milestone cannot be marked Not Required."))
+            if not task.hjig_commercial_control_required and task.hjig_commercial_control_state != "not_required":
+                raise ValidationError(_("Only a governed commercial milestone may use commercial control states."))
+
+    def _hjig_commercial_snapshot_text_hash(self):
+        self.ensure_one()
+        links = self.sudo().hjig_commercial_link_ids.sorted("id")
+        payload = {
+            "task_id": self.id,
+            "project_id": self.project_id.id,
+            "template_activity_id": self.hjig_template_activity_id.id,
+            "outcome": self.hjig_commercial_control_outcome,
+            "customer_record_min": self.hjig_commercial_customer_record_min,
+            "supplier_record_min": self.hjig_commercial_supplier_record_min,
+            "no_impact_allowed": self.hjig_commercial_no_impact_allowed,
+            "no_impact_reason": (self.hjig_commercial_no_impact_reason or "").strip(),
+            "commercial_links": [
+                {
+                    "id": link.id,
+                    "ledger_side": link.ledger_side,
+                    "entry_kind": link.entry_kind,
+                    "verified_snapshot_hash": link.verified_snapshot_hash,
+                }
+                for link in links
+            ],
+        }
+        snapshot = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        return snapshot, hashlib.sha256(snapshot.encode("utf-8")).hexdigest()
+
+    def _hjig_validate_commercial_control(self):
+        for task in self:
+            if not task.hjig_commercial_control_required:
+                raise ValidationError(_("This task is not a governed commercial milestone."))
+            if not task.hjig_commercial_authority_designation_id:
+                raise ValidationError(_("Select the commercial approval authority designation."))
+            links = task.sudo().hjig_commercial_link_ids
+            if task.hjig_commercial_control_outcome == "no_impact":
+                if not task.hjig_commercial_no_impact_allowed:
+                    raise ValidationError(_("No Commercial Impact is not allowed for this milestone."))
+                if links:
+                    raise ValidationError(_("A No Commercial Impact decision cannot also carry ledger records."))
+                if len((task.hjig_commercial_no_impact_reason or "").strip()) < 10:
+                    raise ValidationError(_("Explain the No Commercial Impact basis before submission."))
+                continue
+            if task.hjig_commercial_no_impact_reason:
+                raise ValidationError(_("Remove the No Commercial Impact reason when commercial records are used."))
+            invalid = links.filtered(
+                lambda link: link.project_id != task.project_id
+                or link.state != "verified"
+                or link.reference_health != "valid"
+                or link.source_drift
+            )
+            if invalid:
+                raise ValidationError(_("Every selected commercial record must be Verified, current and from this project."))
+            customer_count = len(links.filtered(lambda link: link.ledger_side == "customer"))
+            supplier_count = len(links.filtered(lambda link: link.ledger_side == "supplier"))
+            if customer_count < task.hjig_commercial_customer_record_min:
+                raise ValidationError(_("This milestone needs more Verified customer commercial records."))
+            if supplier_count < task.hjig_commercial_supplier_record_min:
+                raise ValidationError(_("This milestone needs more Verified supplier commercial records."))
+        return True
+
+    def _hjig_commercial_control_is_current(self):
+        self.ensure_one()
+        if not self.hjig_commercial_control_required:
+            return True
+        if (
+            self.hjig_commercial_control_state != "cleared"
+            or not self.hjig_commercial_control_approval_id
+            or self.hjig_commercial_control_approval_id.state != "approved"
+        ):
+            return False
+        try:
+            self._hjig_validate_commercial_control()
+        except (UserError, ValidationError):
+            return False
+        _snapshot, current_hash = self._hjig_commercial_snapshot_text_hash()
+        return current_hash == self.hjig_commercial_control_hash
+
+    def action_submit_hjig_commercial_control(self):
+        if not self.env.user.has_group("new_hongyijig_custom.group_hjig_commercial_user"):
+            raise UserError(_("Only a Hongyi Commercial Records User may submit a commercial milestone."))
+        for task in self:
+            if task.hjig_commercial_control_state not in ("draft", "rejected"):
+                raise UserError(_("Only a Draft or Rejected commercial milestone may be submitted."))
+            if self.env.user not in task.project_id.hjig_authorized_user_ids:
+                raise UserError(_("You are not assigned to this governed project team."))
+            task._hjig_validate_commercial_control()
+            snapshot, snapshot_hash = task._hjig_commercial_snapshot_text_hash()
+            approval = self.env["hjig.approval"].sudo().create({
+                "project_id": task.project_id.id,
+                "target_ref": "%s,%s" % (task._name, task.id),
+                "approval_type": "commercial",
+                "authority_designation_id": task.hjig_commercial_authority_designation_id.id,
+                "requested_by_id": self.env.user.id,
+                "request_snapshot": snapshot,
+                "request_snapshot_hash": snapshot_hash,
+            })
+            previous_state = task.hjig_commercial_control_state
+            task.with_context(**workflow_context()).write({
+                "hjig_commercial_control_state": "pending",
+                "hjig_commercial_control_approval_id": approval.id,
+                "hjig_commercial_control_hash": False,
+                "hjig_commercial_controlled_by_id": False,
+                "hjig_commercial_controlled_on": False,
+            })
+            task._hjig_log_commercial_transition(previous_state, "pending", "submitted", approval)
+        return True
+
+    def action_apply_hjig_commercial_control(self):
+        if not self.env.user.has_group("new_hongyijig_custom.group_hjig_commercial_user"):
+            raise UserError(_("Only a Hongyi Commercial Records User may apply a commercial milestone decision."))
+        for task in self:
+            approval = task.hjig_commercial_control_approval_id
+            if task.hjig_commercial_control_state != "pending" or not approval:
+                raise UserError(_("This commercial milestone has no pending approval to apply."))
+            if approval.state == "approved":
+                task._hjig_validate_commercial_control()
+                _snapshot, current_hash = task._hjig_commercial_snapshot_text_hash()
+                if current_hash != approval.request_snapshot_hash:
+                    raise ValidationError(_("Commercial milestone inputs changed after submission. Submit again."))
+                values = {
+                    "hjig_commercial_control_state": "cleared",
+                    "hjig_commercial_control_hash": current_hash,
+                    "hjig_commercial_controlled_by_id": approval.approver_id.id,
+                    "hjig_commercial_controlled_on": approval.decision_date,
+                }
+            elif approval.state == "rejected":
+                values = {"hjig_commercial_control_state": "rejected"}
+            else:
+                raise UserError(_("The commercial milestone approval is still pending."))
+            task.with_context(**workflow_context()).write(values)
+            task._hjig_log_commercial_transition(
+                "pending", values["hjig_commercial_control_state"], approval.state, approval
+            )
+        return True
+
+    def _hjig_log_commercial_transition(self, from_state, to_state, decision, approval):
+        self.ensure_one()
+        self.env["hjig.transition.log"].sudo().create({
+            "project_id": self.project_id.id,
+            "target_ref": "%s,%s" % (self._name, self.id),
+            "from_state": from_state,
+            "to_state": to_state,
+            "decision": decision,
+            "actor_id": self.env.user.id,
+            "approval_id": approval.id,
+        })
+
+    def write(self, vals):
+        workflow_fields = {
+            "hjig_commercial_control_state", "hjig_commercial_control_approval_id",
+            "hjig_commercial_control_hash", "hjig_commercial_controlled_by_id",
+            "hjig_commercial_controlled_on",
+        }
+        if workflow_fields.intersection(vals) and not is_workflow_context(self.env):
+            raise ValidationError(_("Commercial milestone audit fields may change only through workflow actions."))
+        input_fields = {
+            "hjig_commercial_control_outcome", "hjig_commercial_link_ids",
+            "hjig_commercial_no_impact_reason", "hjig_commercial_authority_designation_id",
+        }
+        if input_fields.intersection(vals) and self.filtered(
+            lambda task: task.hjig_commercial_control_state in ("pending", "cleared")
+        ):
+            raise ValidationError(_("A Pending or Cleared commercial milestone is read-only."))
+        return super().write(vals)
