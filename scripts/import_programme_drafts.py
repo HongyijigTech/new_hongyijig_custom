@@ -499,6 +499,7 @@ for project_id, (programme_code, expected_count) in PROGRAMMES.items():
 
     sync_artifact_rules(version)
     sync_activity_artifacts(version)
+    version._sync_founder_approved_activity_authority()
     dependency_count, documented_count, barrier_count = sync_dependency_rules(
         version, programme_code, task_payload_by_id
     )

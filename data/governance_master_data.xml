@@ -31,6 +31,15 @@
     <record id="designation_commercial_logistics" model="hjig.governance.designation">
         <field name="code">COMMERCIAL-LOGISTICS</field><field name="name">Commercial and Logistics Lead</field><field name="category">commercial</field>
     </record>
+    <record id="designation_accounting_payments" model="hjig.governance.designation">
+        <field name="code">ACCOUNTING-PAYMENTS</field><field name="name">Accountant - Payment Control</field><field name="category">commercial</field>
+    </record>
+    <record id="designation_vendor_sourcing" model="hjig.governance.designation">
+        <field name="code">VENDOR-SOURCING</field><field name="name">Vendor and Sourcing Manager</field><field name="category">supplier</field>
+    </record>
+    <record id="designation_development_china" model="hjig.governance.designation">
+        <field name="code">SR-DEVELOPMENT-CHINA</field><field name="name">Senior Development Engineer - China</field><field name="category">engineering</field>
+    </record>
     <record id="designation_customer_approver" model="hjig.governance.designation">
         <field name="code">CUSTOMER-APPROVER</field><field name="name">Customer Authorised Approver</field><field name="category">customer</field>
     </record>

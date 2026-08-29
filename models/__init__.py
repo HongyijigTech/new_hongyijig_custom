@@ -7,6 +7,7 @@ from . import governance_master
 from . import project_designation
 from . import native_forms
 from . import programme_template
+from . import programme_activity_authority
 from . import programme_dependency_authority
 from . import programme_session
 from . import programme_gate_checklists

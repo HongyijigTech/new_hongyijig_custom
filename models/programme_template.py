@@ -379,6 +379,10 @@ class HjigProgrammeTemplateVersion(models.Model):
                 "gate": line.gate_line_id.stage_id.code,
                 "owner": line.owner_designation_id.code,
                 "approver": line.approver_designation_id.code,
+                "coordinator": line.coordinator_designation_id.code,
+                "support_designations": sorted(line.support_designation_ids.mapped("code")),
+                "authority_source_reference": line.authority_source_reference,
+                "authority_source_version": line.authority_source_version,
                 "offset_days": line.offset_days,
                 "duration_days": line.duration_days,
                 "execution_basis": line.execution_basis,
@@ -545,6 +549,21 @@ class HjigProgrammeTemplateActivity(models.Model):
     approver_designation_id = fields.Many2one(
         "hjig.governance.designation", required=True, ondelete="restrict"
     )
+    coordinator_designation_id = fields.Many2one(
+        "hjig.governance.designation",
+        ondelete="restrict",
+        help="Project-movement coordinator; this does not replace the accountable activity owner.",
+    )
+    support_designation_ids = fields.Many2many(
+        "hjig.governance.designation",
+        "hjig_programme_activity_support_designation_rel",
+        "activity_id",
+        "designation_id",
+        string="Supporting Designations",
+        help="Additional controlled roles required to support the accountable owner.",
+    )
+    authority_source_reference = fields.Char(readonly=True, copy=False)
+    authority_source_version = fields.Char(readonly=True, copy=False)
     offset_days = fields.Integer(default=0)
     duration_days = fields.Integer(
         default=1,
@@ -852,6 +871,8 @@ class HjigProgrammeRun(models.Model):
                 | version.template_id.approver_designation_id
                 | version.activity_line_ids.mapped("owner_designation_id")
                 | version.activity_line_ids.mapped("approver_designation_id")
+                | version.activity_line_ids.mapped("coordinator_designation_id")
+                | version.activity_line_ids.mapped("support_designation_ids")
                 | version.checklist_item_ids.mapped("owner_designation_id")
                 | version.checklist_item_ids.mapped("approver_designation_id")
                 | version.artifact_rule_ids.mapped("artifact_master_id.owner_designation_id")
@@ -908,6 +929,8 @@ class HjigProgrammeRun(models.Model):
                         "hjig_governance_stage_id": activity.gate_line_id.stage_id.id,
                         "hjig_owner_designation_id": activity.owner_designation_id.id,
                         "hjig_approver_designation_id": activity.approver_designation_id.id,
+                        "hjig_coordinator_designation_id": activity.coordinator_designation_id.id,
+                        "hjig_support_designation_ids": [(6, 0, activity.support_designation_ids.ids)],
                         "hjig_execution_basis": activity.execution_basis,
                         "hjig_execution_scope_key": scope_key,
                         "hjig_mould_id": mould.id if mould else False,
@@ -1707,6 +1730,16 @@ class ProjectTask(models.Model):
     hjig_approver_designation_id = fields.Many2one(
         "hjig.governance.designation", ondelete="restrict", index=True, tracking=True
     )
+    hjig_coordinator_designation_id = fields.Many2one(
+        "hjig.governance.designation", ondelete="restrict", index=True, tracking=True
+    )
+    hjig_support_designation_ids = fields.Many2many(
+        "hjig.governance.designation",
+        "hjig_project_task_support_designation_rel",
+        "task_id",
+        "designation_id",
+        string="Supporting Designations",
+    )
     hjig_execution_basis = fields.Selection(
         [("project", "Project"), ("component", "Component"), ("mould", "Mould")],
         readonly=True,
@@ -1750,6 +1783,7 @@ class ProjectTask(models.Model):
         frozen = {
             "hjig_programme_run_id", "hjig_template_activity_id", "hjig_governance_stage_id",
             "hjig_owner_designation_id", "hjig_approver_designation_id",
+            "hjig_coordinator_designation_id", "hjig_support_designation_ids",
             "hjig_execution_basis", "hjig_execution_scope_key", "hjig_mould_id", "hjig_part_id",
         }
         if frozen.intersection(vals) and self.filtered(

@@ -134,6 +134,10 @@
                                     <field name="gate_line_id"/>
                                     <field name="owner_designation_id"/>
                                     <field name="approver_designation_id"/>
+                                    <field name="coordinator_designation_id" optional="show"/>
+                                    <field name="support_designation_ids" widget="many2many_tags" optional="show"/>
+                                    <field name="authority_source_reference" optional="hide"/>
+                                    <field name="authority_source_version" optional="hide"/>
                                     <field name="offset_days"/>
                                     <field name="duration_days"/>
                                     <field name="execution_basis"/>
@@ -605,6 +609,8 @@
                         <group>
                             <field name="hjig_owner_designation_id"/>
                             <field name="hjig_approver_designation_id"/>
+                            <field name="hjig_coordinator_designation_id"/>
+                            <field name="hjig_support_designation_ids" widget="many2many_tags"/>
                         </group>
                     </group>
                 </page>
