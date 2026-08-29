@@ -19,10 +19,10 @@ if env.cr.dbname != "HongyijigTech_10Feb" and not (
     raise RuntimeError("This staging check is restricted to HongyijigTech_10Feb")
 
 expected_activity_counts = {
-    "LGC": 141,
+    "LGC": 146,
     "LGD": 22,
-    "LGV": 127,
-    "TLC": 106,
+    "LGV": 132,
+    "TLC": 111,
     "TLL": 0,
 }
 expected_routes = {
@@ -33,7 +33,7 @@ expected_routes = {
     "TLL": [],
 }
 expected_checklist_counts = {"LGC": 143, "LGD": 27, "LGV": 136, "TLC": 118, "TLL": 0}
-expected_artifact_counts = {"LGC": 113, "LGD": 23, "LGV": 111, "TLC": 94, "TLL": 0}
+expected_artifact_counts = {"LGC": 114, "LGD": 23, "LGV": 112, "TLC": 95, "TLL": 0}
 expected_authority = {
     "A-017": "VENDOR-SOURCING",
     "A-024": "SR-TOOL-DESIGN",
@@ -100,6 +100,36 @@ for programme in programmes.sorted(lambda item: item.template_id.code):
         )
     if programme.execution_mode != "governed_gates":
         raise RuntimeError(f"{code} must remain gate-governed")
+    if code == "LGC":
+        a004 = programme.activity_line_ids.filtered(
+            lambda activity: "A-004" in (activity.legacy_master_codes or "").upper()
+        )[:1]
+        if not a004 or a004.gate_line_id.stage_id.code != "PA-00":
+            raise RuntimeError("LGC A-004 is not controlled inside Project Activation / IG-01")
+    if code in {"LGC", "LGV", "TLC"}:
+        weekly = programme.activity_line_ids.filtered(
+            lambda activity: (activity.legacy_master_codes or "").upper()
+            in {"A-026", "A-027", "A-028", "A-029", "A-030", "A-031"}
+        )
+        if set(weekly.mapped("legacy_master_codes")) != {
+            "A-026", "A-027", "A-028", "A-029", "A-030", "A-031"
+        }:
+            raise RuntimeError(f"{code} does not contain six separate weekly manufacturing reports")
+    for gate in programme.gate_line_ids.filtered(
+        lambda item: item.stage_id.stage_type != "milestone"
+    ):
+        expected_gate_form = "IG-01-G01" if gate.stage_id.code == "PA-00" else "%s-G01" % gate.stage_id.code
+        if not programme.artifact_rule_ids.filtered(
+            lambda rule: rule.stage_id == gate.stage_id
+            and rule.artifact_master_id.code == expected_gate_form
+            and rule.mandatory
+        ):
+            raise RuntimeError(f"{code} {gate.stage_id.code} lacks its exact Gate Forms v1.9 record")
+    if programme.gate_line_ids.filtered(
+        lambda gate: gate.stage_id.code in {"PRE-B2", "LGD-SIGNOFF"}
+        and gate.stage_id.stage_type != "milestone"
+    ):
+        raise RuntimeError(f"{code} treats a route milestone as a formal technical gate")
     if programme.activity_line_ids.filtered(lambda activity: activity.duration_days != 0):
         raise RuntimeError(f"{code} contains unapproved non-zero planning durations")
     if programme.activity_line_ids.filtered(

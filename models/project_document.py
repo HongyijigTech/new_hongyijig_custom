@@ -233,6 +233,18 @@ class HjigProjectDocument(models.Model):
         help="Audit actor captured on approval. Approval authority is controlled by designation.",
     )
     effective_date = fields.Date(tracking=True)
+    signature_status = fields.Selection(
+        [("not_required", "Not Required"), ("pending", "Pending"), ("complete", "Complete")],
+        default="not_required",
+        required=True,
+        tracking=True,
+        help="Explicit signature evidence status; document approval alone does not prove signing.",
+    )
+    signature_reference = fields.Char(
+        tracking=True,
+        help="Controlled e-sign envelope, signed-PDF reference, or equivalent audit identifier.",
+    )
+    signed_on = fields.Datetime(tracking=True)
     drive_url = fields.Char(string="Controlled Drive Link", required=True, tracking=True)
     sor_reference = fields.Char(string="SOR Reference", tracking=True)
     gate_reference = fields.Char(string="Gate Reference", tracking=True)
@@ -266,6 +278,7 @@ class HjigProjectDocument(models.Model):
         "document_class", "title", "document_type", "external_document_number", "revision",
         "owner_designation_id", "approver_designation_id", "owner_id", "approver_id",
         "effective_date", "drive_url", "sor_reference", "gate_reference", "mould_id",
+        "signature_status", "signature_reference", "signed_on",
         "ecn_reference", "supersedes_id", "superseded_by_id", "notes", "status",
     }
 
@@ -352,6 +365,16 @@ class HjigProjectDocument(models.Model):
             if not (document.drive_url or "").strip().startswith(allowed_prefixes):
                 raise ValidationError(
                     _("Controlled Drive Link must be a secure Google Drive or Google Docs URL.")
+                )
+
+    @api.constrains("signature_status", "signature_reference", "signed_on")
+    def _check_signature_evidence(self):
+        for document in self:
+            if document.signature_status == "complete" and (
+                not (document.signature_reference or "").strip() or not document.signed_on
+            ):
+                raise ValidationError(
+                    _("Completed signature status requires a signature reference and signed date/time.")
                 )
 
     @api.constrains("supersedes_id", "project_id")

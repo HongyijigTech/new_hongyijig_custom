@@ -119,6 +119,7 @@
                                 <list editable="bottom">
                                     <field name="sequence"/>
                                     <field name="stage_id"/>
+                                    <field name="stage_type"/>
                                     <field name="required"/>
                                     <field name="closure_variant"/>
                                     <field name="execution_basis"/>
@@ -285,14 +286,18 @@
                                 <list create="false" delete="false">
                                     <field name="sequence"/>
                                     <field name="stage_id"/>
+                                    <field name="stage_type"/>
                                     <field name="mould_id"/>
                                     <field name="required"/>
                                     <field name="state" widget="badge"/>
                                     <field name="approved_by_id"/>
                                     <field name="approved_on"/>
                                     <button name="action_refresh_readiness" type="object" string="Check"/>
-                                    <button name="action_approve_gate" type="object" string="Approve"
+                                    <button name="action_approve_gate" type="object" string="Approve Gate"
+                                            invisible="stage_type == 'milestone'"
                                             groups="new_hongyijig_custom.group_hjig_document_controller"/>
+                                    <button name="action_confirm_milestone" type="object" string="Confirm Milestone"
+                                            invisible="stage_type != 'milestone'"/>
                                 </list>
                             </field>
                         </page>

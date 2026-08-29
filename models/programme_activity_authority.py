@@ -27,6 +27,12 @@ OWNER_BY_MASTER_CODE = {
     for master_code in master_codes.split()
 }
 
+# A-005 owns the controlled Risk Register. The approved FRM-006 authority
+# separates its Project Manager owner from PMO document-control approval.
+APPROVER_BY_MASTER_CODE = {
+    "A-005": "PMO-DOC",
+}
+
 ACCOUNTING_SUPPORT_CODES = {
     "A-091", "CM-01", "CM-02", "CM-03", "CM-04", "CM-05", "CM-06",
     "CM-07", "CM-08", "CM-09", "CM-10", "CM-11",
@@ -51,7 +57,7 @@ class HjigProgrammeTemplateVersion(models.Model):
     def _sync_founder_approved_activity_authority(self):
         """Apply the locked activity-by-activity owner table to draft programme DNA."""
         Designation = self.env["hjig.governance.designation"]
-        required_codes = set(OWNER_BY_MASTER_CODE.values()) | {
+        required_codes = set(OWNER_BY_MASTER_CODE.values()) | set(APPROVER_BY_MASTER_CODE.values()) | {
             "PROJECT-COORD", "ACCOUNTING-PAYMENTS",
         }
         designations = {
@@ -72,12 +78,22 @@ class HjigProgrammeTemplateVersion(models.Model):
             for activity in version.activity_line_ids:
                 codes = _master_codes(activity)
                 owner_codes = {OWNER_BY_MASTER_CODE[code] for code in codes if code in OWNER_BY_MASTER_CODE}
+                approver_codes = {
+                    APPROVER_BY_MASTER_CODE[code]
+                    for code in codes
+                    if code in APPROVER_BY_MASTER_CODE
+                }
                 if len(owner_codes) > 1:
                     if "REPLACES" not in (activity.name or "").upper():
                         raise ValidationError(
                             _("One activity combines controlled codes with conflicting owners: %s")
                             % activity.name
                         )
+                if len(approver_codes) > 1:
+                    raise ValidationError(
+                        _("One activity combines controlled codes with conflicting approvers: %s")
+                        % activity.name
+                    )
                 values = {
                     "coordinator_designation_id": designations["PROJECT-COORD"].id,
                     "authority_source_reference": SOURCE_REFERENCE,
@@ -85,6 +101,8 @@ class HjigProgrammeTemplateVersion(models.Model):
                 }
                 if len(owner_codes) == 1:
                     values["owner_designation_id"] = designations[owner_codes.pop()].id
+                if len(approver_codes) == 1:
+                    values["approver_designation_id"] = designations[approver_codes.pop()].id
                 support_codes = set()
                 if len(owner_codes) > 1:
                     # A programme-specific replacement keeps its explicit accountable

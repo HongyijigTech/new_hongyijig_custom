@@ -66,6 +66,14 @@ class TestProgrammeActivityAuthority(TransactionCase):
         with self.assertRaises(ValidationError):
             self.version._sync_founder_approved_activity_authority()
 
+    def test_risk_register_activity_separates_owner_and_approver(self):
+        activity = self._activity("A-005", 95)
+
+        self.version._sync_founder_approved_activity_authority()
+
+        self.assertEqual(activity.owner_designation_id.code, "PROJECT-MANAGER")
+        self.assertEqual(activity.approver_designation_id.code, "PMO-DOC")
+
     def test_explicit_replacement_keeps_owner_and_records_both_support_roles(self):
         activity = self._activity("A-089", 100)
         activity.name = "Dispatch Confirmation Sign-Off (REPLACES A-089 + A-090)"

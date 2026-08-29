@@ -220,7 +220,8 @@ class HjigProgrammeTemplateVersion(models.Model):
         for record in self:
             if not record.gate_line_ids or not record.activity_line_ids:
                 raise ValidationError(_("A programme version requires at least one gate and one activity."))
-            if record.legacy_source_task_count and len(record.activity_line_ids) != record.legacy_source_task_count:
+            reconciled_legacy_count = len(record.activity_line_ids.filtered("legacy_source_task_id"))
+            if record.legacy_source_task_count and reconciled_legacy_count != record.legacy_source_task_count:
                 raise ValidationError(
                     _("The activity count must reconcile exactly to the verified legacy source count.")
                 )
@@ -507,6 +508,7 @@ class HjigProgrammeTemplateGate(models.Model):
     stage_id = fields.Many2one(
         "hjig.launchguard.stage", required=True, ondelete="restrict", index=True
     )
+    stage_type = fields.Selection(related="stage_id.stage_type", store=True, readonly=True)
     sequence = fields.Integer(required=True, default=10)
     required = fields.Boolean(default=True)
     closure_variant = fields.Selection(
@@ -636,6 +638,11 @@ class HjigProgrammeTemplateActivity(models.Model):
                 frontier.extend(predecessor.predecessor_ids)
             if activity.duration_days < 0:
                 raise ValidationError(_("Activity duration cannot be negative."))
+
+    @api.constrains("owner_designation_id", "approver_designation_id")
+    def _check_activity_role_separation(self):
+        """Enforce role separation when either accountable role is assigned."""
+        for activity in self:
             if activity.owner_designation_id == activity.approver_designation_id:
                 raise ValidationError(_("Activity owner and approver designations must be different."))
 
@@ -1131,6 +1138,7 @@ class HjigProgrammeRunGate(models.Model):
     stage_id = fields.Many2one(
         "hjig.launchguard.stage", required=True, readonly=True, ondelete="restrict", index=True
     )
+    stage_type = fields.Selection(related="stage_id.stage_type", store=True, readonly=True)
     sequence = fields.Integer(required=True, readonly=True)
     required = fields.Boolean(default=True, readonly=True)
     mould_id = fields.Many2one("x_mould", ondelete="restrict", index=True, readonly=True)
@@ -1224,6 +1232,8 @@ class HjigProgrammeRunGate(models.Model):
         return True
 
     def action_approve_gate(self):
+        if self.filtered(lambda control: control.stage_type == "milestone"):
+            raise UserError(_("Use Confirm Milestone for a direct-entry or terminal milestone."))
         if not self.env.user.has_group("new_hongyijig_custom.group_hjig_document_controller"):
             raise UserError(_("Only an authorised Document Controller may approve a programme gate."))
         for gate in self:
@@ -1239,6 +1249,30 @@ class HjigProgrammeRunGate(models.Model):
                 "state": "approved",
                 "approved_by_id": self.env.user.id,
                 "approved_on": fields.Datetime.now(),
+            })
+        return True
+
+    def action_confirm_milestone(self):
+        for control in self:
+            if control.stage_type != "milestone":
+                raise UserError(_("Only a route milestone may use milestone confirmation."))
+            control.action_refresh_readiness()
+            if control.state != "ready":
+                raise ValidationError(
+                    _("Milestone cannot be confirmed: %s.")
+                    % ", ".join(control._blocking_reasons())
+                )
+            approvers = (
+                control.run_id.template_version_id.template_id.approver_designation_id
+                ._holders_for_project(control.run_id.project_id)
+            )
+            if self.env.user not in approvers:
+                raise UserError(_("You do not hold the required programme approver designation."))
+            control.with_context(hjig_gate_workflow=True).write({
+                "state": "approved",
+                "approved_by_id": self.env.user.id,
+                "approved_on": fields.Datetime.now(),
+                "approval_note": _("Controlled route milestone confirmed; this is not a formal GO / NO-GO gate."),
             })
         return True
 

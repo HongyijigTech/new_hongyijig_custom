@@ -707,8 +707,95 @@ class TestProgrammeTemplateGovernance(TransactionCase):
             self.assertTrue(artifact, "%s is not a governed artifact" % artifact_code)
             self.assertIn(stage, artifact.applicable_stage_ids)
 
-        self.assertEqual(STAGE_MASTER_GATE_ARTIFACTS["TG-04"], "FRM-B5-G01")
-        self.assertEqual(STAGE_MASTER_GATE_ARTIFACTS["PA-00"], "FRM-B1-G01")
+        self.assertEqual(STAGE_MASTER_GATE_ARTIFACTS["TG-04"], "TG-04-G01")
+        self.assertEqual(STAGE_MASTER_GATE_ARTIFACTS["PA-00"], "IG-01-G01")
+
+    def test_signed_checklist_cannot_pass_on_approval_status_alone(self):
+        template = self.env["hjig.programme.template"].create({
+            "code": "SIG",
+            "name": "Signature Governance Test",
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+        })
+        version = self.env["hjig.programme.template.version"].create({
+            "template_id": template.id,
+            "version": "1.0",
+            "effective_from": "2026-08-29",
+            "dependency_review_status": "verified",
+            "evidence_review_status": "verified",
+            "timing_review_status": "verified",
+        })
+        gate = self.env["hjig.programme.template.gate"].create({
+            "version_id": version.id,
+            "stage_id": self.stage.id,
+        })
+        activity = self.env["hjig.programme.template.activity"].create({
+            "version_id": version.id,
+            "code": "SIG-A01",
+            "name": "Signed approval activity",
+            "gate_line_id": gate.id,
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+        })
+        self.env["hjig.programme.template.artifact"].create({
+            "version_id": version.id,
+            "artifact_master_id": self.artifact.id,
+            "stage_id": self.stage.id,
+        })
+        self.env["hjig.programme.template.checklist.item"].create({
+            "version_id": version.id,
+            "gate_line_id": gate.id,
+            "code": "SIG-CHECK-01",
+            "subhead": "governance",
+            "item_text": "Signed controlled evidence is complete",
+            "evidence_required": True,
+            "sign_required": True,
+            "linked_activity_id": activity.id,
+            "evidence_artifact_id": self.artifact.id,
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+            "source_reference": "Gate Forms v1.9",
+            "source_version": "1.9",
+        })
+        version.action_submit_review()
+        version.with_user(self.approver_user).action_approve()
+        order = self._sale_order(
+            hjig_programme_version_id=version.id,
+            hjig_project_code="HJ-SIG-2026-0001",
+        )
+        run = self._activate_order(order)
+        item = run.checklist_instance_ids
+
+        unsigned = self.env["hjig.project.document"].create({
+            "project_id": run.project_id.id,
+            "artifact_master_id": self.artifact.id,
+            "stage_id": self.stage.id,
+            "revision": "R00",
+            "drive_url": "https://drive.google.com/file/d/unsigned/view",
+            "effective_date": "2026-08-29",
+        })
+        unsigned.with_user(self.owner_user).action_submit_review()
+        unsigned.with_user(self.approver_user).action_approve()
+        item.evidence_document_id = unsigned
+        with self.assertRaisesRegex(ValidationError, "Completed signature evidence"):
+            item.with_user(self.owner_user).action_mark_pass()
+
+        signed = self.env["hjig.project.document"].create({
+            "project_id": run.project_id.id,
+            "artifact_master_id": self.artifact.id,
+            "stage_id": self.stage.id,
+            "revision": "R01",
+            "drive_url": "https://drive.google.com/file/d/signed/view",
+            "effective_date": "2026-08-29",
+            "signature_status": "complete",
+            "signature_reference": "ESIGN-2026-0001",
+            "signed_on": "2026-08-29 10:00:00",
+        })
+        signed.with_user(self.owner_user).action_submit_review()
+        signed.with_user(self.approver_user).action_approve()
+        item.evidence_document_id = signed
+        item.with_user(self.owner_user).action_mark_pass()
+        self.assertEqual(item.status, "pass")
 
     def test_governed_drafts_have_no_untyped_evidence_after_sync(self):
         versions = self.env["hjig.programme.template.version"].search([

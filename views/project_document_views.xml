@@ -22,6 +22,7 @@
                 <field name="approver_designation_id" optional="show"/>
                 <field name="owner_id" string="Submitted By" optional="hide"/>
                 <field name="effective_date" optional="show"/>
+                <field name="signature_status" optional="show"/>
             </list>
         </field>
     </record>
@@ -64,6 +65,13 @@
                             <field name="owner_id" readonly="1"/>
                             <field name="approver_id" readonly="1"/>
                             <field name="effective_date" readonly="status in ['approved', 'superseded']"/>
+                            <field name="signature_status" readonly="status in ['approved', 'superseded']"/>
+                            <field name="signature_reference"
+                                   invisible="signature_status == 'not_required'"
+                                   readonly="status in ['approved', 'superseded']"/>
+                            <field name="signed_on"
+                                   invisible="signature_status == 'not_required'"
+                                   readonly="status in ['approved', 'superseded']"/>
                             <field name="supersedes_id" domain="[('project_id', '=', project_id), ('status', '=', 'approved')]"
                                    readonly="status in ['approved', 'superseded']"/>
                             <field name="superseded_by_id" invisible="not superseded_by_id"/>

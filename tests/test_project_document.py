@@ -125,6 +125,17 @@ class TestProjectDocumentGovernance(TransactionCase):
         with self.assertRaises(ValidationError):
             self._create_document(drive_url="https://example.com/uncontrolled")
 
+    def test_completed_signature_requires_audit_reference_and_date(self):
+        with self.assertRaises(ValidationError):
+            self._create_document(signature_status="complete")
+        document = self._create_document(
+            revision="SIG-R00",
+            signature_status="complete",
+            signature_reference="ESIGN-TEST-0001",
+            signed_on="2026-08-29 10:00:00",
+        )
+        self.assertEqual(document.signature_status, "complete")
+
     def test_approval_freezes_document(self):
         document = self._create_document(effective_date="2026-08-27")
         document.with_user(self.owner).action_submit_review()

@@ -196,20 +196,25 @@ EXPLICIT_EVIDENCE_ARTIFACT_RULES = (
 
 
 STAGE_MASTER_GATE_ARTIFACTS = {
-    "PA-00": "FRM-B1-G01",
+    "PA-00": "IG-01-G01",
     "LGD-SIGNOFF": "FRM-B2-G01",
     "PRE-B2": "FRM-B2-G01",
-    "TG-01": "FRM-B2-G01",
-    "TG-02": "FRM-B3-G01",
-    "TG-03": "FRM-B4-G01",
-    "TG-04": "FRM-B5-G01",
-    "TG-05": "FRM-B5-G01",
-    "TG-06": "FRM-B5-G01",
-    "TG-07": "FRM-B6-G01",
-    "TG-08": "FRM-B6-G01",
-    "TG-09": "FRM-B7-G01",
-    "TG-10": "FRM-043",
-    "TG-10-LITE": "FRM-043",
+    "TG-01": "TG-01-G01",
+    "TG-02": "TG-02-G01",
+    "TG-03": "TG-03-G01",
+    "TG-04": "TG-04-G01",
+    "TG-05": "TG-05-G01",
+    "TG-06": "TG-06-G01",
+    "TG-07": "TG-07-G01",
+    "TG-08": "TG-08-G01",
+    "TG-09": "TG-09-G01",
+    "TG-10": "TG-10-G01",
+    "TG-10-LITE": "TG-10-LITE-G01",
+}
+
+SUPERSEDED_GENERIC_GATE_ARTIFACTS = {
+    "FRM-B1-G01", "FRM-B2-G01", "FRM-B3-G01", "FRM-B4-G01",
+    "FRM-B5-G01", "FRM-B6-G01", "FRM-B7-G01",
 }
 
 
@@ -224,7 +229,7 @@ def _explicit_evidence_artifact_code(stage_code, text):
     if stage_code == "TG-09" and "FINAL SIGN-OFF" in upper:
         return "FRM-022"
     if stage_code in ("TG-10", "TG-10-LITE"):
-        return "FRM-043"
+        return STAGE_MASTER_GATE_ARTIFACTS[stage_code]
     return False
 
 
@@ -280,6 +285,29 @@ class HjigProgrammeTemplateVersion(models.Model):
             rows_by_stage.setdefault(stage_code, []).append((row_number, text))
 
         for version in self.filtered(lambda item: item.execution_mode == "governed_gates"):
+            for gate in version.gate_line_ids:
+                stage_code = gate.stage_id.code
+                gate_form_code = STAGE_MASTER_GATE_ARTIFACTS.get(stage_code)
+                gate_form = artifact_by_code.get(gate_form_code)
+                if gate_form:
+                    existing_rule = version.artifact_rule_ids.filtered(
+                        lambda rule: rule.stage_id == gate.stage_id
+                        and rule.artifact_master_id == gate_form
+                    )[:1]
+                    if not existing_rule:
+                        self.env["hjig.programme.template.artifact"].create({
+                            "version_id": version.id,
+                            "artifact_master_id": gate_form.id,
+                            "stage_id": gate.stage_id.id,
+                            "mandatory": True,
+                        })
+                if gate.stage_id.stage_type != "milestone":
+                    stale_generic = version.artifact_rule_ids.filtered(
+                        lambda rule: rule.stage_id == gate.stage_id
+                        and rule.artifact_master_id.code in SUPERSEDED_GENERIC_GATE_ARTIFACTS
+                    )
+                    if stale_generic:
+                        stale_generic.unlink()
             activity_by_master = {}
             for activity in version.activity_line_ids:
                 for master_code in (activity.legacy_master_codes or "").split(","):
