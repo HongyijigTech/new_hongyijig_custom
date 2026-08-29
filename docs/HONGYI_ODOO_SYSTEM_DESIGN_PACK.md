@@ -72,16 +72,16 @@ Runtime adapters expose an installed record only when it has a compatible Projec
 
 | Business object | Compatible authoritative carriers |
 |---|---|
-| Mould Planning | `x_mould`, `hjig.final.mould.plan`, `hjig.mould.register` |
-| Mould Part / Component | `x_mould_part`, `hjig.sourcebridge.component` where installed |
+| Mould Planning | `x_mould`, `hjig.final.mould.plan`; other installed carriers are exposed only when they have a deterministic Project relationship |
+| Mould Part / Component | `x_mould_part`; `hjig.sourcebridge.component` through its governed `engagement_id.project_id` path |
 | BOP | Controlled `hjig.project.document` using `FRM-004 BOP Lock Record`, linked to the existing BOP workbook and frozen through a `bop` baseline; no duplicate BOP-line model is created |
-| Risk | `hjig.project.risk`, `s.series.risk` |
+| Risk | `hjig.project.risk`; legacy alternatives are exposed only when they have a deterministic Project relationship |
 | Design Challenge / Issue | `hjig.project.issue` |
 | ECN | `hjig.project.ecn` |
 
 If a compatible carrier is absent from staging, the item is a deployment prerequisite—not permission to create a duplicate register silently.
 
-Read-only staging registry discovery on 29 August 2026 confirmed `x_mould`, `x_mould_part`, `hjig.final.mould.plan`, `hjig.mould.register`, `hjig.project.risk`, `s.series.risk`, `hjig.project.issue`, `hjig.project.ecn` and `hjig.sourcebridge.component`. No native BOP model was present, so the controlled-document-and-baseline route above is the required staging implementation.
+Read-only staging registry discovery on 29 August 2026 confirmed `x_mould`, `x_mould_part`, `hjig.final.mould.plan`, `hjig.mould.register`, `hjig.project.risk`, `s.series.risk`, `hjig.project.issue`, `hjig.project.ecn` and `hjig.sourcebridge.component`. Runtime field inspection confirmed that `hjig.mould.register` and `s.series.risk` do not have a deterministic Project relationship and therefore must not be offered as governed targets; their Project-linked alternatives remain authoritative. `hjig.sourcebridge.component` is Project-resolvable through its engagement. No native BOP model was present, so the controlled-document-and-baseline route above is the required staging implementation.
 
 ## 6. SOR operating flow
 

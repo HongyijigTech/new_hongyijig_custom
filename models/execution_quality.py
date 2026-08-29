@@ -34,12 +34,36 @@ PART_REFERENCE_MODELS = [
 
 def _available_reference_models(recordset, candidates):
     """Expose database-native adapters without making them hard module dependencies."""
-    return [(model, label) for model, label in candidates if model in recordset.env.registry]
+    available = []
+    for model_name, label in candidates:
+        if model_name not in recordset.env.registry:
+            continue
+        fields_map = recordset.env[model_name]._fields
+        direct_project = fields_map.get("project_id") or fields_map.get("x_project_id")
+        engagement = fields_map.get("engagement_id")
+        engagement_project = False
+        if engagement and engagement.type == "many2one" and engagement.comodel_name in recordset.env.registry:
+            engagement_project = recordset.env[engagement.comodel_name]._fields.get("project_id")
+        if (
+            direct_project
+            and direct_project.type == "many2one"
+            and direct_project.comodel_name == "project.project"
+        ) or (
+            engagement_project
+            and engagement_project.type == "many2one"
+            and engagement_project.comodel_name == "project.project"
+        ):
+            available.append((model_name, label))
+    return available
 
 
 def _reference_project(record):
     """Read the project from either governed or legacy Studio-backed records."""
-    return getattr(record, "project_id", False) or getattr(record, "x_project_id", False)
+    project = getattr(record, "project_id", False) or getattr(record, "x_project_id", False)
+    if project:
+        return project
+    engagement = getattr(record, "engagement_id", False)
+    return getattr(engagement, "project_id", False) if engagement else False
 
 
 class HjigTargetMixin(models.AbstractModel):

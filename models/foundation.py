@@ -375,6 +375,7 @@ class HjigTargetMixin(models.AbstractModel):
             ("s.series.risk", "Risk Register"),
             ("hjig.project.issue", "Project Issue / Design Challenge Register"),
             ("hjig.project.ecn", "Engineering Change Notice Register"),
+            ("hjig.sourcebridge.component", "SourceBridge Sourcing Component"),
         ]
         compatible_adapters = []
         for model, label in adapters:
@@ -382,10 +383,22 @@ class HjigTargetMixin(models.AbstractModel):
                 continue
             candidate = self.env[model]
             project_field = candidate._fields.get("project_id") or candidate._fields.get("x_project_id")
+            engagement_field = candidate._fields.get("engagement_id")
+            engagement_project_field = False
+            if (
+                engagement_field
+                and engagement_field.type == "many2one"
+                and engagement_field.comodel_name in self.env.registry
+            ):
+                engagement_project_field = self.env[engagement_field.comodel_name]._fields.get("project_id")
             if (
                 project_field
                 and project_field.type == "many2one"
                 and project_field.comodel_name == "project.project"
+            ) or (
+                engagement_project_field
+                and engagement_project_field.type == "many2one"
+                and engagement_project_field.comodel_name == "project.project"
             ):
                 compatible_adapters.append((model, label))
         return targets + compatible_adapters
@@ -397,6 +410,9 @@ class HjigTargetMixin(models.AbstractModel):
             target_project = (
                 target_record.project_id if "project_id" in target_record._fields
                 else target_record.x_project_id if "x_project_id" in target_record._fields
+                else target_record.engagement_id.project_id
+                if "engagement_id" in target_record._fields and target_record.engagement_id
+                and "project_id" in target_record.engagement_id._fields
                 else False
             )
         if not target_project or target_project != project:

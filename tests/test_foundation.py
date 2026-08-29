@@ -53,6 +53,22 @@ class TestHongyiFoundation(TransactionCase):
         with self.assertRaises(ValidationError):
             self._baseline(target_ref=self._target(other_project))
 
+    def test_runtime_adapters_expose_only_project_resolvable_legacy_records(self):
+        selection = dict(self.env["hjig.evidence.link"]._selection_target_model())
+        if "hjig.sourcebridge.component" in self.env.registry:
+            self.assertIn("hjig.sourcebridge.component", selection)
+        for model_name in ("hjig.mould.register", "s.series.risk"):
+            if model_name in self.env.registry:
+                model = self.env[model_name]
+                has_direct_project = any(
+                    field_name in model._fields
+                    and model._fields[field_name].type == "many2one"
+                    and model._fields[field_name].comodel_name == "project.project"
+                    for field_name in ("project_id", "x_project_id")
+                )
+                if not has_direct_project:
+                    self.assertNotIn(model_name, selection)
+
     def test_project_team_record_rule_isolates_foundation_records(self):
         other_project = self.env["project.project"].create({"name": "Restricted Project"})
         other_baseline = self.env["hjig.baseline"].create({

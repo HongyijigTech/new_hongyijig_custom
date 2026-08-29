@@ -1,5 +1,9 @@
+from types import SimpleNamespace
+
 from odoo.exceptions import ValidationError
 from odoo.tests import TransactionCase, tagged
+
+from ..models.execution_quality import _reference_project
 
 
 @tagged("post_install", "-at_install")
@@ -37,6 +41,18 @@ class TestExecutionQuality(TransactionCase):
         if accepted:
             evidence.with_user(self.approver).action_accept()
         return evidence
+
+    def test_reference_project_supports_direct_and_sourcebridge_paths(self):
+        direct = SimpleNamespace(project_id=self.project, x_project_id=False)
+        sourcebridge = SimpleNamespace(
+            project_id=False,
+            x_project_id=False,
+            engagement_id=SimpleNamespace(project_id=self.project),
+        )
+        unresolved = SimpleNamespace(project_id=False, x_project_id=False, engagement_id=False)
+        self.assertEqual(_reference_project(direct), self.project)
+        self.assertEqual(_reference_project(sourcebridge), self.project)
+        self.assertFalse(_reference_project(unresolved))
 
     def test_weekly_report_requires_evidence_and_next_plan(self):
         execution = self.env["hjig.tooling.execution"].create({
