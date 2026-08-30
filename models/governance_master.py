@@ -191,6 +191,25 @@ class HjigGovernanceArtifactMaster(models.Model):
     mandatory = fields.Boolean(default=True, tracking=True)
     master_reference_url = fields.Char(string="Master Template / Reference Link", tracking=True)
     master_tab_name = fields.Char(string="Master Workbook Tab", tracking=True)
+    source_document_name = fields.Char(
+        string="Authority Source Document",
+        tracking=True,
+        help="Approved source containing the full operating procedure. The Odoo guidance is a concise execution aid, not a replacement for this authority source.",
+    )
+    source_page_from = fields.Integer(string="Source Page From", tracking=True)
+    source_page_to = fields.Integer(string="Source Page To", tracking=True)
+    employee_quick_guide = fields.Text(
+        string="Employee Quick Guide",
+        help="Short operating sequence for the employee. Evidence remains in the existing forms, registers and gate checklists.",
+    )
+    entry_control_summary = fields.Text(string="Entry Controls")
+    hard_stop_summary = fields.Text(string="Hard Stops / Escalation")
+    exit_control_summary = fields.Text(string="Exit Controls / Evidence")
+    ai_reference_ready = fields.Boolean(
+        string="AI Source Ready",
+        compute="_compute_ai_reference_ready",
+        help="Indicates that the SOP has an approved source range and concise operational guidance that a future governed AI assistant can cite.",
+    )
     description = fields.Text()
     active = fields.Boolean(default=True, tracking=True)
 
@@ -231,6 +250,44 @@ class HjigGovernanceArtifactMaster(models.Model):
                     _("Customer-controlled masters must use the Customer Document Register.")
                 )
 
+    @api.depends(
+        "artifact_type", "source_document_name", "source_page_from", "source_page_to",
+        "employee_quick_guide", "entry_control_summary", "hard_stop_summary",
+        "exit_control_summary",
+    )
+    def _compute_ai_reference_ready(self):
+        for artifact in self:
+            artifact.ai_reference_ready = bool(
+                artifact.artifact_type == "sop"
+                and artifact.source_document_name
+                and artifact.source_page_from > 0
+                and artifact.source_page_to >= artifact.source_page_from
+                and artifact.employee_quick_guide
+                and artifact.entry_control_summary
+                and artifact.hard_stop_summary
+                and artifact.exit_control_summary
+            )
+
+    @api.constrains("source_document_name", "source_page_from", "source_page_to")
+    def _check_authority_source_range(self):
+        for artifact in self:
+            source_values = (
+                bool(artifact.source_document_name),
+                bool(artifact.source_page_from),
+                bool(artifact.source_page_to),
+            )
+            if any(source_values) and not all(source_values):
+                raise ValidationError(
+                    _("Authority source document, first page and last page must be recorded together.")
+                )
+            if all(source_values) and (
+                artifact.source_page_from < 1
+                or artifact.source_page_to < artifact.source_page_from
+            ):
+                raise ValidationError(
+                    _("Authority source pages must be positive and the last page cannot precede the first page.")
+                )
+
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
@@ -241,15 +298,32 @@ class HjigGovernanceArtifactMaster(models.Model):
     def write(self, vals):
         if vals.get("code"):
             vals["code"] = vals["code"].strip().upper()
+        guidance_fields = {
+            "source_document_name", "source_page_from", "source_page_to",
+            "employee_quick_guide", "entry_control_summary",
+            "hard_stop_summary", "exit_control_summary",
+        }
         governed_fields = {
             "code", "name", "artifact_type", "applicable_stage_ids",
             "owner_designation_id", "approver_designation_id",
             "default_register_type", "default_document_class", "revision",
             "master_reference_url", "master_tab_name",
+            *guidance_fields,
         }
-        if governed_fields.intersection(vals) and self.env["hjig.project.document"].search_count([
-            ("artifact_master_id", "in", self.ids),
-        ]):
+        governed_changes = governed_fields.intersection(vals)
+        one_time_module_seed = bool(
+            self.env.context.get("install_mode")
+            and governed_changes
+            and governed_changes.issubset(guidance_fields)
+            and all(not any(artifact[field_name] for field_name in guidance_fields) for artifact in self)
+        )
+        if (
+            governed_changes
+            and not one_time_module_seed
+            and self.env["hjig.project.document"].search_count([
+                ("artifact_master_id", "in", self.ids),
+            ])
+        ):
             raise ValidationError(
                 _("An SOP/Form Master used by a controlled document cannot be rewritten. Archive it and create a new revision.")
             )

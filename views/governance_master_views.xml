@@ -13,6 +13,7 @@
                 <field name="approver_designation_id"/>
                 <field name="revision"/>
                 <field name="mandatory"/>
+                <field name="ai_reference_ready" optional="show"/>
                 <field name="active" optional="hide"/>
             </list>
         </field>
@@ -45,7 +46,25 @@
                         <field name="master_reference_url" widget="url"/>
                         <field name="master_tab_name"/>
                     </group>
-                    <group string="Purpose"><field name="description" nolabel="1"/></group>
+                    <notebook>
+                        <page string="Operational Guidance" invisible="artifact_type != 'sop'">
+                            <group>
+                                <group string="Authority Source">
+                                    <field name="source_document_name"/>
+                                    <field name="source_page_from"/>
+                                    <field name="source_page_to"/>
+                                    <field name="ai_reference_ready" readonly="1"/>
+                                </group>
+                                <group string="Employee Use">
+                                    <field name="employee_quick_guide" nolabel="1" placeholder="Concise operating sequence; use existing forms and registers for evidence."/>
+                                </group>
+                            </group>
+                            <group string="Entry Controls"><field name="entry_control_summary" nolabel="1"/></group>
+                            <group string="Hard Stops / Escalation"><field name="hard_stop_summary" nolabel="1"/></group>
+                            <group string="Exit Controls / Evidence"><field name="exit_control_summary" nolabel="1"/></group>
+                        </page>
+                        <page string="Purpose"><field name="description" nolabel="1"/></page>
+                    </notebook>
                 </sheet>
                 <chatter/>
             </form>

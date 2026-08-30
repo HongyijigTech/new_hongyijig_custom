@@ -168,6 +168,51 @@ class TestProjectDocumentGovernance(TransactionCase):
         with self.assertRaises(ValidationError):
             self._create_document(stage_id=self.other_stage.id)
 
+    def test_sop_authority_source_requires_complete_valid_page_range(self):
+        with self.assertRaises(ValidationError):
+            self.artifact.write({"source_document_name": "Controlled B-Series Bible"})
+        with self.assertRaises(ValidationError):
+            self.artifact.write({
+                "source_document_name": "Controlled B-Series Bible",
+                "source_page_from": 20,
+                "source_page_to": 10,
+            })
+
+    def test_sop_guidance_is_ai_source_ready_and_locks_after_use(self):
+        self.artifact.write({
+            "artifact_type": "sop",
+            "source_document_name": "Controlled B-Series Bible",
+            "source_page_from": 72,
+            "source_page_to": 113,
+            "employee_quick_guide": "Confirm scope and use the existing controlled records.",
+            "entry_control_summary": "Approved intake and named authority.",
+            "hard_stop_summary": "Hold when scope or authority is unclear.",
+            "exit_control_summary": "Approved gate evidence and frozen records.",
+        })
+        self.assertTrue(self.artifact.ai_reference_ready)
+        self._create_document()
+        with self.assertRaises(ValidationError):
+            self.artifact.employee_quick_guide = "Silent rewrite after use"
+
+    def test_module_upgrade_can_seed_used_master_guidance_only_once(self):
+        self.artifact.artifact_type = "sop"
+        self._create_document()
+        guidance = {
+            "source_document_name": "Controlled B-Series Bible",
+            "source_page_from": 72,
+            "source_page_to": 113,
+            "employee_quick_guide": "Use existing controlled records.",
+            "entry_control_summary": "Approved entry.",
+            "hard_stop_summary": "Hold ambiguity.",
+            "exit_control_summary": "Approved evidence.",
+        }
+        self.artifact.with_context(install_mode=True).write(guidance)
+        self.assertTrue(self.artifact.ai_reference_ready)
+        with self.assertRaises(ValidationError):
+            self.artifact.with_context(install_mode=True).write({
+                "employee_quick_guide": "Second seed must not rewrite authority",
+            })
+
     def test_only_designation_holder_can_submit(self):
         document = self._create_document()
         with self.assertRaises(UserError):
