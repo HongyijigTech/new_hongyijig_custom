@@ -84,6 +84,122 @@
     <record id="artifact_sop_013" model="hjig.governance.artifact.master"><field name="code">SOP-013</field><field name="name">Installation, Site Trial and Project Closure</field><field name="artifact_type">sop</field><field name="applicable_stage_ids" eval="[(6,0,[ref('stage_tg09')])]"/><field name="owner_designation_id" ref="designation_project_manager"/><field name="approver_designation_id" ref="designation_customer_approver"/><field name="default_document_class">master_reference</field></record>
     <record id="artifact_sop_014" model="hjig.governance.artifact.master"><field name="code">SOP-014</field><field name="name">Programme Closure and Authority Asset Archival</field><field name="artifact_type">sop</field><field name="applicable_stage_ids" eval="[(6,0,[ref('stage_tg10'),ref('stage_tg10_lite')])]"/><field name="owner_designation_id" ref="designation_project_manager"/><field name="approver_designation_id" ref="designation_pmo_document_controller"/><field name="default_document_class">master_reference</field></record>
 
+    <!-- Concise operational guidance linked to the locked B-Series authority PDF.
+         These summaries direct employee action; they do not duplicate the detailed
+         checklists, gate forms or registers already implemented in Odoo. -->
+    <record id="artifact_sop_001" model="hjig.governance.artifact.master">
+        <field name="source_document_name">B Series- Workflow, Bible, Risk Template, SOPs, Checklists, Forms.pdf</field>
+        <field name="source_page_from">72</field><field name="source_page_to">113</field>
+        <field name="employee_quick_guide">Open the project only after scope, roles, authority, communication rhythm and customer SPOC are understood. Record the facts in the existing project, SOR, document-control and gate records; do not create a parallel tracker.</field>
+        <field name="entry_control_summary">Approved commercial handover/intake, identifiable customer and project scope, nominated internal owner, and controlled project workspace.</field>
+        <field name="hard_stop_summary">Hold or reject when scope assumptions remain open, authority is resisted, the customer expects uncontrolled 24x7 updates, or roles and reporting channels are not accepted.</field>
+        <field name="exit_control_summary">Signed project charter, acknowledged roles and authority, accepted reporting rhythm, nominated customer SPOC, controlled document register, and recorded B1 GO/HOLD/NO-GO decision.</field>
+    </record>
+    <record id="artifact_sop_002" model="hjig.governance.artifact.master">
+        <field name="source_document_name">B Series- Workflow, Bible, Risk Template, SOPs, Checklists, Forms.pdf</field>
+        <field name="source_page_from">72</field><field name="source_page_to">201</field>
+        <field name="employee_quick_guide">Convert customer requirements into controlled SOR points and link each point to the existing BOP/component, design, mould-planning, risk, trial and evidence records. Assign every SOR point to all stages where it must be verified; retain the customer source and revision as provenance.</field>
+        <field name="entry_control_summary">Customer SOR or approved Hongyi SOR structure, identifiable source revision, product/BOP context, assumptions list, and responsible reviewer.</field>
+        <field name="hard_stop_summary">Do not freeze or release a commitment when a requirement is ambiguous, untraceable, commercially excluded, unsupported by evidence, or assigned to no verification stage.</field>
+        <field name="exit_control_summary">SOR baseline and BOP relationship frozen, every requirement distributed to applicable lifecycle gates, open assumptions explicitly held, and subsequent changes routed only through ECN/change control.</field>
+    </record>
+    <record id="artifact_sop_003" model="hjig.governance.artifact.master">
+        <field name="source_document_name">B Series- Workflow, Bible, Risk Template, SOPs, Checklists, Forms.pdf</field>
+        <field name="source_page_from">114</field><field name="source_page_to">148</field>
+        <field name="employee_quick_guide">Review product data, manufacturability, interfaces, critical requirements, tolerances and unresolved design challenges with the responsible functions. Capture decisions and evidence in the existing design review/challenge records before sign-off.</field>
+        <field name="entry_control_summary">Current customer data, controlled SOR/BOP baseline, review participants, design challenge/risk visibility, and supplier feasibility inputs where applicable.</field>
+        <field name="hard_stop_summary">Hold when product data is incomplete, feasibility is doubtful, acceptance criteria are unclear, customer behaviour creates execution risk, or a decision is being treated as final without written authority.</field>
+        <field name="exit_control_summary">Approved design review decision, closed or formally accepted challenges, controlled revision, responsibility boundaries, and B2 GO/HOLD/NO-GO evidence.</field>
+    </record>
+    <record id="artifact_sop_004" model="hjig.governance.artifact.master">
+        <field name="source_document_name">B Series- Workflow, Bible, Risk Template, SOPs, Checklists, Forms.pdf</field>
+        <field name="source_page_from">72</field><field name="source_page_to">201</field>
+        <field name="employee_quick_guide">Use the existing mould planning form to derive tool concept, operations, steel, timing, trials and critical risks from the controlled SOR/BOP and design decisions. Link—not copy—existing risk and design-challenge entries.</field>
+        <field name="entry_control_summary">Controlled SOR/BOP, available product data, design review status, known risks/challenges, target tool life and programme timing assumptions.</field>
+        <field name="hard_stop_summary">Do not present an estimate as a guarantee or authorize tooling while product inputs, tool concept, steel intent, critical assumptions or risk ownership remain unclear.</field>
+        <field name="exit_control_summary">Approved mould planning revision, linked risks/challenges, explicit assumptions and exclusions, stage verification plan, and authorized next-gate decision.</field>
+    </record>
+    <record id="artifact_sop_005" model="hjig.governance.artifact.master">
+        <field name="source_document_name">B Series- Workflow, Bible, Risk Template, SOPs, Checklists, Forms.pdf</field>
+        <field name="source_page_from">114</field><field name="source_page_to">148</field>
+        <field name="employee_quick_guide">Evaluate the toolmaker against technical capability, capacity, quality discipline, communication, commercial clarity and behaviour. Record comparable evidence and the approved selection in the existing supplier/toolmaker records.</field>
+        <field name="entry_control_summary">Defined RFQ scope, controlled technical inputs, comparable supplier quotations, qualification evidence, and named selection authority.</field>
+        <field name="hard_stop_summary">Do not issue PO or release advance when capability is doubtful, documents are incomplete, quotation scope is ambiguous, behaviour is unacceptable, or the decision lacks approval.</field>
+        <field name="exit_control_summary">Signed/stamped final quotation, approved selection rationale, frozen scope/inclusions/exclusions, supplier responsibilities, commercial approval and recorded B2 decision.</field>
+    </record>
+    <record id="artifact_sop_006" model="hjig.governance.artifact.master">
+        <field name="source_document_name">B Series- Workflow, Bible, Risk Template, SOPs, Checklists, Forms.pdf</field>
+        <field name="source_page_from">149</field><field name="source_page_to">201</field>
+        <field name="employee_quick_guide">Validate DFM, Moldflow assumptions, tool concept, steel intent, responsibility lock and known risks against the frozen product requirements. Record the decision in the existing pre-tooling and gate controls before any steel cut.</field>
+        <field name="entry_control_summary">B2 approval, frozen product/design inputs, supplier commitment, reviewed DFM/Moldflow/tool concept, steel proposal, and visible residual risks.</field>
+        <field name="hard_stop_summary">No steel GO for mismatched simulation assumptions, unstable tool concept, unresolved critical risk, guarantee language, unclear responsibility, or pressure for speed over clarity.</field>
+        <field name="exit_control_summary">Approved engineering direction with known risks, frozen tool concept and steel intent, responsibility lock, supplier acknowledgement, and formal B3 Steel GO/HOLD/NO-GO evidence.</field>
+    </record>
+    <record id="artifact_sop_007" model="hjig.governance.artifact.master">
+        <field name="source_document_name">B Series- Workflow, Bible, Risk Template, SOPs, Checklists, Forms.pdf</field>
+        <field name="source_page_from">202</field><field name="source_page_to">414</field>
+        <field name="employee_quick_guide">Run tooling through the existing manufacturing plan and reporting records. Track planned versus actual operations, steel evidence, deviations, risk, decisions and approved changes; use ECN only for post-freeze customer changes with both customer and supplier commercial impact.</field>
+        <field name="entry_control_summary">Formal Steel GO, frozen controlled inputs, approved manufacturing plan, responsible supplier/team, reporting cadence, and accepted change route.</field>
+        <field name="hard_stop_summary">Escalate unauthorized steel/process/design changes, missing traceability, concealed deviation, unsupported progress claims, overdue critical operations, or any ECN work without commercial authorization.</field>
+        <field name="exit_control_summary">Manufacturing operations evidenced, deviations closed or accepted, changes traceable, trial readiness confirmed, controlled reports uploaded, and B4 GO/HOLD/NO-GO decision recorded.</field>
+    </record>
+    <record id="artifact_sop_008" model="hjig.governance.artifact.master">
+        <field name="source_document_name">B Series- Workflow, Bible, Risk Template, SOPs, Checklists, Forms.pdf</field>
+        <field name="source_page_from">415</field><field name="source_page_to">621</field>
+        <field name="employee_quick_guide">Plan each trial against the SOR verification map and use the existing part visual, assembly and dimensional inspection records. Preserve machine/material/process conditions, sample identity, observations, measurements and stakeholder decisions.</field>
+        <field name="entry_control_summary">Trial-ready tool, approved trial plan, correct machine/material/process window, inspection plan, calibrated measurement route, and applicable SOR points.</field>
+        <field name="hard_stop_summary">Do not accept a trial with substituted conditions, unidentified samples, incomplete inspection, missing requirement traceability, verbal-only approval, or concealed nonconformity.</field>
+        <field name="exit_control_summary">Controlled trial report, visual/assembly/dimensional evidence, SOR point results, accepted defects/deviations, signed decision and next trial/final-validation route.</field>
+    </record>
+    <record id="artifact_sop_009" model="hjig.governance.artifact.master">
+        <field name="source_document_name">B Series- Workflow, Bible, Risk Template, SOPs, Checklists, Forms.pdf</field>
+        <field name="source_page_from">415</field><field name="source_page_to">621</field>
+        <field name="employee_quick_guide">Convert every failed trial observation into an owned corrective action linked to the defect, root cause, approved correction and next verification. Separate supplier correction from customer-requested post-freeze ECN work and its commercials.</field>
+        <field name="entry_control_summary">Controlled failed/conditional trial evidence, defect classification, requirement link, responsible owner, target date, and commercial/change classification.</field>
+        <field name="hard_stop_summary">No re-trial on symptom-only action, unapproved design/tool change, missing root cause, unclear cost ownership, or incomplete previous-trial evidence.</field>
+        <field name="exit_control_summary">Root cause and corrective action approved, change/ECN authority recorded where needed, action evidence complete, re-trial conditions frozen, and re-verification results linked.</field>
+    </record>
+    <record id="artifact_sop_010" model="hjig.governance.artifact.master">
+        <field name="source_document_name">B Series- Workflow, Bible, Risk Template, SOPs, Checklists, Forms.pdf</field>
+        <field name="source_page_from">415</field><field name="source_page_to">621</field>
+        <field name="employee_quick_guide">Confirm that the final controlled trial satisfies the applicable SOR, inspection and accepted-deviation criteria. Freeze the evidence and obtain formal buy-off; installation support is separate and no product warranty is implied.</field>
+        <field name="entry_control_summary">Completed required trials, closed corrective actions, final inspection evidence, controlled sample, accepted commercial/change status, and named approval authority.</field>
+        <field name="hard_stop_summary">No buy-off with open critical defects, incomplete SOR verification, conditional or verbal signatures, uncontrolled documents, unclear liability, or unresolved commercial exposure.</field>
+        <field name="exit_control_summary">Formal Master Buy-Off/NO-GO decision, frozen documents, recorded liability transfer, no open unauthorized work, and B6/exit route defined.</field>
+    </record>
+    <record id="artifact_sop_011" model="hjig.governance.artifact.master">
+        <field name="source_document_name">B Series- Workflow, Bible, Risk Template, SOPs, Checklists, Forms.pdf</field>
+        <field name="source_page_from">622</field><field name="source_page_to">667</field>
+        <field name="employee_quick_guide">Authorize dispatch only after buy-off, preservation/packing, export documents, Incoterm, insurance and custody/risk transfer are controlled in the existing dispatch and commercial records.</field>
+        <field name="entry_control_summary">B5 buy-off, dispatch-ready tool, approved packing/preservation, shipment plan, document pack, Incoterm, risk-transfer point and responsible parties.</field>
+        <field name="hard_stop_summary">No physical movement when documents, packing, Incoterm, insurance, payment/commercial position, custody or authority are ambiguous.</field>
+        <field name="exit_control_summary">Shipment authority decision, approved dispatch evidence, frozen Incoterm and risk-transfer point, complete export/packing records, and executed or formally blocked shipment.</field>
+    </record>
+    <record id="artifact_sop_012" model="hjig.governance.artifact.master">
+        <field name="source_document_name">B Series- Workflow, Bible, Risk Template, SOPs, Checklists, Forms.pdf</field>
+        <field name="source_page_from">622</field><field name="source_page_to">714</field>
+        <field name="employee_quick_guide">Track the approved shipment through custody transfer and customer-site receipt using the existing logistics records. Preserve milestone evidence and transfer only the authorized handover facts into site-run governance.</field>
+        <field name="entry_control_summary">B6 shipment GO, carrier/route details, controlled shipping pack, Incoterm/risk point, insurance responsibility, consignee and site readiness contact.</field>
+        <field name="hard_stop_summary">Escalate route/custody deviation, damage, missing document, unconfirmed delivery, customs/commercial ambiguity, or any attempt to carry unresolved B6 liability silently into B7.</field>
+        <field name="exit_control_summary">Delivery and condition evidence, custody/risk transition recorded, exceptions resolved or escalated, customer/site handover acknowledged, and B7 entry authorized.</field>
+    </record>
+    <record id="artifact_sop_013" model="hjig.governance.artifact.master">
+        <field name="source_document_name">B Series- Workflow, Bible, Risk Template, SOPs, Checklists, Forms.pdf</field>
+        <field name="source_page_from">668</field><field name="source_page_to">714</field>
+        <field name="employee_quick_guide">Control receipt, installation support, site trial, stabilisation and sign-off through the existing site/closure evidence. Close the project once contracted support and acceptance are complete; later change, paid support or ECN must start through its proper route.</field>
+        <field name="entry_control_summary">B6 closed, tool received with condition evidence, site readiness, agreed installation-support boundary, trial conditions, responsible customer SPOC and open-issue visibility.</field>
+        <field name="hard_stop_summary">Do not close on verbal acceptance, partial communication, open critical site issue, undocumented damage/deviation, unclear support boundary, or unapproved additional work.</field>
+        <field name="exit_control_summary">Site run and stabilisation evidence, customer acceptance/sign-off, issue closure status, supplier/customer/internal notification, responsibility boundary and B7 closure decision.</field>
+    </record>
+    <record id="artifact_sop_014" model="hjig.governance.artifact.master">
+        <field name="source_document_name">B Series- Workflow, Bible, Risk Template, SOPs, Checklists, Forms.pdf</field>
+        <field name="source_page_from">715</field><field name="source_page_to">754</field>
+        <field name="employee_quick_guide">After operational closure, extract technical, commercial, governance, customer and supplier learning into the controlled knowledge/closure records. Archive authority assets and permissions; B8 is intelligence capture, not ongoing support or warranty.</field>
+        <field name="entry_control_summary">B7 formally closed, final evidence frozen, financial/change status available, learning contributors identified, and authority/brand-consent status reviewable.</field>
+        <field name="hard_stop_summary">Do not use raw customer/supplier information for marketing, treat B8 as operational follow-up, imply warranty, expose restricted learning, or archive an authority asset without consent and access control.</field>
+        <field name="exit_control_summary">Lessons and performance truth captured, profitability/ECN learning recorded, supplier/customer signals classified, authority and testimonial permissions locked, system improvements assigned, archive/access controls completed.</field>
+    </record>
+
     <!-- Forms and records. All links point to the read-only engineering master workbook. -->
     <record id="artifact_frm_001" model="hjig.governance.artifact.master"><field name="code">FRM-001</field><field name="name">Project Master</field><field name="artifact_type">form</field><field name="applicable_stage_ids" eval="[(6,0,[ref('stage_pa00')])]"/><field name="owner_designation_id" ref="designation_project_coordinator"/><field name="approver_designation_id" ref="designation_project_manager"/><field name="default_document_class">project_working</field><field name="master_reference_url">https://docs.google.com/spreadsheets/d/16ycO4a29VTNDNHkPYTeMB0xcjiDfJPLo6iICv6ArCeM</field><field name="master_tab_name">PROJECT MASTER</field></record>
     <record id="artifact_frm_002" model="hjig.governance.artifact.master"><field name="code">FRM-002</field><field name="name">Customer Receipt Register</field><field name="artifact_type">form</field><field name="applicable_stage_ids" eval="[(6,0,[ref('stage_pa00')])]"/><field name="owner_designation_id" ref="designation_project_coordinator"/><field name="approver_designation_id" ref="designation_pmo_document_controller"/><field name="default_document_class">project_working</field><field name="master_reference_url">https://docs.google.com/spreadsheets/d/16ycO4a29VTNDNHkPYTeMB0xcjiDfJPLo6iICv6ArCeM</field><field name="master_tab_name">Customer Receipt Register</field></record>

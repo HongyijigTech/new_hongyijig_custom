@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_project_form_hjig_planning" model="ir.ui.view">
+        <field name="name">project.project.form.hjig.planning</field>
+        <field name="model">project.project</field>
+        <field name="inherit_id" ref="project.edit_project"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_open_hjig_plan_baselines" type="object" class="oe_stat_button" icon="fa-calendar-check-o">
+                    <field name="hjig_plan_task_count" widget="statinfo" string="Plan Tasks"/>
+                </button>
+            </xpath>
+            <xpath expr="//sheet/notebook" position="inside">
+                <page string="Project Plan Governance" name="hjig_project_plan_governance">
+                    <group>
+                        <group string="Native Odoo Plan">
+                            <field name="date_start"/>
+                            <field name="date"/>
+                            <field name="allow_task_dependencies"/>
+                            <field name="allow_milestones"/>
+                            <field name="hjig_plan_health" readonly="1"/>
+                            <button name="action_validate_hjig_plan" string="Validate Plan Readiness" type="object" class="btn-primary"/>
+                        </group>
+                        <group string="AI-Ready Plan Checks">
+                            <field name="hjig_plan_task_count" readonly="1"/>
+                            <field name="hjig_plan_missing_owner_count" readonly="1"/>
+                            <field name="hjig_plan_missing_date_count" readonly="1"/>
+                            <field name="hjig_plan_overdue_count" readonly="1"/>
+                            <field name="hjig_active_plan_baseline_id" readonly="1"/>
+                        </group>
+                    </group>
+                    <separator string="Project Planning Approval History"/>
+                    <field name="hjig_plan_baseline_ids">
+                        <list create="false" delete="false">
+                            <field name="code"/>
+                            <field name="revision"/>
+                            <field name="effective_date"/>
+                            <field name="change_reason"/>
+                            <field name="approval_authority_designation_id"/>
+                            <field name="snapshot_hash"/>
+                            <field name="state"/>
+                        </list>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_hjig_baseline_form_plan_snapshot" model="ir.ui.view">
+        <field name="name">hjig.baseline.form.plan.snapshot</field>
+        <field name="model">hjig.baseline</field>
+        <field name="inherit_id" ref="view_hjig_baseline_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='snapshot_hash']" position="after">
+                <field name="snapshot_json" readonly="1" invisible="baseline_type != 'plan'"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

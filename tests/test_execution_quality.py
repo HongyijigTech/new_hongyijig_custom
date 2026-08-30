@@ -104,6 +104,43 @@ class TestExecutionQuality(TransactionCase):
                 "current_forecast_trial_date": "2026-09-01", "coordinator_id": self.owner.id,
             })
 
+    def test_weekly_report_links_structured_manufacturing_plan(self):
+        execution = self.env["hjig.tooling.execution"].create({
+            "project_id": self.project.id, "supplier_id": self.supplier.id,
+            "mould_plan_reference": "MP-2026-LINKED", "start_date": "2026-08-01",
+            "baseline_trial_date": "2026-09-15", "current_forecast_trial_date": "2026-09-15",
+            "coordinator_id": self.owner.id,
+        })
+        plan_line = self.env["hjig.tooling.plan.line"].create({
+            "execution_id": execution.id, "code": "MFG-010", "operation": "Core rough machining",
+            "owner_id": self.owner.id, "planned_start": "2026-08-03", "planned_end": "2026-08-10",
+        })
+        report = self.env["hjig.tooling.report"].create({
+            "execution_id": execution.id, "report_type": "weekly_progress", "reporting_period": "2026-W32",
+            "planned_progress_percent": 20, "actual_progress_percent": 15,
+            "next_plan": "Finish rough machining.", "approval_authority_designation_id": self.designation.id,
+            "evidence_ids": [(6, 0, [self._evidence("linked-plan-weekly").id])],
+        })
+        with self.assertRaises(ValidationError):
+            report.action_submit_review()
+        report.plan_line_ids = plan_line
+        report.action_submit_review()
+        self.assertEqual(report.state, "review")
+
+    def test_completed_manufacturing_plan_line_requires_actual_completion(self):
+        execution = self.env["hjig.tooling.execution"].create({
+            "project_id": self.project.id, "supplier_id": self.supplier.id,
+            "mould_plan_reference": "MP-2026-COMPLETE", "start_date": "2026-08-01",
+            "baseline_trial_date": "2026-09-15", "current_forecast_trial_date": "2026-09-15",
+            "coordinator_id": self.owner.id,
+        })
+        with self.assertRaises(ValidationError):
+            self.env["hjig.tooling.plan.line"].create({
+                "execution_id": execution.id, "code": "MFG-020", "operation": "Heat treatment",
+                "owner_id": self.owner.id, "planned_start": "2026-08-11", "planned_end": "2026-08-14",
+                "state": "complete", "progress_percent": 100,
+            })
+
     def test_dimensional_result_must_match_limits(self):
         inspection = self.env["hjig.inspection"].create({
             "project_id": self.project.id, "inspection_type": "dimensional",

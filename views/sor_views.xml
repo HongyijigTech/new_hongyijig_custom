@@ -19,11 +19,13 @@
             <form string="Statement of Requirements">
                 <header>
                     <button name="action_start_mapping" string="Start Mapping" type="object" class="btn-primary" invisible="state not in ['draft', 'rejected']"/>
+                    <button name="action_load_approved_template" string="Load Approved SOR Template" type="object" class="btn-secondary" invisible="intake_route != 'hongyi_guided' or state not in ['draft', 'mapping'] or requirement_count != 0"/>
                     <button name="action_submit_review" string="Submit for Freeze" type="object" class="btn-primary" invisible="state not in ['draft', 'mapping', 'rejected']"/>
                     <button name="action_apply_decision" string="Apply Approval Decision" type="object" class="btn-primary" invisible="state != 'review'"/>
                     <field name="state" widget="statusbar" statusbar_visible="draft,mapping,review,frozen,rejected,superseded"/>
                 </header>
                 <sheet>
+                    <field name="requirement_count" invisible="1"/>
                     <div class="oe_title"><h1><field name="code"/></h1><h2><field name="title"/></h2></div>
                     <group>
                         <group string="SOR Identity">
@@ -41,7 +43,19 @@
                             <field name="effective_date" readonly="state in ['frozen', 'superseded']"/>
                             <field name="approval_authority_designation_id" readonly="state in ['frozen', 'superseded']"/>
                             <field name="baseline_id" readonly="1"/>
+                            <field name="guided_template_code" readonly="1"/>
+                            <field name="guided_template_url" widget="url" readonly="1" invisible="not guided_template_url"/>
                         </group>
+                    </group>
+                    <group string="Issuance and Responsibility" invisible="industry == 'automotive'">
+                        <field name="order_punch_confirmed" readonly="state in ['frozen', 'superseded']"/>
+                        <field name="engineering_responsibility" readonly="state in ['frozen', 'superseded']"/>
+                        <field name="engineering_scope" readonly="state in ['frozen', 'superseded']" invisible="engineering_responsibility != 'hjig_coordinated'"/>
+                    </group>
+                    <group string="Customer Sign-Off" invisible="not guided_template_code">
+                        <field name="customer_signoff_name" readonly="state in ['frozen', 'superseded']"/>
+                        <field name="customer_signoff_designation" readonly="state in ['frozen', 'superseded']"/>
+                        <field name="customer_signoff_date" readonly="state in ['frozen', 'superseded']"/>
                     </group>
                     <group string="Service Boundary">
                         <field name="no_product_warranty"/>
@@ -52,7 +66,10 @@
                             <field name="requirement_ids" readonly="state in ['frozen', 'superseded']">
                                 <list editable="bottom">
                                     <field name="sequence" widget="handle"/><field name="requirement_id"/>
+                                    <field name="section_code" optional="show"/><field name="section_title" optional="show"/>
                                     <field name="category"/><field name="requirement_text"/>
+                                    <field name="response_options" optional="hide"/>
+                                    <field name="customer_declaration" optional="show"/>
                                     <field name="declaration_state"/><field name="priority"/>
                                     <field name="source_reference"/><field name="owner_id"/>
                                     <field name="clarification_due_date"/>
@@ -75,8 +92,8 @@
                 <sheet>
                     <div class="oe_title"><h1><field name="requirement_id"/></h1></div>
                     <group>
-                        <group><field name="sor_id"/><field name="category"/><field name="declaration_state"/><field name="priority"/><field name="owner_id"/><field name="clarification_due_date"/></group>
-                        <group><field name="source_reference"/><field name="requirement_text"/><field name="acceptance_criteria"/></group>
+                        <group><field name="sor_id"/><field name="template_key" invisible="not template_key"/><field name="section_code"/><field name="section_title"/><field name="category"/><field name="declaration_state"/><field name="priority"/><field name="owner_id"/><field name="clarification_due_date"/></group>
+                        <group><field name="source_reference"/><field name="requirement_text"/><field name="response_options" invisible="not response_options"/><field name="customer_declaration"/><field name="acceptance_criteria"/></group>
                     </group>
                     <notebook>
                         <page string="Phase Verification">
