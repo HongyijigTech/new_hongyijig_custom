@@ -2549,6 +2549,15 @@ class ProjectTask(models.Model):
         string="Required SOPs / Forms",
         readonly=True,
     )
+    hjig_form_centre_requirement_ids = fields.Many2many(
+        "hjig.programme.run.artifact",
+        compute="_compute_hjig_employee_guidance",
+        string="Forms & Evidence for This Gate",
+    )
+    hjig_next_employee_action = fields.Char(
+        compute="_compute_hjig_employee_guidance",
+        string="What You Need To Do Next",
+    )
     hjig_open_predecessor_ids = fields.Many2many(
         "project.task",
         compute="_compute_hjig_execution_readiness",
@@ -2589,6 +2598,61 @@ class ProjectTask(models.Model):
             return requirements.filtered(lambda item: item.mould_id == self.hjig_mould_id)
         return requirements.filtered(lambda item: not item.mould_id)
 
+    def _hjig_form_centre_requirements(self):
+        """Return the smallest employee-ready form set for this task's gate and scope.
+
+        A template activity may deliberately omit a direct form mapping when several
+        IG-01 activities jointly create the same controlled records.  Employees must
+        still see those records from the task, without navigating through technical
+        menus.  A direct activity mapping remains the narrowest set; otherwise this
+        falls back to the applicable form requirements for the same gate scope.
+        """
+        self.ensure_one()
+        direct = self._hjig_matching_artifact_requirements()
+        if direct:
+            return direct
+        run = self.hjig_programme_run_id
+        if not run or not self.hjig_governance_stage_id:
+            return self.env["hjig.programme.run.artifact"]
+        requirements = run.artifact_requirement_ids.filtered(
+            lambda item: item.stage_id == self.hjig_governance_stage_id
+            and item.artifact_master_id.artifact_type == "form"
+        )
+        if self.hjig_execution_basis in ("mould", "component"):
+            return requirements.filtered(lambda item: item.mould_id == self.hjig_mould_id)
+        return requirements.filtered(lambda item: not item.mould_id)
+
+    @api.depends(
+        "hjig_programme_run_id.artifact_requirement_ids.status",
+        "hjig_programme_run_id.artifact_requirement_ids.stage_id",
+        "hjig_programme_run_id.artifact_requirement_ids.mould_id",
+        "hjig_template_activity_id.required_artifact_ids",
+        "hjig_governance_stage_id", "hjig_execution_basis", "hjig_mould_id",
+        "depend_on_ids.stage_id.fold",
+    )
+    def _compute_hjig_employee_guidance(self):
+        for task in self:
+            forms = task._hjig_form_centre_requirements() if task.hjig_programme_run_id else self.env[
+                "hjig.programme.run.artifact"
+            ]
+            task.hjig_form_centre_requirement_ids = forms
+            open_predecessors = task.depend_on_ids.filtered(lambda item: not item.stage_id.fold)
+            pending = forms.filtered(lambda item: item.mandatory and item.status != "approved")
+            if open_predecessors:
+                task.hjig_next_employee_action = _("Wait for: %s") % ", ".join(
+                    open_predecessors.mapped("display_name")
+                )
+            elif pending:
+                task.hjig_next_employee_action = _("Open and complete: %s") % ", ".join(
+                    pending.mapped("artifact_master_id.display_name")
+                )
+            elif forms:
+                task.hjig_next_employee_action = _("Evidence is ready. Send this task for approval.")
+            elif task.hjig_programme_run_id:
+                task.hjig_next_employee_action = _("Complete this activity and send it for approval.")
+            else:
+                task.hjig_next_employee_action = False
+
     @api.depends(
         "depend_on_ids.stage_id.fold",
         "hjig_programme_run_id.artifact_requirement_ids.status",
@@ -2626,11 +2690,14 @@ class ProjectTask(models.Model):
             task.hjig_execution_block_reason = "\n".join(reasons) or False
 
     def action_open_hjig_required_evidence(self):
+        return self.action_open_hjig_form_centre()
+
+    def action_open_hjig_form_centre(self):
         self.ensure_one()
-        requirements = self._hjig_matching_artifact_requirements()
+        requirements = self._hjig_form_centre_requirements()
         return {
             "type": "ir.actions.act_window",
-            "name": _("Required Evidence — %s") % self.display_name,
+            "name": _("Forms & Evidence — %s") % self.display_name,
             "res_model": "hjig.programme.run.artifact",
             "view_mode": "list,form",
             "domain": [("id", "in", requirements.ids)],

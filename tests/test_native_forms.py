@@ -129,12 +129,25 @@ class TestNativeProjectForms(TransactionCase):
         self.assertEqual(mould.x_mould_planning_status, "final_locked")
         with self.assertRaises(ValidationError):
             mould.x_name = "Rewritten after approval"
+        mould.x_planning_assumption = "IG-01 planning complete before architecture control."
+        mould.action_advance_lifecycle()
         with self.assertRaises(ValidationError):
             self.env["x_mould_part"].create({
                 "x_mould_id": mould.id,
                 "x_name": "Late Part",
                 "x_part_number": "P-LATE",
             })
+
+    def test_approved_legacy_record_allows_lifecycle_work_but_not_identity_rewrite(self):
+        mould, part = self._create_mould()
+        mould.with_user(self.owner).action_submit_review()
+        mould.with_user(self.approver).action_approve()
+        mould.x_planning_assumption = "Lifecycle data remains editable at IG-01."
+        part.x_colour = "Black"
+        self.assertEqual(mould.x_planning_assumption, "Lifecycle data remains editable at IG-01.")
+        self.assertEqual(part.x_colour, "Black")
+        with self.assertRaises(ValidationError):
+            mould.x_name = "Identity rewrite is still prohibited"
 
     def test_database_locked_staging_demo_allows_audited_same_user_mould_approval(self):
         parameters = self.env["ir.config_parameter"].sudo()

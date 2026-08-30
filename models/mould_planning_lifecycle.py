@@ -150,6 +150,27 @@ class HjigMouldLifecycle(models.Model):
         "x_base_hardness", "x_core_hardness", "x_cavity_hardness", "x_heat_treatment",
         "x_surface_treatment", "x_toolmaker", "x_tool_design_reference",
     }
+    _LIFECYCLE_MUTABLE_FIELDS = {
+        name for name in (
+            "x_mould_image x_lifecycle_stage x_special_technology x_planning_confidence x_grouping_basis "
+            "x_planning_assumption x_open_technical_question x_customer_input_pending x_engineering_input_pending "
+            "x_risk_flag x_risk_note x_cavity_engineering_justification x_cavitation_confirmed "
+            "x_mould_length_mm x_mould_width_mm x_mould_height_mm x_estimated_weight_kg x_target_tool_life "
+            "x_machine_name x_machine_tonnage x_machine_shot_capacity_g x_tie_bar_x_mm x_tie_bar_y_mm "
+            "x_platen_x_mm x_platen_y_mm x_machine_min_thickness_mm x_machine_max_thickness_mm "
+            "x_machine_daylight_mm x_machine_ejection_stroke_mm x_handling_capacity_kg x_runner_brand "
+            "x_runner_weight_g x_material_grade x_material_manufacturer x_material_filler x_material_mfi "
+            "x_engineering_shrinkage x_projected_area_cm2 x_planner_tonnage x_dfm_reference x_moldflow_reference "
+            "x_base_hardness x_core_hardness x_cavity_hardness x_heat_treatment x_surface_treatment "
+            "x_toolmaker x_tool_design_reference x_engineering_approved_by x_engineering_approval_date "
+            "x_steel_go_ahead x_dfm_approved x_moldflow_approved x_moldflow_not_applicable x_tool_design_approved "
+            "x_final_cavitation_approved x_runner_gate_approved x_tool_steel_approved x_cooling_frozen "
+            "x_ejection_frozen x_major_risks_accepted x_as_built_configuration x_as_built_special_technology "
+            "x_actual_cavitation x_actual_runner x_actual_gate x_actual_steel x_as_built_length_mm "
+            "x_as_built_width_mm x_as_built_height_mm x_as_built_weight_kg x_trial_reference x_buyoff_reference "
+            "x_dispatch_status x_final_ecn_history x_final_acceptance x_change_reason"
+        ).split()
+    }
 
     @api.depends(
         "x_cavitation", "x_part_ids.x_part_weight_grams", "x_part_ids.x_cavity_plan",
@@ -349,6 +370,11 @@ class HjigMouldLifecycle(models.Model):
                         "x_baseline_note": _("Baseline invalidated by a controlled architecture change."),
                     })
                 return result
+        if self._LIFECYCLE_MUTABLE_FIELDS.intersection(vals):
+            return super(HjigMouldLifecycle, self.with_context(
+                allow_native_form_workflow=True,
+                allow_mould_lifecycle_control=True,
+            )).write(vals)
         return super().write(vals)
 
     def action_confirm_architecture_baseline(self):
@@ -409,7 +435,7 @@ class HjigMouldPartLifecycle(models.Model):
                 if not reason:
                     raise ValidationError(_("A controlled-change reason is required for part changes from TG-01 onward."))
                 old_values = {field_name: part[field_name] for field_name in changed}
-                result = super(HjigMouldPartLifecycle, part).write(vals)
+                result = super(HjigMouldPartLifecycle, part.with_context(allow_mould_lifecycle_control=True)).write(vals)
                 for field_name in changed:
                     part.env["hjig.mould.change.log"].create({
                         "mould_id": part.x_mould_id.id,

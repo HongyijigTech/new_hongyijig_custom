@@ -317,7 +317,7 @@ class HjigMould(models.Model):
     def write(self, vals):
         locked_fields = set(self._fields) - {"message_follower_ids", "message_ids", "activity_ids"}
         if locked_fields.intersection(vals) and self.filtered(lambda item: item.x_workflow_state in ("approved", "superseded")):
-            if not self.env.context.get("allow_native_form_workflow"):
+            if not self.env.context.get("allow_native_form_workflow") and not self.env.context.get("allow_mould_lifecycle_control"):
                 raise ValidationError(_("Approved or superseded mould plans are read-only."))
         if "x_workflow_state" in vals and not self.env.context.get("allow_native_form_workflow"):
             if any(item.x_workflow_state != vals["x_workflow_state"] for item in self):
@@ -667,7 +667,8 @@ class HjigMouldPart(models.Model):
         vals_list = [self._reference_snapshot_values(vals) for vals in vals_list]
         for vals in vals_list:
             mould = self.env["x_mould"].browse(vals.get("x_mould_id")).exists()
-            if mould and mould.x_workflow_state != "draft":
+            lifecycle_intake = mould and "x_lifecycle_stage" in mould._fields and mould.x_lifecycle_stage == "ig01"
+            if mould and mould.x_workflow_state != "draft" and not lifecycle_intake and not self.env.context.get("allow_mould_lifecycle_control"):
                 raise ValidationError(_("Components may only be added while the mould plan is Draft."))
         parts = super().create(vals_list)
         parts.mapped("x_mould_id")._sync_governed_cavitation()
@@ -684,7 +685,15 @@ class HjigMouldPart(models.Model):
                 raise ValidationError(_("Cavity Plan cannot be negative."))
 
     def write(self, vals):
-        if any(part.x_mould_id.x_workflow_state in ("approved", "superseded") for part in self):
+        lifecycle_intake = all(
+            "x_lifecycle_stage" in part.x_mould_id._fields and part.x_mould_id.x_lifecycle_stage == "ig01"
+            for part in self
+        )
+        if (
+            any(part.x_mould_id.x_workflow_state in ("approved", "superseded") for part in self)
+            and not lifecycle_intake
+            and not self.env.context.get("allow_mould_lifecycle_control")
+        ):
             raise ValidationError(_("Components of an approved or superseded mould plan are read-only."))
         moulds = self.mapped("x_mould_id")
         result = super().write(self._reference_snapshot_values(vals))
@@ -693,7 +702,11 @@ class HjigMouldPart(models.Model):
         return result
 
     def unlink(self):
-        if any(part.x_mould_id.x_workflow_state != "draft" for part in self):
+        lifecycle_intake = all(
+            "x_lifecycle_stage" in part.x_mould_id._fields and part.x_mould_id.x_lifecycle_stage == "ig01"
+            for part in self
+        )
+        if any(part.x_mould_id.x_workflow_state != "draft" for part in self) and not lifecycle_intake:
             raise UserError(_("Components may only be deleted while the mould plan is Draft."))
         moulds = self.mapped("x_mould_id")
         result = super().unlink()
