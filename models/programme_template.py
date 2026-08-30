@@ -1806,6 +1806,63 @@ class HjigProgrammeRunArtifact(models.Model):
         "A programme-run SOP/Form requirement may appear only once per gate scope.",
     )
 
+    @api.model_create_multi
+    def create(self, vals_list):
+        requirements = super().create(vals_list)
+        requirements._autolink_native_record()
+        return requirements
+
+    def _autolink_native_record(self):
+        """Reuse one authoritative native form across gates; never ask for duplicates."""
+        for requirement in self:
+            if requirement.sor_id or requirement.bop_id or requirement.mould_plan_id:
+                continue
+            if requirement.artifact_code == "FRM-003":
+                record = self.env["hjig.sor"].search([
+                    ("project_id", "=", requirement.project_id.id),
+                    ("state", "!=", "superseded"),
+                ], order="id desc", limit=1)
+                if record:
+                    requirement.sor_id = record.id
+            elif requirement.artifact_code == "FRM-004":
+                record = self.env["hjig.bop"].search([
+                    ("project_id", "=", requirement.project_id.id),
+                    ("state", "!=", "superseded"),
+                ], order="id desc", limit=1)
+                if record:
+                    requirement.bop_id = record.id
+            elif requirement.artifact_code == "FRM-005":
+                domain = [
+                    ("x_project_id", "=", requirement.project_id.id),
+                    ("x_workflow_state", "!=", "superseded"),
+                ]
+                if requirement.mould_id:
+                    domain.append(("id", "=", requirement.mould_id.id))
+                record = self.env["x_mould"].search(domain, order="id desc", limit=1)
+                if record:
+                    requirement.mould_plan_id = record.id
+        return True
+
+    @api.model
+    def _link_native_record_across_gates(self, record, artifact_code, field_name):
+        """Propagate a newly created authoritative form to all compatible requirements."""
+        project = record.project_id if "project_id" in record._fields else record.x_project_id
+        requirements = self.search([
+            ("project_id", "=", project.id),
+            ("artifact_code", "=", artifact_code),
+            (field_name, "=", False),
+            ("run_gate_id.state", "!=", "approved"),
+        ])
+        for requirement in requirements:
+            if (
+                field_name == "mould_plan_id"
+                and requirement.mould_id
+                and requirement.mould_id != record
+            ):
+                continue
+            requirement[field_name] = record.id
+        return requirements
+
     @api.depends(
         "project_document_id", "project_document_id.status",
         "sor_id", "sor_id.state", "bop_id", "bop_id.state",
