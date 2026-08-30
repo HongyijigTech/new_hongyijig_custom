@@ -427,6 +427,31 @@ class TestProgrammeTemplateGovernance(TransactionCase):
         run.action_generate_execution()
         self.assertEqual(run.state, "generated")
 
+    def test_generated_plan_follows_dependencies_and_sets_project_end(self):
+        order = self._sale_order(hjig_project_code="HJ-PGT-2026-0008")
+        order.action_activate_hjig_programme()
+        run = order.hjig_programme_run_id
+        run.project_id.write({"date_start": "2026-08-31", "date": "2026-12-31"})
+        for designation, holder in (
+            (self.owner_designation, self.owner_user),
+            (self.approver_designation, self.approver_user),
+        ):
+            self.env["hjig.project.designation.assignment"].create({
+                "project_id": run.project_id.id,
+                "designation_id": designation.id,
+                "holder_ids": [(6, 0, [holder.id])],
+            })
+
+        run.action_generate_execution()
+
+        first = run.task_ids.filtered(lambda task: task.hjig_template_activity_id == self.activity_1)
+        dependent = run.task_ids.filtered(lambda task: task.hjig_template_activity_id == self.activity_2)
+        self.assertTrue(first.planned_date_begin and first.date_deadline)
+        self.assertTrue(dependent.planned_date_begin and dependent.date_deadline)
+        self.assertGreater(dependent.planned_date_begin, first.date_deadline)
+        self.assertEqual(run.project_id.date, dependent.date_deadline.date())
+        self.assertEqual(run.project_id.hjig_plan_health, "ready")
+
     def test_programme_execution_and_documents_are_project_team_scoped(self):
         order = self._sale_order(hjig_project_code="HJ-PGT-2026-0006")
         run = self._activate_order(order)

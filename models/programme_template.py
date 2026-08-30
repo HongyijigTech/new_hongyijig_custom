@@ -1281,6 +1281,48 @@ class HjigProgrammeRun(models.Model):
                 task.with_context(**workflow_context()).depend_on_ids = [(6, 0, predecessors.ids)]
         return True
 
+    def _sync_dependency_planning(self):
+        """Calculate an executable plan from the approved dependency graph.
+
+        Template offsets remain the earliest allowed start.  A successor starts on
+        the next working day after its latest scoped predecessor finishes.  This
+        turns the immutable dependency snapshot into a usable employee schedule
+        without rewriting the approved programme DNA.
+        """
+        for run in self.filtered(lambda item: item.project_id.date_start):
+            pending = run.task_ids
+            while pending:
+                ready = pending.filtered(lambda task: not (task.depend_on_ids & pending))
+                if not ready:
+                    raise ValidationError(_("Generated programme dependencies contain a cycle."))
+                for task in ready.sorted(lambda item: (item.sequence, item.id)):
+                    activity = task.hjig_template_activity_id
+                    baseline = run._activity_plan_values(activity)
+                    planned_start = baseline["planned_date_begin"]
+                    predecessor_deadlines = [
+                        deadline for deadline in task.depend_on_ids.mapped("date_deadline") if deadline
+                    ]
+                    if predecessor_deadlines:
+                        latest = fields.Datetime.to_datetime(max(predecessor_deadlines))
+                        dependency_start = run._add_working_days(latest.date(), 1).replace(hour=9)
+                        planned_start = max(planned_start, dependency_start)
+                    deadline = run._add_working_days(
+                        planned_start, max(activity.duration_days - 1, 0)
+                    ).replace(hour=17)
+                    task.with_context(**workflow_context()).write({
+                        "planned_date_begin": planned_start,
+                        "date_deadline": deadline,
+                    })
+                pending -= ready
+            final_deadlines = [deadline for deadline in run.task_ids.mapped("date_deadline") if deadline]
+            if final_deadlines:
+                final_date = fields.Datetime.to_datetime(max(final_deadlines)).date()
+                run.project_id.with_context(**workflow_context()).write({
+                    "date_start": fields.Date.to_string(run.project_id.date_start),
+                    "date": fields.Date.to_string(final_date),
+                })
+        return True
+
     def action_generate_execution(self):
         for run in self:
             if run.state == "generated":
@@ -1296,6 +1338,7 @@ class HjigProgrammeRun(models.Model):
             version = run.template_version_id
             run._sync_activity_tasks()
             run._sync_task_dependencies()
+            run._sync_dependency_planning()
             run._sync_execution_scopes()
             payload = version._definition_payload()
             run.with_context(hjig_run_workflow=True).write({
