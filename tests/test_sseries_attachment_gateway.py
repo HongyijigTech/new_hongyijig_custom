@@ -11,6 +11,9 @@ class TestSSeriesAttachmentGateway(TransactionCase):
         super().setUpClass()
         cls.Gateway = cls.env["hjig.sseries.intake.attachment.gateway"]
         cls.Intake = cls.env["hjig.sseries.intake.submission"]
+        cls.Parameters = cls.env["ir.config_parameter"].sudo()
+        cls.Parameters.set_param("hjig.sseries.attachment_scanner_command", "/bin/true")
+        cls.Parameters.set_param("hjig.sseries.attachment_scanner_timeout_seconds", "5")
 
     def _upload_values(self, submission_id="PB-ATTACHMENT-UAT-0001", content=b"safe-image"):
         return {
@@ -54,7 +57,7 @@ class TestSSeriesAttachmentGateway(TransactionCase):
                     "reference_image_file_id": gateway.name,
                     "reference_image_file_name": gateway.file_name,
                     "reference_image_mime_type": gateway.mime_type,
-                    "reference_image_upload_status": "STORED_PRIVATE_UAT",
+                    "reference_image_upload_status": "SCANNED_CLEAN_PRIVATE",
                 }],
             },
             "consent_given": True,
@@ -66,7 +69,10 @@ class TestSSeriesAttachmentGateway(TransactionCase):
         self.assertEqual(first, second)
         self.assertFalse(first.file_base64)
         self.assertEqual(first.file_size_bytes, len(b"safe-image"))
-        self.assertEqual(first.upload_status, "stored_private_uat")
+        self.assertEqual(first.upload_status, "scanned_clean_private")
+        self.assertEqual(first.scan_engine, "true")
+        self.assertEqual(first.scan_result, "clean")
+        self.assertTrue(first.scan_completed_at)
         self.assertTrue(first.attachment_id)
         self.assertFalse(first.attachment_id.access_token)
         self.assertNotIn("access_token", first.file_url)
@@ -106,6 +112,16 @@ class TestSSeriesAttachmentGateway(TransactionCase):
         with self.assertRaises(ValidationError):
             self.Intake.ingest_payload(payload)
 
+    def test_attachment_changed_after_scan_is_rejected(self):
+        gateway = self.Gateway.create(
+            self._upload_values(submission_id="PB-ATTACHMENT-INTEGRITY-UAT")
+        )
+        gateway.attachment_id.sudo().write({
+            "datas": base64.b64encode(b"changed-after-scan"),
+        })
+        with self.assertRaisesRegex(ValidationError, "changed after malware scanning"):
+            self.Intake.ingest_payload(self._payload(gateway))
+
     def test_dangerous_extension_and_invalid_base64_are_rejected(self):
         dangerous = self._upload_values()
         dangerous.update({
@@ -119,6 +135,25 @@ class TestSSeriesAttachmentGateway(TransactionCase):
         invalid["file_base64"] = "%%%not-base64%%%"
         with self.assertRaises(ValidationError):
             self.Gateway.create(invalid)
+
+    def test_scanner_unavailable_or_malware_result_fails_closed(self):
+        self.addCleanup(
+            self.Parameters.set_param,
+            "hjig.sseries.attachment_scanner_command",
+            "/bin/true",
+        )
+        self.Parameters.set_param(
+            "hjig.sseries.attachment_scanner_command", "/missing/hjig/clamdscan"
+        )
+        with self.assertRaisesRegex(ValidationError, "scanner is not ready"):
+            self.Gateway.create(
+                self._upload_values(submission_id="PB-ATTACHMENT-SCANNER-MISSING")
+            )
+        self.Parameters.set_param("hjig.sseries.attachment_scanner_command", "/bin/false")
+        with self.assertRaisesRegex(ValidationError, "rejected by malware scanning"):
+            self.Gateway.create(
+                self._upload_values(submission_id="PB-ATTACHMENT-MALWARE-UAT")
+            )
 
     def test_upload_and_claim_records_are_immutable(self):
         gateway = self.Gateway.create(self._upload_values())

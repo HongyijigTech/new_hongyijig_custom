@@ -1,13 +1,19 @@
 import base64
 import binascii
 import hashlib
+import os
 import re
+import subprocess
+import tempfile
 
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
 
 MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024
+DEFAULT_SCANNER_COMMAND = "/usr/bin/clamdscan"
+DEFAULT_SCANNER_TIMEOUT_SECONDS = 30
+MAX_SCANNER_TIMEOUT_SECONDS = 120
 SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 IMAGE_EXTENSIONS = {".avif", ".heic", ".heif", ".jpeg", ".jpg", ".png", ".webp"}
 TECHNICAL_EXTENSIONS = IMAGE_EXTENSIONS | {
@@ -65,12 +71,22 @@ class HjigSSeriesIntakeAttachmentGateway(models.Model):
     )
     file_url = fields.Char(readonly=True, copy=False)
     upload_status = fields.Selection(
-        [("stored_private_uat", "Stored Private — UAT Review")],
+        [
+            ("stored_private_uat", "Legacy Private — Unscanned / Blocked"),
+            ("scanned_clean_private", "Malware Scan Clean — Private"),
+        ],
         required=True,
-        default="stored_private_uat",
+        default="scanned_clean_private",
         readonly=True,
         copy=False,
     )
+    scan_engine = fields.Char(readonly=True, copy=False)
+    scan_result = fields.Selection(
+        [("clean", "Clean")],
+        readonly=True,
+        copy=False,
+    )
+    scan_completed_at = fields.Datetime(readonly=True, copy=False)
     submission_id = fields.Many2one(
         "hjig.sseries.intake.submission", readonly=True, copy=False, ondelete="restrict", index=True
     )
@@ -116,6 +132,82 @@ class HjigSSeriesIntakeAttachmentGateway(models.Model):
         if not (mime_type.startswith("image/") or mime_type in ALLOWED_TECHNICAL_MIME_TYPES):
             raise ValidationError(_("Technical attachment MIME type is not allowed."))
 
+    @api.model
+    def _scanner_settings(self):
+        parameters = self.env["ir.config_parameter"].sudo()
+        command = str(
+            parameters.get_param(
+                "hjig.sseries.attachment_scanner_command", DEFAULT_SCANNER_COMMAND
+            )
+            or ""
+        ).strip()
+        if not command or not os.path.isabs(command):
+            raise ValidationError(_("Attachment malware scanner is not configured safely."))
+        raw_timeout = parameters.get_param(
+            "hjig.sseries.attachment_scanner_timeout_seconds",
+            str(DEFAULT_SCANNER_TIMEOUT_SECONDS),
+        )
+        try:
+            timeout = int(raw_timeout)
+        except (TypeError, ValueError) as error:
+            raise ValidationError(_("Attachment malware scanner timeout is invalid.")) from error
+        if not 1 <= timeout <= MAX_SCANNER_TIMEOUT_SECONDS:
+            raise ValidationError(_("Attachment malware scanner timeout is outside the safe range."))
+        return command, timeout
+
+    @api.model
+    def _scan_attachment_payload(self, raw_bytes, file_name):
+        """Scan one file in a short-lived private quarantine before Odoo storage."""
+        command, timeout = self._scanner_settings()
+        if not os.path.isfile(command) or not os.access(command, os.X_OK):
+            raise ValidationError(
+                _("Attachment upload is unavailable because the malware scanner is not ready.")
+            )
+        suffix = "." + file_name.rsplit(".", 1)[1].lower()
+        quarantine_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                prefix="hjig-sseries-quarantine-",
+                suffix=suffix,
+                delete=False,
+            ) as quarantine:
+                quarantine_path = quarantine.name
+                os.chmod(quarantine_path, 0o600)
+                quarantine.write(raw_bytes)
+                quarantine.flush()
+                os.fsync(quarantine.fileno())
+            try:
+                result = subprocess.run(
+                    [command, "--fdpass", "--no-summary", quarantine_path],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    timeout=timeout,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired) as error:
+                raise ValidationError(
+                    _("Attachment upload is unavailable because malware scanning did not complete.")
+                ) from error
+            if result.returncode == 1:
+                raise ValidationError(_("Attachment was rejected by malware scanning."))
+            if result.returncode != 0:
+                raise ValidationError(
+                    _("Attachment upload is unavailable because the malware scanner returned an error.")
+                )
+            return {
+                "scan_engine": os.path.basename(command),
+                "scan_result": "clean",
+                "scan_completed_at": fields.Datetime.now(),
+            }
+        finally:
+            if quarantine_path:
+                try:
+                    os.unlink(quarantine_path)
+                except FileNotFoundError:
+                    pass
+
     @api.model_create_multi
     def create(self, vals_list):
         if len(vals_list) != 1:
@@ -155,6 +247,7 @@ class HjigSSeriesIntakeAttachmentGateway(models.Model):
         file_name = self._safe_file_name(vals.get("file_name"))
         mime_type = str(vals.get("mime_type") or "application/octet-stream").lower().strip()
         self._validate_file_type(attachment_type, file_name, mime_type)
+        scan_values = self._scan_attachment_payload(raw_bytes, file_name)
 
         file_sha256 = hashlib.sha256(raw_bytes).hexdigest()
         upload_key = hashlib.sha256(
@@ -162,6 +255,11 @@ class HjigSSeriesIntakeAttachmentGateway(models.Model):
         ).hexdigest()
         existing = self.search([("upload_key", "=", upload_key)], limit=1)
         if existing:
+            if existing.upload_status != "scanned_clean_private" or existing.scan_result != "clean":
+                existing.sudo().with_context(hjig_sseries_attachment_system_scan=True).write({
+                    "upload_status": "scanned_clean_private",
+                    **scan_values,
+                })
             return existing
         public_reference = "ATT-" + upload_key[:24].upper()
         record = super().create({
@@ -176,7 +274,8 @@ class HjigSSeriesIntakeAttachmentGateway(models.Model):
             "file_size_bytes": len(raw_bytes),
             "file_sha256": file_sha256,
             "file_base64": False,
-            "upload_status": "stored_private_uat",
+            "upload_status": "scanned_clean_private",
+            **scan_values,
         })
         attachment = self.env["ir.attachment"].sudo().create({
             "name": file_name,
@@ -220,6 +319,14 @@ class HjigSSeriesIntakeAttachmentGateway(models.Model):
                 raise ValidationError(_("SourceBridge attachment reference does not match this component."))
             if gateway.component_id and gateway.component_id != component:
                 raise ValidationError(_("SourceBridge attachment is already bound to another component."))
+            if gateway.upload_status != "scanned_clean_private" or gateway.scan_result != "clean":
+                raise ValidationError(_("SourceBridge attachment has not passed malware scanning."))
+            try:
+                stored_bytes = base64.b64decode(gateway.attachment_id.sudo().datas or b"", validate=True)
+            except (binascii.Error, ValueError) as error:
+                raise ValidationError(_("SourceBridge attachment storage integrity check failed.")) from error
+            if hashlib.sha256(stored_bytes).hexdigest() != gateway.file_sha256:
+                raise ValidationError(_("SourceBridge attachment changed after malware scanning."))
             if not gateway.component_id:
                 gateway.with_context(hjig_sseries_attachment_claim=True).write({
                     "submission_id": submission.id,
@@ -238,6 +345,9 @@ class HjigSSeriesIntakeAttachmentGateway(models.Model):
     def write(self, vals):
         if self.env.context.get("hjig_sseries_attachment_system_write"):
             if set(vals) <= {"attachment_id", "file_url"}:
+                return super().write(vals)
+        if self.env.context.get("hjig_sseries_attachment_system_scan"):
+            if set(vals) <= {"upload_status", "scan_engine", "scan_result", "scan_completed_at"}:
                 return super().write(vals)
         if self.env.context.get("hjig_sseries_attachment_claim"):
             if set(vals) <= {"submission_id", "project_id", "component_id"}:

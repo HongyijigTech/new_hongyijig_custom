@@ -222,6 +222,9 @@
                                     <field name="mime_type"/>
                                     <field name="file_size_bytes"/>
                                     <field name="upload_status"/>
+                                    <field name="scan_engine"/>
+                                    <field name="scan_result"/>
+                                    <field name="scan_completed_at"/>
                                     <field name="component_id"/>
                                     <field name="attachment_id"/>
                                 </list>
