@@ -87,6 +87,7 @@ class TestProgrammeAdvisorySessions(TransactionCase):
         project = self.env["project.project"].create({
             "name": "Advisory Project", "x_project_code": "HJ-TLL-2026-0001",
             "hjig_project_record_type": "customer",
+            "hjig_authorized_user_ids": [(6, 0, [self.owner_user.id, self.approver_user.id])],
         })
         for designation, holder in ((self.owner, self.owner_user), (self.approver, self.approver_user)):
             self.env["hjig.project.designation.assignment"].create({

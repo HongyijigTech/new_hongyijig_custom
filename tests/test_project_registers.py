@@ -33,6 +33,7 @@ class TestProjectRegisters(TransactionCase):
         cls.project = cls.env["project.project"].create({
             "name": "Register Test Project", "hjig_project_record_type": "customer",
             "x_project_code": "HJ-REG-2026-0001",
+            "hjig_authorized_user_ids": [(6, 0, [cls.owner.id, cls.approver.id])],
         })
         for designation, holder in (
             (cls.owner_designation, cls.owner),

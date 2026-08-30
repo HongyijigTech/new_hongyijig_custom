@@ -706,6 +706,7 @@ class TestProgrammeTemplateGovernance(TransactionCase):
             "name": "Per Mould Project",
             "x_project_code": "HJ-PMT-2026-0001",
             "hjig_project_record_type": "customer",
+            "hjig_authorized_user_ids": [(6, 0, [self.owner_user.id, self.approver_user.id])],
         })
         for designation, holder in (
             (self.owner_designation, self.owner_user),

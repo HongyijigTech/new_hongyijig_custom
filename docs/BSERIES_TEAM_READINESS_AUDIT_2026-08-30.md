@@ -1,8 +1,8 @@
 # B-Series Team-Readiness Audit — 30 August 2026
 
-**Business context:** ₹100 Cr Revenue Plan  
-**Environment reviewed:** Odoo staging (`HongyijigTech_10Feb`)  
-**Production:** Not changed  
+**Business context:** ₹100 Cr Revenue Plan
+**Environment reviewed:** Odoo staging (`HongyijigTech_10Feb`)
+**Production:** Not changed
 **Release under audit:** `new_hongyijig_custom` 19.0.3.8.1
 
 ## Controlled authority used
