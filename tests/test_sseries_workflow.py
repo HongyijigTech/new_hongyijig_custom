@@ -72,6 +72,40 @@ class TestSSeriesWorkflow(TransactionCase):
     def _pdf(self, label):
         return base64.b64encode(b"%PDF-1.4\n% " + label.encode() + b"\n%%EOF\n")
 
+    def _sourcebridge_payload(self):
+        payload = self._payload("SOURCEBRIDGE-0001")
+        payload.update({
+            "engagement_model": "SOURCEBRIDGE_ONLY",
+            "services": {"overseas_sourcing_supplier_development": True},
+            "sourcebridge_details": {
+                "project_level": {
+                    "sourcing_objective": "Qualify a controlled supply route for two components.",
+                    "sourcing_package_count": 2,
+                },
+                "components": [
+                    {
+                        "component_name": "Control Housing",
+                        "component_type": "Plastic Component",
+                        "component_function": "Protect the control assembly",
+                        "preferred_solution_route": "Supplier RFQ and validation",
+                        "material_grade": "ABS",
+                        "technical_specification_status": "Preliminary",
+                        "expected_year_1_quantity": 1000,
+                    },
+                    {
+                        "component_name": "Mounting Bracket",
+                        "component_type": "Metal Component",
+                        "component_function": "Mount the control assembly",
+                        "preferred_solution_route": "Supplier RFQ and sample approval",
+                        "material_grade": "SS304",
+                        "technical_specification_status": "Released drawing",
+                        "expected_year_1_quantity": 1000,
+                    },
+                ],
+            },
+        })
+        return payload
+
     def _prepare_and_approve(self, artifact, label):
         artifact.with_user(self.reviewer).write({
             "document_data": self._pdf(label),
@@ -177,6 +211,74 @@ class TestSSeriesWorkflow(TransactionCase):
         })
         with self.assertRaises(ValidationError):
             artifact.with_user(self.manager).action_verify_qa()
+
+    def test_sourcebridge_only_releases_standalone_engagement_and_components(self):
+        case = self.Intake.ingest_payload(self._sourcebridge_payload())["submission"].case_ids
+        case.action_start_internal_review()
+        case.write({
+            "reviewer_id": self.reviewer.id,
+            "programme_route": "sourcebridge_only",
+            "scope_confirmed": True,
+            "internal_review_summary": "Standalone SourceBridge scope and component list confirmed.",
+        })
+        case.with_user(self.manager).action_approve_internal_review()
+        case.write({
+            "governance_decision": "go",
+            "risk_level": "medium",
+            "governance_summary": "GO for controlled sourcing and bilingual RFQ handover.",
+        })
+        case.with_user(self.manager).action_approve_governance()
+        proposal = case.artifact_ids.filtered(lambda item: item.code == "SB-03")
+        case.with_user(self.manager).write({
+            "approved_governance_fee": 350000,
+            "target_margin": 0.35,
+            "payment_terms_summary": "60% on acceptance and 40% before final controlled release.",
+        })
+        case.with_user(self.manager).action_prepare_quotation()
+        self._prepare_and_approve(proposal, "sourcebridge-proposal")
+        proposal.with_user(self.manager).user_final_approval = True
+        proposal.with_user(self.manager).action_allow_customer_issue()
+        case.with_user(self.manager).write({
+            "acceptance_basis": "signed_proposal",
+            "acceptance_reference": "SIGNED-SBG-UAT-001",
+            "acceptance_date": "2026-08-30",
+        })
+        case.with_user(self.manager).action_record_customer_acceptance()
+        self._prepare_and_approve(
+            case.artifact_ids.filtered(lambda item: item.code == "S5-ORDER-PUNCH"),
+            "sourcebridge-order-punch",
+        )
+        case.with_user(self.manager).write({
+            "proforma_reference": "PI-SBG-UAT-001",
+            "finance_approved": True,
+            "payment_received": True,
+            "payment_evidence_reference": "BANK-SBG-UAT-001",
+        })
+        case.with_user(self.manager).action_complete_activation()
+        self.assertEqual(case.stage, "s5_sourcing")
+        for code in ("S6-CHINA-HANDOVER", "S6-SUPPLIER-RFQ-EN", "S6-SUPPLIER-RFQ-ZH"):
+            self._prepare_and_approve(case.artifact_ids.filtered(lambda item, c=code: item.code == c), code)
+        case.with_user(self.manager).action_complete_sourcing_pack()
+        self._prepare_and_approve(
+            case.artifact_ids.filtered(lambda item: item.code == "S6-TEAM-HANDOVER"),
+            "sourcebridge-team-handover",
+        )
+        case.with_user(self.manager).write({
+            "handover_owner_id": self.reviewer.id,
+            "handover_accepted": True,
+        })
+        case.with_user(self.manager).action_release_b0()
+
+        engagement = case.sourcebridge_engagement_id
+        self.assertEqual(case.stage, "b0_released")
+        self.assertTrue(case.project_id.x_project_code.startswith("HJ-SBG-"))
+        self.assertEqual(case.project_id.hjig_programme, "sourcebridge_only")
+        self.assertTrue(engagement.standalone)
+        self.assertFalse(case.programme_run_id)
+        self.assertEqual(engagement.project_id, case.project_id)
+        self.assertEqual(engagement.sale_order_id, case.sale_order_id)
+        self.assertEqual(len(engagement.component_ids), 2)
+        self.assertEqual(case.b0_manifest_id.sourcebridge_engagement_id, engagement)
 
     def test_external_issue_cannot_skip_independent_gates(self):
         submission = self.Intake.ingest_payload(self._payload("WORKFLOW-0003"))["submission"]

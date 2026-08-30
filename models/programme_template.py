@@ -1796,8 +1796,13 @@ class HjigSourcebridgeEngagement(models.Model):
     name = fields.Char(required=True, tracking=True)
     project_id = fields.Many2one("project.project", required=True, ondelete="restrict", index=True)
     programme_run_id = fields.Many2one(
-        "hjig.programme.run", required=True, ondelete="restrict", index=True, tracking=True
+        "hjig.programme.run", ondelete="restrict", index=True, tracking=True
     )
+    sseries_case_id = fields.Many2one(
+        "hjig.sseries.case", string="S-Series Handover Case", ondelete="restrict",
+        index=True, tracking=True,
+    )
+    standalone = fields.Boolean(compute="_compute_standalone", store=True, readonly=True)
     sale_order_id = fields.Many2one("sale.order", ondelete="restrict", tracking=True)
     owner_designation_id = fields.Many2one(
         "hjig.governance.designation", required=True, ondelete="restrict", tracking=True
@@ -1815,6 +1820,14 @@ class HjigSourcebridgeEngagement(models.Model):
     active = fields.Boolean(default=True)
 
     _code_unique = models.Constraint("UNIQUE(code)", "SourceBridge engagement code must be unique.")
+    _sseries_case_unique = models.Constraint(
+        "UNIQUE(sseries_case_id)", "An S-Series case can create only one SourceBridge engagement."
+    )
+
+    @api.depends("programme_run_id")
+    def _compute_standalone(self):
+        for engagement in self:
+            engagement.standalone = not bool(engagement.programme_run_id)
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -1823,11 +1836,20 @@ class HjigSourcebridgeEngagement(models.Model):
                 vals["code"] = vals["code"].strip().upper()
         return super().create(vals_list)
 
-    @api.constrains("project_id", "programme_run_id", "owner_designation_id", "approver_designation_id")
+    @api.constrains(
+        "project_id", "programme_run_id", "sseries_case_id",
+        "owner_designation_id", "approver_designation_id",
+    )
     def _check_engagement_governance(self):
         for engagement in self:
-            if engagement.programme_run_id.project_id != engagement.project_id:
+            if not engagement.programme_run_id and not engagement.sseries_case_id:
+                raise ValidationError(_(
+                    "SourceBridge requires either a governed programme run or an S-Series handover case."
+                ))
+            if engagement.programme_run_id and engagement.programme_run_id.project_id != engagement.project_id:
                 raise ValidationError(_("SourceBridge must link to the programme run of the same project."))
+            if engagement.sseries_case_id.project_id and engagement.sseries_case_id.project_id != engagement.project_id:
+                raise ValidationError(_("SourceBridge must link to the project released by its S-Series case."))
             if engagement.owner_designation_id == engagement.approver_designation_id:
                 raise ValidationError(_("SourceBridge owner and approver designations must differ."))
 
@@ -1857,7 +1879,7 @@ class HjigSourcebridgeEngagement(models.Model):
         if "state" in vals and not self.env.context.get("hjig_sourcebridge_workflow"):
             raise ValidationError(_("Use the governed SourceBridge workflow actions."))
         frozen = {
-            "code", "project_id", "programme_run_id", "sale_order_id",
+            "code", "project_id", "programme_run_id", "sseries_case_id", "sale_order_id",
             "owner_designation_id", "approver_designation_id",
         }
         if frozen.intersection(vals) and self.filtered(lambda item: item.state in ("active", "closed")):

@@ -26,6 +26,7 @@ HJIG_PROGRAMME_SELECTION = [
     ("launchguard_development", "LaunchGuard Development"),
     ("toollock_control", "ToolLock Control"),
     ("toollock_lite", "ToolLock Lite"),
+    ("sourcebridge_only", "SourceBridge Only"),
 ]
 
 
@@ -46,6 +47,7 @@ class ProjectProject(models.Model):
             "TG-01", "TG-02", "TG-03", "TG-04", "TG-05", "TG-06", "TG-09",
         ),
         "toollock_lite": (),
+        "sourcebridge_only": (),
     }
 
     hjig_programme = fields.Selection(

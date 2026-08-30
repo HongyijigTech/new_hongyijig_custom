@@ -789,7 +789,8 @@
         <field name="model">hjig.sourcebridge.engagement</field>
         <field name="arch" type="xml">
             <list><field name="code"/><field name="name"/><field name="project_id"/>
-                <field name="programme_run_id"/><field name="state" widget="badge"/></list>
+                <field name="programme_run_id"/><field name="sseries_case_id"/><field name="standalone"/>
+                <field name="state" widget="badge"/></list>
         </field>
     </record>
     <record id="view_hjig_sourcebridge_engagement_form" model="ir.ui.view">
@@ -807,6 +808,7 @@
                 <sheet>
                     <div class="oe_title"><h1><field name="name"/></h1></div>
                     <group><group><field name="code"/><field name="project_id"/><field name="programme_run_id"/>
+                        <field name="sseries_case_id"/><field name="standalone" readonly="1"/>
                         <field name="sale_order_id"/></group><group><field name="owner_designation_id"/>
                         <field name="approver_designation_id"/><field name="active"/></group></group>
                     <notebook><page string="Sourcing Components"><field name="component_ids">

@@ -47,6 +47,7 @@ ROUTE_PROJECT_SEQUENCE = {
     "launchguard_development": "hjig.sseries.project.lgv",
     "toollock_control": "hjig.sseries.project.tlc",
     "toollock_lite": "hjig.sseries.project.tll",
+    "sourcebridge_only": "hjig.sseries.project.sbg",
 }
 
 
@@ -428,6 +429,9 @@ class HjigSSeriesCase(models.Model):
     handover_accepted = fields.Boolean(tracking=True)
     artifact_ids = fields.One2many("hjig.sseries.artifact", "case_id", readonly=True)
     b0_manifest_id = fields.Many2one("hjig.sseries.b0.handover", readonly=True, copy=False)
+    sourcebridge_engagement_id = fields.Many2one(
+        "hjig.sourcebridge.engagement", readonly=True, copy=False, ondelete="restrict"
+    )
     currency_id = fields.Many2one(
         "res.currency", related="company_id.currency_id", store=True, readonly=True
     )
@@ -443,7 +447,7 @@ class HjigSSeriesCase(models.Model):
                 "governance_approved_by_id", "governance_approved_on",
                 "pricing_snapshot_json", "commercial_approved_by_id", "commercial_approved_on",
                 "proposal_number", "proposal_version", "order_number", "order_punch_approved",
-                "b0_manifest_id",
+                "b0_manifest_id", "sourcebridge_engagement_id",
             }
             if workflow_fields.intersection(vals):
                 raise ValidationError(_("Governed workflow evidence can be written only by S-Series actions."))
@@ -716,11 +720,6 @@ class HjigSSeriesCase(models.Model):
     def _activate_bseries_programme_run(self):
         """Create the governed B-Series execution records immediately before B0 release."""
         self.ensure_one()
-        if self.programme_route == "sourcebridge_only":
-            raise ValidationError(_(
-                "Standalone SourceBridge execution is not a B-Series programme. "
-                "Use the controlled SourceBridge handover route before B0 release."
-            ))
         template_code = ROUTE_PROGRAMME_TEMPLATE.get(self.programme_route)
         sequence_code = ROUTE_PROJECT_SEQUENCE.get(self.programme_route)
         if not template_code or not sequence_code:
@@ -758,6 +757,90 @@ class HjigSSeriesCase(models.Model):
         })
         return run
 
+    @api.model
+    def _sourcebridge_component_category(self, component_type):
+        text = (component_type or "").strip().lower()
+        if "tool" in text or "mould" in text or "mold" in text:
+            return "tooling"
+        if "plastic" in text:
+            return "plastic"
+        if "metal" in text:
+            return "metal"
+        if "material" in text:
+            return "material"
+        if "service" in text or "process" in text:
+            return "service"
+        if "bought" in text or "purchase" in text or "component" in text:
+            return "bought_out"
+        return "other"
+
+    def _activate_sourcebridge_handover(self):
+        """Create a standalone SourceBridge project without pretending it is a B-Series run."""
+        self.ensure_one()
+        components = self.intake_project_id.component_ids
+        if not components:
+            raise ValidationError(_("SourceBridge B0 release requires at least one governed intake component."))
+        if self.sourcebridge_engagement_id:
+            return self.sourcebridge_engagement_id
+        project_code = self.env["ir.sequence"].next_by_code("hjig.sseries.project.sbg")
+        engagement_code = self.env["ir.sequence"].next_by_code("hjig.sseries.sourcebridge.engagement")
+        if not project_code or not engagement_code:
+            raise ValidationError(_("SourceBridge project or engagement sequence is unavailable."))
+        authorised_users = (self.env.user | self.handover_owner_id).ids
+        project = self.env["project.project"].sudo().with_context(
+            hjig_sseries_activation=True
+        ).create({
+            "name": "%s - SourceBridge" % self.project_name,
+            "partner_id": self.partner_id.id,
+            "company_id": self.company_id.id,
+            "hjig_project_record_type": "customer",
+            "hjig_programme": "sourcebridge_only",
+            "hjig_authorized_user_ids": [(6, 0, authorised_users)],
+            "x_project_code": project_code,
+        })
+        Engagement = self.env["hjig.sourcebridge.engagement"].sudo()
+        engagement = Engagement.create({
+            "code": engagement_code,
+            "name": "%s / %s" % (project_code, self.project_name),
+            "project_id": project.id,
+            "sseries_case_id": self.id,
+            "sale_order_id": self.sale_order_id.id,
+            "owner_designation_id": self.env.ref(
+                "new_hongyijig_custom.designation_project_manager"
+            ).id,
+            "approver_designation_id": self.env.ref(
+                "new_hongyijig_custom.designation_pmo_document_controller"
+            ).id,
+        })
+        Component = self.env["hjig.sourcebridge.component"].sudo()
+        for component in components:
+            specification_parts = [
+                component.component_function,
+                component.preferred_solution_route,
+                component.material_grade,
+                component.technical_specification_status,
+            ]
+            Component.create({
+                "engagement_id": engagement.id,
+                "sequence": component.sequence,
+                "code": "%s-C%02d" % (engagement_code, component.component_index),
+                "name": component.name,
+                "category": self._sourcebridge_component_category(component.component_type),
+                "quantity": component.expected_year_1_quantity or 1,
+                "specification": " | ".join(item.strip() for item in specification_parts if item and item.strip()),
+            })
+        self.with_context(hjig_sseries_workflow=True).write({
+            "project_id": project.id,
+            "sourcebridge_engagement_id": engagement.id,
+        })
+        return engagement
+
+    def _activate_execution_handover(self):
+        self.ensure_one()
+        if self.programme_route == "sourcebridge_only":
+            return self._activate_sourcebridge_handover()
+        return self._activate_bseries_programme_run()
+
     def action_release_b0(self):
         self._assert_manager()
         for case in self:
@@ -768,7 +851,7 @@ class HjigSSeriesCase(models.Model):
                 raise ValidationError(_("Approved Team Handover, responsible owner and acceptance are required."))
             if not case.order_punch_approved or not case.payment_received or not case.sale_order_id:
                 raise ValidationError(_("Commercial acceptance, Order Punch and payment gates are incomplete."))
-            case._activate_bseries_programme_run()
+            case._activate_execution_handover()
             manifest = self.env["hjig.sseries.b0.handover"].with_context(
                 hjig_sseries_workflow=True
             ).create_from_case(case)
@@ -794,6 +877,9 @@ class HjigSSeriesB0Handover(models.Model):
     sale_order_id = fields.Many2one("sale.order", required=True, readonly=True, ondelete="restrict")
     project_id = fields.Many2one("project.project", readonly=True, ondelete="restrict")
     programme_run_id = fields.Many2one("hjig.programme.run", readonly=True, ondelete="restrict")
+    sourcebridge_engagement_id = fields.Many2one(
+        "hjig.sourcebridge.engagement", readonly=True, ondelete="restrict"
+    )
     sourcebridge_required = fields.Boolean(readonly=True)
     snapshot_json = fields.Json(required=True, readonly=True, copy=False)
     snapshot_sha256 = fields.Char(required=True, readonly=True, copy=False, index=True)
@@ -819,6 +905,7 @@ class HjigSSeriesB0Handover(models.Model):
             "sale_order": case.sale_order_id.name,
             "project_code": case.project_id.x_project_code,
             "programme_run": case.programme_run_id.name,
+            "sourcebridge_engagement": case.sourcebridge_engagement_id.code,
             "payment_evidence_reference": case.payment_evidence_reference,
             "tax_invoice_reference": case.tax_invoice_reference,
             "sourcebridge_required": case.sourcebridge_required,
@@ -834,6 +921,7 @@ class HjigSSeriesB0Handover(models.Model):
             "sale_order_id": case.sale_order_id.id,
             "project_id": case.project_id.id,
             "programme_run_id": case.programme_run_id.id,
+            "sourcebridge_engagement_id": case.sourcebridge_engagement_id.id,
             "sourcebridge_required": case.sourcebridge_required,
             "snapshot_json": snapshot,
             "snapshot_sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),

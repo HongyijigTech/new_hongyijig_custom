@@ -130,6 +130,7 @@
                                 <field name="handover_accepted"/>
                                 <field name="project_id" readonly="1"/>
                                 <field name="programme_run_id" readonly="1"/>
+                                <field name="sourcebridge_engagement_id" readonly="1"/>
                                 <field name="b0_manifest_id" readonly="1"/>
                             </group>
                         </page>
@@ -309,7 +310,7 @@
             <form string="B0 Handover Manifest" create="0" edit="0" delete="0"><sheet>
                 <div class="oe_title"><h1><field name="name"/></h1></div>
                 <group><group><field name="case_id"/><field name="programme_route"/><field name="partner_id"/><field name="sale_order_id"/></group>
-                <group><field name="project_id"/><field name="programme_run_id"/><field name="sourcebridge_required"/><field name="snapshot_sha256"/><field name="released_by_id"/><field name="released_on"/></group></group>
+                <group><field name="project_id"/><field name="programme_run_id"/><field name="sourcebridge_engagement_id"/><field name="sourcebridge_required"/><field name="snapshot_sha256"/><field name="released_by_id"/><field name="released_on"/></group></group>
                 <field name="snapshot_json" widget="json"/>
             </sheet></form>
         </field>
