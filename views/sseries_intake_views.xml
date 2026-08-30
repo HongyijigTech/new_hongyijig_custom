@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_hjig_sseries_case_list" model="ir.ui.view">
+        <field name="name">hjig.sseries.case.list</field>
+        <field name="model">hjig.sseries.case</field>
+        <field name="arch" type="xml">
+            <list decoration-danger="exception_state == 'blocked'" decoration-warning="exception_state == 'attention'">
+                <field name="priority" widget="priority"/>
+                <field name="name"/>
+                <field name="customer_name"/>
+                <field name="project_name"/>
+                <field name="form_type"/>
+                <field name="stage"/>
+                <field name="owner_id"/>
+                <field name="next_action"/>
+                <field name="exception_state"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_sseries_case_form" model="ir.ui.view">
+        <field name="name">hjig.sseries.case.form</field>
+        <field name="model">hjig.sseries.case</field>
+        <field name="arch" type="xml">
+            <form string="S-Series Cockpit">
+                <header>
+                    <button name="action_assign_to_me" string="Assign to Me" type="object"
+                            invisible="owner_id == uid"/>
+                    <button name="action_start_internal_review" string="Start Internal Review" type="object"
+                            class="btn-primary" invisible="stage != 's0_received'"/>
+                    <field name="stage" widget="statusbar"
+                           statusbar_visible="s0_received,s1_review,s2_assessment,s3_proposal,s4_activation,s5_sourcing,s6_handover,b0_released"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                        <h2><field name="project_name" readonly="1"/></h2>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="customer_name"/>
+                            <field name="form_type"/>
+                            <field name="client_submission_id"/>
+                            <field name="client_project_id"/>
+                        </group>
+                        <group>
+                            <field name="priority" widget="priority"/>
+                            <field name="owner_id"/>
+                            <field name="reviewer_id"/>
+                            <field name="sourcebridge_required"/>
+                        </group>
+                    </group>
+                    <group string="Work Queue">
+                        <field name="next_action"/>
+                        <field name="exception_state"/>
+                        <field name="blocker_summary" placeholder="No blocker recorded"/>
+                    </group>
+                    <notebook>
+                        <page string="Intake Snapshot">
+                            <field name="intake_project_id" readonly="1"/>
+                            <field name="submission_id" readonly="1"/>
+                        </page>
+                        <page string="Internal Review">
+                            <group>
+                                <field name="partner_id"/>
+                                <field name="lead_id"/>
+                            </group>
+                        </page>
+                        <page string="Commercial / Activation">
+                            <group>
+                                <field name="sale_order_id" readonly="stage in ['s0_received', 's1_review', 's2_assessment']"/>
+                                <field name="project_id" readonly="stage != 'b0_released'"/>
+                                <field name="programme_run_id"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hjig_sseries_submission_list" model="ir.ui.view">
+        <field name="name">hjig.sseries.intake.submission.list</field>
+        <field name="model">hjig.sseries.intake.submission</field>
+        <field name="arch" type="xml">
+            <list create="0" delete="0">
+                <field name="name"/>
+                <field name="client_submission_id"/>
+                <field name="form_type"/>
+                <field name="company_name"/>
+                <field name="contact_name"/>
+                <field name="customer_email"/>
+                <field name="project_count"/>
+                <field name="received_at"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_sseries_submission_form" model="ir.ui.view">
+        <field name="name">hjig.sseries.intake.submission.form</field>
+        <field name="model">hjig.sseries.intake.submission</field>
+        <field name="arch" type="xml">
+            <form string="S-Series Submission" create="0" edit="0" delete="0">
+                <sheet>
+                    <div class="oe_title"><h1><field name="name"/></h1></div>
+                    <group>
+                        <group>
+                            <field name="client_submission_id"/>
+                            <field name="form_type"/>
+                            <field name="frontend_spec_version"/>
+                            <field name="payload_hash"/>
+                        </group>
+                        <group>
+                            <field name="company_name"/>
+                            <field name="contact_name"/>
+                            <field name="customer_email"/>
+                            <field name="received_at"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Projects">
+                            <field name="project_ids">
+                                <list create="0" delete="0">
+                                    <field name="client_project_id"/>
+                                    <field name="name"/>
+                                    <field name="current_project_stage"/>
+                                    <field name="engagement_model"/>
+                                    <field name="sourcebridge_selected"/>
+                                    <field name="sourcebridge_package_count"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Diagnostic Payload" groups="new_hongyijig_custom.group_hjig_sseries_manager">
+                            <field name="raw_payload_json" widget="json"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_hjig_sseries_cases" model="ir.actions.act_window">
+        <field name="name">S-Series Cockpit</field>
+        <field name="res_model">hjig.sseries.case</field>
+        <field name="view_mode">list,form</field>
+    </record>
+    <record id="action_hjig_sseries_submissions" model="ir.actions.act_window">
+        <field name="name">Website Submissions</field>
+        <field name="res_model">hjig.sseries.intake.submission</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem id="menu_hjig_sseries" name="S-Series" parent="project.menu_main_pm"
+              sequence="4" groups="new_hongyijig_custom.group_hjig_sseries_user"/>
+    <menuitem id="menu_hjig_sseries_cases" name="Cockpit" parent="menu_hjig_sseries"
+              action="action_hjig_sseries_cases" sequence="10"/>
+    <menuitem id="menu_hjig_sseries_submissions" name="Website Submissions" parent="menu_hjig_sseries"
+              action="action_hjig_sseries_submissions" sequence="20"
+              groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
+</odoo>
+
