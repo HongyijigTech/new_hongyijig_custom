@@ -52,4 +52,4 @@ The older Constitution v6.10, Dependencies v1.2 and Gate Forms v1.8 files found 
 
 ## Honest release boundary
 
-The architecture correction is complete in source and has static Python/XML validation. Full Odoo regression, real staging upgrade and a controlled end-to-end pilot still require an authenticated server session. These must pass before production promotion. Production remains on HOLD.
+The forward-integrated 19.0.3.8.1 source passed static Python/XML validation and a disposable staging-clone upgrade with 155 tests, 0 failures and 0 errors. Programme-authority and team-readiness postchecks also passed, while the live staging and production service processes remained unchanged. The real staging upgrade and live post-deployment checks remain required. A controlled end-to-end pilot remains on HOLD until staffing and timing inputs are approved. Production remains on HOLD.
