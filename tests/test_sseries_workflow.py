@@ -14,14 +14,16 @@ class TestSSeriesWorkflow(TransactionCase):
 
         def get_or_create_user(values):
             user = Users.with_context(active_test=False).search([
-                ("login", "=", values["login"]),
+                "|",
+                ("login", "=ilike", values["login"]),
+                ("partner_id.email", "=ilike", values["email"]),
             ], limit=1)
             if user:
+                requested_group_ids = values["group_ids"][0][2]
                 user.write({
                     "active": True,
-                    "company_id": values["company_id"],
-                    "company_ids": values["company_ids"],
-                    "group_ids": values["group_ids"],
+                    "company_ids": [(4, values["company_id"])],
+                    "group_ids": [(4, group_id) for group_id in requested_group_ids],
                 })
                 return user
             return Users.create(values)
