@@ -31,24 +31,36 @@ class TestSSeriesWorkflow(TransactionCase):
                 "new_hongyijig_custom.group_hjig_sseries_manager"
             ).id])],
         })
-        cls.intake_owner = Users.create({
-            "name": "Intake Accountability",
-            "login": "intake@thehongyijig.com",
-            "email": "intake@thehongyijig.com",
-            "company_id": cls.env.company.id,
-            "company_ids": [(6, 0, [cls.env.company.id])],
-            "group_ids": [(6, 0, [cls.env.ref("project.group_project_user").id])],
-        })
-        cls.business_crm_owner = Users.create({
-            "name": "Business CRM Accountability",
-            "login": "businesscrm@thehongyijig.com",
-            "email": "businesscrm@thehongyijig.com",
-            "company_id": cls.env.company.id,
-            "company_ids": [(6, 0, [cls.env.company.id])],
-            "group_ids": [(6, 0, [cls.env.ref(
-                "new_hongyijig_custom.group_hjig_sseries_manager"
-            ).id])],
-        })
+        cls.intake_owner = Users.search([
+            ("active", "=", True),
+            ("share", "=", False),
+            ("partner_id.email", "=ilike", "intake@thehongyijig.com"),
+        ], limit=1)
+        if not cls.intake_owner:
+            cls.intake_owner = Users.create({
+                "name": "Intake Accountability",
+                "login": "intake@thehongyijig.com",
+                "email": "intake@thehongyijig.com",
+                "company_id": cls.env.company.id,
+                "company_ids": [(6, 0, [cls.env.company.id])],
+                "group_ids": [(6, 0, [cls.env.ref("project.group_project_user").id])],
+            })
+        cls.business_crm_owner = Users.search([
+            ("active", "=", True),
+            ("share", "=", False),
+            ("login", "=ilike", "businesscrm@thehongyijig.com"),
+        ], limit=1)
+        if not cls.business_crm_owner:
+            cls.business_crm_owner = Users.create({
+                "name": "Business CRM Accountability",
+                "login": "businesscrm@thehongyijig.com",
+                "email": "businesscrm@thehongyijig.com",
+                "company_id": cls.env.company.id,
+                "company_ids": [(6, 0, [cls.env.company.id])],
+                "group_ids": [(6, 0, [cls.env.ref(
+                    "new_hongyijig_custom.group_hjig_sseries_manager"
+                ).id])],
+            })
         template = cls.env.ref("new_hongyijig_custom.programme_launchguard_complete")
         cls.lgc_version = cls.env["hjig.programme.template.version"].search([
             ("template_id", "=", template.id),
@@ -263,6 +275,13 @@ class TestSSeriesWorkflow(TransactionCase):
         self.assertEqual(lead.hjig_accountable_email, "intake@thehongyijig.com")
         self.assertEqual(lead.hjig_sseries_case_ids, case)
         self.assertEqual(lead.hjig_sseries_case_count, 1)
+        intake_summary = lead.with_user(self.intake_owner).read([
+            "hjig_sseries_case_count",
+            "hjig_sseries_current_status",
+            "hjig_sseries_next_action",
+        ])[0]
+        self.assertEqual(intake_summary["hjig_sseries_case_count"], 1)
+        self.assertEqual(intake_summary["hjig_sseries_current_status"], "s0_received")
 
         lead.write({"stage_id": self.env.ref(
             "new_hongyijig_custom.crm_stage_hjig_fd_series"
