@@ -707,7 +707,15 @@ class HjigSSeriesCase(models.Model):
                 order = case.sale_order_id
             approved_on = fields.Datetime.now()
             for child in commercial_cases:
-                child_snapshot = dict(umbrella_snapshot, child_case=child.name)
+                child_snapshot = dict(
+                    umbrella_snapshot,
+                    case=child.name,
+                    child_case=child.name,
+                    programme_route=child.programme_route,
+                    approved_governance_fee=child.approved_governance_fee,
+                    target_margin=child.target_margin,
+                    sourcebridge_required=child.sourcebridge_required,
+                )
                 child.with_context(hjig_sseries_workflow=True).write({
                     "proposal_number": case.proposal_number,
                     "proposal_version": case.proposal_version,
@@ -788,8 +796,9 @@ class HjigSSeriesCase(models.Model):
             order_punch = case.artifact_ids.filtered(lambda item: item.code == "S5-ORDER-PUNCH")[:1]
             if not order_punch or order_punch.state != "approved":
                 raise ValidationError(_("Approved Order Punch document is required."))
-            if case.sale_order_id.state not in ("sale", "done"):
-                case.sale_order_id.sudo().action_confirm()
+            order = case.sale_order_id.sudo()
+            if order.state not in ("sale", "done"):
+                order.action_confirm()
             for child in commercial_cases:
                 child._ensure_artifact_codes(["S6-TEAM-HANDOVER"])
                 next_stage = "s5_sourcing" if child.sourcebridge_required else "s6_handover"
@@ -831,14 +840,15 @@ class HjigSSeriesCase(models.Model):
         if self.form_type != "portfolio_guard":
             return self.env["hjig.portfolio.guard"]
         authority = self._commercial_authority_case()
-        portfolio = authority.portfolio_guard_id or self.env["hjig.portfolio.guard"].search([
-            ("sale_order_id", "=", authority.sale_order_id.id),
+        order = authority.sale_order_id.sudo()
+        portfolio = authority.portfolio_guard_id or self.env["hjig.portfolio.guard"].sudo().search([
+            ("sale_order_id", "=", order.id),
         ], limit=1)
         if not portfolio:
             portfolio = self.env["hjig.portfolio.guard"].sudo().create({
                 "name": "%s / %s" % (authority.proposal_number, authority.customer_name),
                 "partner_id": authority.partner_id.id,
-                "sale_order_id": authority.sale_order_id.id,
+                "sale_order_id": order.id,
                 "owner_designation_id": self.env.ref(
                     "new_hongyijig_custom.designation_project_manager"
                 ).id,
@@ -1095,7 +1105,7 @@ class HjigSSeriesB0Handover(models.Model):
             "proposal_number": case.proposal_number,
             "proposal_version": case.proposal_version,
             "order_number": case.order_number,
-            "sale_order": case.sale_order_id.name,
+            "sale_order": case.sale_order_id.sudo().name,
             "project_code": case.project_id.x_project_code,
             "programme_run": case.programme_run_id.name,
             "sourcebridge_engagement": case.sourcebridge_engagement_id.code,
