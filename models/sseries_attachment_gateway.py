@@ -186,7 +186,7 @@ class HjigSSeriesIntakeAttachmentGateway(models.Model):
             "res_id": record.id,
             "description": "Private SourceBridge website intake attachment; no public token.",
         })
-        record.with_context(hjig_sseries_attachment_system_write=True).write({
+        record.sudo().with_context(hjig_sseries_attachment_system_write=True).write({
             "attachment_id": attachment.id,
             "file_url": "/web/content/%s?download=1" % attachment.id,
         })

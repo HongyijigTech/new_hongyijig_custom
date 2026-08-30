@@ -71,6 +71,23 @@ class TestSSeriesAttachmentGateway(TransactionCase):
         self.assertFalse(first.attachment_id.access_token)
         self.assertNotIn("access_token", first.file_url)
 
+    def test_api_group_user_can_create_but_cannot_mutate_private_upload(self):
+        api_user = self.env["res.users"].with_context(no_reset_password=True).create({
+            "name": "S-Series Attachment API UAT",
+            "login": "sseries-attachment-api-uat@example.invalid",
+            "email": "sseries-attachment-api-uat@example.invalid",
+            "group_ids": [(6, 0, [
+                self.env.ref("base.group_user").id,
+                self.env.ref("new_hongyijig_custom.group_hjig_sseries_user").id,
+            ])],
+        })
+        gateway = self.Gateway.with_user(api_user).create(
+            self._upload_values(submission_id="PB-ATTACHMENT-API-UAT-0001")
+        )
+        self.assertTrue(gateway.attachment_id)
+        with self.assertRaises(UserError):
+            gateway.with_user(api_user).write({"file_name": "changed.png"})
+
     def test_final_intake_claims_file_for_exact_component(self):
         gateway = self.Gateway.create(self._upload_values())
         submission = self.Intake.ingest_payload(self._payload(gateway))["submission"]
