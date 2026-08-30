@@ -2,7 +2,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 {
     'name': 'HongyiJigTechNew',
-    'version': '19.0.3.10.0',
+    'version': '19.0.3.11.0',
     'summary': 'Hongyijig Tech New',
     'sequence': 10,
     'description': """
@@ -24,6 +24,7 @@ Hongyijig Tech
              'data/commercial_bridge_sequence.xml',
              'data/knowledge_ai_sequence.xml',
              'data/sseries_sequence.xml',
+             'data/sseries_document_template_data.xml',
              'data/governance_master_data.xml',
              'data/programme_template_data.xml',
              'data/engineering_reference_data.xml',

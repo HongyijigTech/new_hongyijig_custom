@@ -136,3 +136,8 @@
 "access_hjig_sseries_component_manager","hjig.sseries.intake.component manager","model_hjig_sseries_intake_component","new_hongyijig_custom.group_hjig_sseries_manager",1,0,0,0
 "access_hjig_sseries_case_user","hjig.sseries.case user","model_hjig_sseries_case","new_hongyijig_custom.group_hjig_sseries_user",1,1,0,0
 "access_hjig_sseries_case_manager","hjig.sseries.case manager","model_hjig_sseries_case","new_hongyijig_custom.group_hjig_sseries_manager",1,1,0,0
+"access_hjig_sseries_template_user","hjig.sseries.document.template user","model_hjig_sseries_document_template","new_hongyijig_custom.group_hjig_sseries_user",1,0,0,0
+"access_hjig_sseries_artifact_user","hjig.sseries.artifact user","model_hjig_sseries_artifact","new_hongyijig_custom.group_hjig_sseries_user",1,1,0,0
+"access_hjig_sseries_artifact_manager","hjig.sseries.artifact manager","model_hjig_sseries_artifact","new_hongyijig_custom.group_hjig_sseries_manager",1,1,0,0
+"access_hjig_sseries_b0_user","hjig.sseries.b0.handover user","model_hjig_sseries_b0_handover","new_hongyijig_custom.group_hjig_sseries_user",1,0,0,0
+"access_hjig_sseries_b0_manager","hjig.sseries.b0.handover manager","model_hjig_sseries_b0_handover","new_hongyijig_custom.group_hjig_sseries_manager",1,0,0,0

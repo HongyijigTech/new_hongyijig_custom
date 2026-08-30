@@ -206,4 +206,14 @@
         <field name="model_id" ref="model_hjig_sseries_case"/>
         <field name="domain_force">[('company_id', 'in', company_ids)]</field>
     </record>
+    <record id="rule_hjig_sseries_artifact_company" model="ir.rule">
+        <field name="name">S-Series Artifact: allowed companies</field>
+        <field name="model_id" ref="model_hjig_sseries_artifact"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_hjig_sseries_b0_company" model="ir.rule">
+        <field name="name">S-Series B0 Manifest: allowed companies</field>
+        <field name="model_id" ref="model_hjig_sseries_b0_handover"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
 </odoo>
