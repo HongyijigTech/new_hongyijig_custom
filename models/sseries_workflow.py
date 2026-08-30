@@ -464,14 +464,16 @@ class HjigSSeriesCase(models.Model):
         return super().write(vals)
 
     def _ensure_customer_records(self):
+        Partner = self.env["res.partner"].sudo()
+        Lead = self.env["crm.lead"].sudo()
         for case in self:
             if not case.partner_id:
-                partner = self.env["res.partner"].search([
+                partner = Partner.search([
                     ("email", "=ilike", case.submission_id.customer_email),
                     ("is_company", "=", True),
                 ], limit=1)
                 if not partner:
-                    partner = self.env["res.partner"].create({
+                    partner = Partner.create({
                         "name": case.customer_name,
                         "is_company": True,
                         "email": case.submission_id.customer_email,
@@ -479,7 +481,7 @@ class HjigSSeriesCase(models.Model):
                     })
                 case.partner_id = partner.id
             if not case.lead_id:
-                case.lead_id = self.env["crm.lead"].create({
+                case.lead_id = Lead.create({
                     "name": "%s - %s" % (case.customer_name, case.project_name),
                     "partner_id": case.partner_id.id,
                     "email_from": case.submission_id.customer_email,
@@ -495,7 +497,9 @@ class HjigSSeriesCase(models.Model):
 
     def _ensure_artifact_codes(self, codes):
         Template = self.env["hjig.sseries.document.template"]
-        Artifact = self.env["hjig.sseries.artifact"].with_context(hjig_sseries_workflow=True)
+        Artifact = self.env["hjig.sseries.artifact"].sudo().with_context(
+            hjig_sseries_workflow=True
+        )
         for case in self:
             templates = Template.search([("code", "in", list(dict.fromkeys(codes))), ("active", "=", True)])
             missing_codes = set(codes) - set(templates.mapped("code"))
@@ -598,14 +602,14 @@ class HjigSSeriesCase(models.Model):
                 "approved_on": fields.Datetime.now().isoformat(),
             }
             if not case.sale_order_id:
-                order = self.env["sale.order"].create({
+                order = self.env["sale.order"].sudo().create({
                     "partner_id": case.partner_id.id,
                     "company_id": case.company_id.id,
                     "origin": case.name,
                     "client_order_ref": case.proposal_number,
                     "note": case.payment_terms_summary,
                 })
-                self.env["sale.order.line"].create({
+                self.env["sale.order.line"].sudo().create({
                     "order_id": order.id,
                     "product_id": product.id,
                     "name": "%s - %s" % (dict(PROGRAMME_ROUTES).get(case.programme_route), case.project_name),
@@ -740,6 +744,7 @@ class HjigSSeriesB0Handover(models.Model):
     def create_from_case(self, case):
         if not self.env.context.get("hjig_sseries_workflow"):
             raise UserError(_("B0 manifests are created only by the governed S-Series release action."))
+        released_by_id = self.env.user.id
         snapshot = {
             "case": case.name,
             "submission": case.client_submission_id,
@@ -756,7 +761,7 @@ class HjigSSeriesB0Handover(models.Model):
             "released_on": fields.Datetime.now().isoformat(),
         }
         canonical = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-        return self.create({
+        return self.sudo().create({
             "name": self.env["ir.sequence"].next_by_code("hjig.sseries.b0.handover"),
             "case_id": case.id,
             "programme_route": case.programme_route,
@@ -767,7 +772,7 @@ class HjigSSeriesB0Handover(models.Model):
             "sourcebridge_required": case.sourcebridge_required,
             "snapshot_json": snapshot,
             "snapshot_sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
-            "released_by_id": self.env.user.id,
+            "released_by_id": released_by_id,
             "released_on": fields.Datetime.now(),
             "company_id": case.company_id.id,
         })
