@@ -150,7 +150,7 @@ class CrmLeadHongyiRevenueSpine(models.Model):
             "cancelled": 8,
         }
         for lead in self:
-            cases = lead.sudo().hjig_sseries_case_ids.sorted(
+            cases = lead.hjig_sseries_case_ids.sorted(
                 lambda case: (stage_rank.get(case.stage, 99), case.id)
             )
             active_cases = cases.filtered(lambda case: case.stage != "cancelled")

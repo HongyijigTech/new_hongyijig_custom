@@ -298,6 +298,11 @@ class HjigMould(models.Model):
                 vals["x_mould_number"] = self.env["ir.sequence"].next_by_code("hjig.mould") or _("New")
         moulds = super().create(vals_list)
         moulds._sync_governed_cavitation()
+        requirement_id = self.env.context.get("hjig_programme_artifact_requirement_id")
+        if requirement_id and len(moulds) == 1:
+            requirement = self.env["hjig.programme.run.artifact"].browse(requirement_id).exists()
+            if requirement and requirement.artifact_code == "FRM-005":
+                requirement.mould_plan_id = moulds.id
         return moulds
 
     def write(self, vals):

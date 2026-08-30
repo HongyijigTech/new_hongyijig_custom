@@ -18,6 +18,7 @@ from . import project_document
 from . import foundation
 from . import project_planning
 from . import sor
+from . import bop
 from . import checklist_gate
 from . import execution_quality
 from . import commercial_bridge

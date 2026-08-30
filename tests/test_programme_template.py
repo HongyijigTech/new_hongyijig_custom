@@ -201,6 +201,15 @@ class TestProgrammeTemplateGovernance(TransactionCase):
         self.assertEqual(action["view_mode"], "list,form")
         self.assertEqual(action["domain"], [("template_id", "=", self.template.id)])
 
+    def test_employee_workbench_shows_only_the_current_gate_work(self):
+        run = self._activate_order(self._sale_order())
+        self.assertEqual(run.current_gate_ids, run.gate_ids)
+        self.assertEqual(run.current_activity_ids, run.task_ids.filtered(lambda task: not task.stage_id.fold))
+        self.assertEqual(run.current_form_requirement_ids, run.artifact_requirement_ids)
+        self.assertEqual(run.upcoming_gate_ids, self.env["hjig.programme.run.gate"])
+        action = run.action_open_current_forms()
+        self.assertEqual(action["domain"], [("id", "in", run.artifact_requirement_ids.ids)])
+
     def test_review_verification_is_evidenced_authorised_and_invalidated_on_change(self):
         draft = self.env["hjig.programme.template.version"].create({
             "template_id": self.template.id,
@@ -426,6 +435,29 @@ class TestProgrammeTemplateGovernance(TransactionCase):
         )
         run.action_generate_execution()
         self.assertEqual(run.state, "generated")
+
+    def test_designated_non_manager_can_generate_standard_employee_stages(self):
+        order = self._sale_order(hjig_project_code="HJ-PGT-2026-0015")
+        order.action_activate_hjig_programme()
+        run = order.hjig_programme_run_id
+        for designation, holder in (
+            (self.owner_designation, self.owner_user),
+            (self.approver_designation, self.approver_user),
+        ):
+            self.env["hjig.project.designation.assignment"].create({
+                "project_id": run.project_id.id,
+                "designation_id": designation.id,
+                "holder_ids": [(6, 0, [holder.id])],
+            })
+
+        self.assertFalse(self.owner_user.has_group("project.group_project_manager"))
+        run.with_user(self.owner_user).action_generate_execution()
+
+        self.assertEqual(run.state, "generated")
+        self.assertEqual(
+            set(run.project_id.type_ids.mapped("name")),
+            {name for name, _sequence, _folded in run._EXECUTION_STAGE_DEFINITIONS},
+        )
 
     def test_generated_plan_follows_dependencies_and_sets_project_end(self):
         order = self._sale_order(hjig_project_code="HJ-PGT-2026-0008")

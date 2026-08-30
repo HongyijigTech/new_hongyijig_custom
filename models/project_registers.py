@@ -336,7 +336,18 @@ class HjigProjectRisk(models.Model):
             vals.update({key: vals.get(key) or value for key, value in authority.items()})
             if vals.get("risk_id", _("New")) == _("New"):
                 vals["risk_id"] = self.env["ir.sequence"].next_by_code("hjig.project.risk") or _("New")
-        return super().create(vals_list)
+        records = super().create(vals_list)
+        records._refresh_programme_risk_requirements()
+        return records
+
+    def _refresh_programme_risk_requirements(self):
+        requirements = self.env["hjig.programme.run.artifact"].search([
+            ("project_id", "in", self.mapped("project_id").ids),
+            ("artifact_code", "=", "FRM-006"),
+        ])
+        if requirements:
+            requirements._compute_risk_checkpoint()
+            requirements._compute_status()
 
     def write(self, vals):
         controlled = set(self._fields) - CHATTER_FIELDS
@@ -363,7 +374,9 @@ class HjigProjectRisk(models.Model):
                         raise ValidationError(_("Resolution notes and authenticated resolution metadata are required."))
                 else:
                     raise ValidationError(_("Invalid Risk workflow transition."))
-        return super().write(vals)
+        result = super().write(vals)
+        self._refresh_programme_risk_requirements()
+        return result
 
     def action_start_mitigation(self):
         self.write({"status": "mitigating"})

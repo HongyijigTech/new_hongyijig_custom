@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_hjig_bop_list" model="ir.ui.view">
+        <field name="name">hjig.bop.list</field>
+        <field name="model">hjig.bop</field>
+        <field name="arch" type="xml">
+            <list decoration-success="state == 'frozen'" decoration-warning="state == 'review'"
+                  decoration-muted="state == 'superseded'">
+                <field name="code"/><field name="project_id"/><field name="revision"/>
+                <field name="line_count"/><field name="completion_percent" widget="percentage"/>
+                <field name="all_physical_samples_received"/><field name="state" widget="badge"/>
+            </list>
+        </field>
+    </record>
+    <record id="view_hjig_bop_form" model="ir.ui.view">
+        <field name="name">hjig.bop.form</field>
+        <field name="model">hjig.bop</field>
+        <field name="arch" type="xml">
+            <form string="Bought Out Parts Register">
+                <header>
+                    <button name="action_submit_review" type="object" string="Submit for Review"
+                            class="btn-primary" invisible="state not in ['draft', 'rejected']"/>
+                    <button name="action_freeze" type="object" string="Freeze BOP"
+                            class="btn-primary" invisible="state != 'review'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,review,frozen,rejected,superseded"/>
+                </header>
+                <sheet>
+                    <div class="oe_title"><h1><field name="code" readonly="1"/></h1></div>
+                    <group>
+                        <group string="Controlled Identity">
+                            <field name="project_id" readonly="state not in ['draft', 'rejected']"/>
+                            <field name="project_code" readonly="1"/>
+                            <field name="title" readonly="state not in ['draft', 'rejected']"/>
+                            <field name="revision" readonly="state not in ['draft', 'rejected']"/>
+                            <field name="effective_date" readonly="state in ['frozen', 'superseded']"/>
+                        </group>
+                        <group string="Readiness">
+                            <field name="line_count" readonly="1"/>
+                            <field name="ready_line_count" readonly="1"/>
+                            <field name="completion_percent" widget="percentage" readonly="1"/>
+                            <field name="all_physical_samples_received" readonly="1"/>
+                            <field name="snapshot_hash" readonly="1" invisible="not snapshot_hash"/>
+                        </group>
+                    </group>
+                    <group string="Designation Authority">
+                        <field name="owner_designation_id" readonly="state not in ['draft', 'rejected']"/>
+                        <field name="approver_designation_id" readonly="state not in ['draft', 'rejected']"/>
+                        <field name="submitted_by_id" readonly="1"/>
+                        <field name="frozen_by_id" readonly="1"/>
+                    </group>
+                    <notebook>
+                        <page string="Bought Out Parts">
+                            <field name="line_ids" readonly="state not in ['draft', 'rejected']">
+                                <list editable="bottom" decoration-success="is_ready" decoration-danger="not is_ready">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="component_code"/><field name="component_name"/>
+                                    <field name="quantity"/><field name="weight_grams"/>
+                                    <field name="datasheet_status"/><field name="cad_status"/>
+                                    <field name="size_status"/><field name="sample_status"/>
+                                    <field name="supplier_reference" optional="show"/>
+                                    <field name="is_ready" readonly="1"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Customer Sign-Off">
+                            <group>
+                                <field name="customer_signoff_name" readonly="state in ['frozen', 'superseded']"/>
+                                <field name="customer_signoff_designation" readonly="state in ['frozen', 'superseded']"/>
+                                <field name="customer_signoff_date" readonly="state in ['frozen', 'superseded']"/>
+                            </group>
+                        </page>
+                        <page string="Notes"><field name="notes" readonly="state in ['frozen', 'superseded']"/></page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+    <record id="action_hjig_bop" model="ir.actions.act_window">
+        <field name="name">BOP Registers</field><field name="res_model">hjig.bop</field>
+        <field name="view_mode">list,form</field>
+    </record>
+    <menuitem id="menu_hjig_bop" name="BOP Registers" parent="menu_hjig_native_project_forms"
+              action="action_hjig_bop" sequence="12"/>
+</odoo>
