@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-release_code="9c7f17f"
-package_path="/home/hongyi-jig-erp/releases/incoming/Hongyi_Odoo_SSeries_9c7f17f.tar.gz"
-expected_sha="3d9cfb00c7810b085fc2754266d1d12b659688fa754b9a9ca4bd1ea407039c56"
+release_code="a988f92"
+package_path="/home/hongyi-jig-erp/releases/incoming/Hongyi_Odoo_SSeries_a988f92.tar.gz"
+expected_sha="a753c40618c9b3f3106267a779a4ba9a449fc64686eb6a05d83d9c8086153e15"
 work_root="/home/hongyi-jig-erp/releases/work/${release_code}"
 candidate_root="${work_root}/candidate"
 source_dump="${work_root}/HongyijigTech_10Feb_source.dump"
-test_database="hongyijig_sseries_test_9c7f17f"
+test_database="hongyijig_sseries_test_a988f92"
 test_log="${work_root}/post_install_tests.log"
 validation_log="${work_root}/sseries_validation.log"
 odoo_python="/home/hongyi-jig-erp/odoo/venv19/bin/python3"
@@ -47,7 +47,7 @@ connection = [
 ]
 test_database = os.environ["HJIG_TEST_DATABASE"]
 source_dump = os.environ["HJIG_SOURCE_DUMP"]
-if test_database != "hongyijig_sseries_test_9c7f17f":
+if test_database != "hongyijig_sseries_test_a988f92":
     raise RuntimeError("Unsafe disposable database name")
 subprocess.run(["dropdb", *connection, "--if-exists", test_database], env=environment, check=True)
 subprocess.run(
