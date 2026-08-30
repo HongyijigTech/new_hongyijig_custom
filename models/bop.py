@@ -6,6 +6,11 @@ import json
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
+from .workflow_guard import (
+    record_staging_demo_transition,
+    staging_self_approval_demo_enabled,
+)
+
 
 CHATTER_FIELDS = {"message_follower_ids", "message_ids", "activity_ids"}
 
@@ -163,7 +168,11 @@ class HjigBop(models.Model):
             bop._assert_freeze_ready()
             if not bop.approver_designation_id._user_holds_for_project(self.env.user, bop.project_id):
                 raise UserError(_("Only the BOP Approver Designation holder may freeze it."))
-            if bop.submitted_by_id == self.env.user:
+            same_user_demo = (
+                bop.submitted_by_id == self.env.user
+                and staging_self_approval_demo_enabled(self.env)
+            )
+            if bop.submitted_by_id == self.env.user and not same_user_demo:
                 raise ValidationError(_("The same user cannot submit and freeze the BOP."))
             previous = self.search([
                 ("project_id", "=", bop.project_id.id),
@@ -177,6 +186,10 @@ class HjigBop(models.Model):
                 "frozen_by_id": self.env.user.id,
                 "snapshot_hash": hashlib.sha256(payload.encode("utf-8")).hexdigest(),
             })
+            if same_user_demo:
+                record_staging_demo_transition(
+                    bop, "review", "frozen", "staging_demo_frozen"
+                )
 
     def write(self, vals):
         controlled = set(self._fields) - CHATTER_FIELDS

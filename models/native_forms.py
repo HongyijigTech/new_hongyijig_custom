@@ -2,6 +2,11 @@
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
+from .workflow_guard import (
+    record_staging_demo_transition,
+    staging_self_approval_demo_enabled,
+)
+
 
 TRIAL_STAGES = [
     ("t0", "T0"),
@@ -353,7 +358,11 @@ class HjigMould(models.Model):
                 self.env.user, mould.x_project_id
             ):
                 raise UserError(_("Only a current holder of the Approver Designation may approve this mould plan."))
-            if mould.x_submitted_by_id == self.env.user:
+            same_user_demo = (
+                mould.x_submitted_by_id == self.env.user
+                and staging_self_approval_demo_enabled(self.env)
+            )
+            if mould.x_submitted_by_id == self.env.user and not same_user_demo:
                 raise ValidationError(_("The same user cannot submit and approve the mould plan."))
             if not mould.x_effective_date:
                 raise ValidationError(_("Effective Date is required before approval."))
@@ -362,6 +371,10 @@ class HjigMould(models.Model):
                 "x_mould_planning_status": "final_locked",
                 "x_approved_by_id": self.env.user.id,
             })
+            if same_user_demo:
+                record_staging_demo_transition(
+                    mould, "review", "approved", "staging_demo_approved"
+                )
 
 
 class HjigMouldPart(models.Model):
@@ -975,7 +988,11 @@ class HjigInspectionReport(models.Model):
                 self.env.user, report.project_id
             ):
                 raise UserError(_("Only a current holder of the Approver Designation may approve this report."))
-            if report.submitted_by_id == self.env.user:
+            same_user_demo = (
+                report.submitted_by_id == self.env.user
+                and staging_self_approval_demo_enabled(self.env)
+            )
+            if report.submitted_by_id == self.env.user and not same_user_demo:
                 raise ValidationError(_("The same user cannot submit and approve an inspection report."))
             if not report.effective_date:
                 raise ValidationError(_("Effective Date is required before approval."))
@@ -983,6 +1000,10 @@ class HjigInspectionReport(models.Model):
                 "workflow_state": "approved",
                 "approved_by_id": self.env.user.id,
             })
+            if same_user_demo:
+                record_staging_demo_transition(
+                    report, "review", "approved", "staging_demo_approved"
+                )
 
 
 class HjigInspectionPoint(models.Model):

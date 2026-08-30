@@ -4,6 +4,11 @@ import re
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
+from .workflow_guard import (
+    record_staging_demo_transition,
+    staging_self_approval_demo_enabled,
+)
+
 
 PROJECT_CODE_PATTERN = re.compile(r"^HJ-[A-Z0-9]{2,6}-\d{4}-\d{4}$")
 
@@ -485,7 +490,11 @@ class HjigProjectDocument(models.Model):
                 )
             if document.owner_designation_id == document.approver_designation_id:
                 raise ValidationError(_("Owner and approver designations must be different."))
-            if document.owner_id == self.env.user:
+            same_user_demo = (
+                document.owner_id == self.env.user
+                and staging_self_approval_demo_enabled(self.env)
+            )
+            if document.owner_id == self.env.user and not same_user_demo:
                 raise ValidationError(_("The same user cannot submit and approve a document."))
             if not document.effective_date:
                 raise ValidationError(_("Effective Date is required before approval."))
@@ -506,3 +515,7 @@ class HjigProjectDocument(models.Model):
                 "approver_id": self.env.user.id,
                 "status": "approved",
             })
+            if same_user_demo:
+                record_staging_demo_transition(
+                    document, "review", "approved", "staging_demo_approved"
+                )

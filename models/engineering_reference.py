@@ -2,6 +2,11 @@
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
+from .workflow_guard import (
+    record_staging_demo_transition,
+    staging_self_approval_demo_enabled,
+)
+
 
 class HjigEngineeringReferenceMixin(models.AbstractModel):
     _name = "hjig.engineering.reference.mixin"
@@ -77,13 +82,21 @@ class HjigEngineeringReferenceMixin(models.AbstractModel):
                 raise UserError(_("Only Draft references can be approved."))
             if self.env.user not in record.approver_designation_id.holder_ids:
                 raise UserError(_("Only a current holder of the Approver Designation may approve this reference."))
-            if self.env.user in record.owner_designation_id.holder_ids:
+            same_user_demo = (
+                self.env.user in record.owner_designation_id.holder_ids
+                and staging_self_approval_demo_enabled(self.env)
+            )
+            if self.env.user in record.owner_designation_id.holder_ids and not same_user_demo:
                 raise ValidationError(_("The same user cannot own and approve an engineering reference."))
             record.with_context(allow_reference_workflow=True).write({
                 "state": "approved",
                 "approved_by_id": self.env.user.id,
                 "effective_date": fields.Date.context_today(record),
             })
+            if same_user_demo:
+                record_staging_demo_transition(
+                    record, "draft", "approved", "staging_demo_approved"
+                )
 
     def action_supersede(self):
         for record in self:

@@ -4,6 +4,11 @@ from urllib.parse import urlparse
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
+from .workflow_guard import (
+    record_staging_demo_transition,
+    staging_self_approval_demo_enabled,
+)
+
 
 CHATTER_FIELDS = {"message_follower_ids", "message_ids", "activity_ids"}
 
@@ -158,7 +163,14 @@ class HjigFinalMouldPlan(models.Model):
                     if set(vals) - {"workflow_state", "approved_by_id"}:
                         raise ValidationError(_("Save review changes before using the controlled approval transition."))
                     plan._check_snapshot_integrity()
-                    if not plan.approver_designation_id._user_holds_for_project(self.env.user, plan.project_id) or plan.submitted_by_id == self.env.user:
+                    same_user_demo = (
+                        plan.submitted_by_id == self.env.user
+                        and staging_self_approval_demo_enabled(self.env)
+                    )
+                    if (
+                        not plan.approver_designation_id._user_holds_for_project(self.env.user, plan.project_id)
+                        or (plan.submitted_by_id == self.env.user and not same_user_demo)
+                    ):
                         raise UserError(_("A different current Approver Designation holder must approve this Final Mould Plan."))
                     if not plan.effective_date or vals.get("approved_by_id") != self.env.user.id:
                         raise ValidationError(_("Effective Date and the authenticated approver are required."))
@@ -213,7 +225,11 @@ class HjigFinalMouldPlan(models.Model):
                 raise UserError(_("Only a Final Mould Plan Under Review can be approved."))
             if not plan.approver_designation_id._user_holds_for_project(self.env.user, plan.project_id):
                 raise UserError(_("Only a current holder of the Approver Designation may approve this Final Mould Plan."))
-            if plan.submitted_by_id == self.env.user:
+            same_user_demo = (
+                plan.submitted_by_id == self.env.user
+                and staging_self_approval_demo_enabled(self.env)
+            )
+            if plan.submitted_by_id == self.env.user and not same_user_demo:
                 raise ValidationError(_("The same user cannot submit and approve the Final Mould Plan."))
             if not plan.effective_date:
                 raise ValidationError(_("Effective Date is required before approval."))
@@ -224,6 +240,10 @@ class HjigFinalMouldPlan(models.Model):
             plan.write({
                 "workflow_state": "approved", "approved_by_id": self.env.user.id,
             })
+            if same_user_demo:
+                record_staging_demo_transition(
+                    plan, "review", "approved", "staging_demo_approved"
+                )
 
 
 class HjigFinalMouldPlanLine(models.Model):
@@ -639,7 +659,14 @@ class HjigProjectEcn(models.Model):
                 elif ecn.status == "review" and target == "approved":
                     if set(vals) - {"status", "approved_by_id"}:
                         raise ValidationError(_("Save review changes before using the controlled approval transition."))
-                    if not ecn.approver_designation_id._user_holds_for_project(self.env.user, ecn.project_id) or ecn.submitted_by_id == self.env.user:
+                    same_user_demo = (
+                        ecn.submitted_by_id == self.env.user
+                        and staging_self_approval_demo_enabled(self.env)
+                    )
+                    if (
+                        not ecn.approver_designation_id._user_holds_for_project(self.env.user, ecn.project_id)
+                        or (ecn.submitted_by_id == self.env.user and not same_user_demo)
+                    ):
                         raise UserError(_("A different current Approver Designation holder must approve this ECN."))
                     if vals.get("approved_by_id") != self.env.user.id:
                         raise ValidationError(_("Authenticated approval metadata is required."))
@@ -674,10 +701,18 @@ class HjigProjectEcn(models.Model):
                 raise UserError(_("Only ECNs Under Review can be approved."))
             if not ecn.approver_designation_id._user_holds_for_project(self.env.user, ecn.project_id):
                 raise UserError(_("Only a current holder of the Approver Designation may approve this ECN."))
-            if ecn.submitted_by_id == self.env.user:
+            same_user_demo = (
+                ecn.submitted_by_id == self.env.user
+                and staging_self_approval_demo_enabled(self.env)
+            )
+            if ecn.submitted_by_id == self.env.user and not same_user_demo:
                 raise ValidationError(_("The same user cannot submit and approve an ECN."))
             ecn._check_approval_requirements()
             ecn.write({"status": "approved", "approved_by_id": self.env.user.id})
+            if same_user_demo:
+                record_staging_demo_transition(
+                    ecn, "review", "approved", "staging_demo_approved"
+                )
 
     def action_mark_implemented(self):
         for ecn in self:

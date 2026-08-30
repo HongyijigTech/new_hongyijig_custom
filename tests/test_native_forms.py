@@ -134,6 +134,26 @@ class TestNativeProjectForms(TransactionCase):
                 "x_part_number": "P-LATE",
             })
 
+    def test_database_locked_staging_demo_allows_audited_same_user_mould_approval(self):
+        parameters = self.env["ir.config_parameter"].sudo()
+        parameters.set_param("new_hongyijig_custom.staging_self_approval_demo", "1")
+        parameters.set_param(
+            "new_hongyijig_custom.staging_self_approval_database", self.env.cr.dbname
+        )
+        assignment = self.env["hjig.project.designation.assignment"].search([
+            ("project_id", "=", self.project.id),
+            ("designation_id", "=", self.approver_designation.id),
+        ])
+        assignment.write({"holder_ids": [(6, 0, [self.owner.id])]})
+        mould, _part = self._create_mould()
+        mould.with_user(self.owner).action_submit_review()
+        mould.with_user(self.owner).action_approve()
+        self.assertEqual(mould.x_workflow_state, "approved")
+        reasons = self.env["hjig.transition.log"].search([
+            ("target_ref", "=", "%s,%s" % (mould._name, mould.id)),
+        ]).mapped("reason")
+        self.assertTrue(any("STAGING TRAINING OVERRIDE" in reason for reason in reasons))
+
     def test_project_code_locks_after_native_form_exists(self):
         self._create_mould()
         with self.assertRaises(ValidationError):
