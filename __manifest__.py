@@ -41,6 +41,7 @@ Hongyijig Tech
              'views/project_document_views.xml',
              'views/programme_template_views.xml',
              'views/native_form_views.xml',
+             'views/mould_planning_lifecycle_views.xml',
              'views/project_register_views.xml',
              'views/engineering_reference_views.xml',
              'views/foundation_views.xml',

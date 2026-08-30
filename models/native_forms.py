@@ -308,6 +308,10 @@ class HjigMould(models.Model):
             requirement = self.env["hjig.programme.run.artifact"].browse(requirement_id).exists()
             if requirement and requirement.artifact_code == "FRM-005":
                 requirement.mould_plan_id = moulds.id
+        for mould in moulds:
+            self.env["hjig.programme.run.artifact"]._link_native_record_across_gates(
+                mould, "FRM-005", "mould_plan_id"
+            )
         return moulds
 
     def write(self, vals):
