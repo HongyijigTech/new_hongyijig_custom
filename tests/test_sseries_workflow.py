@@ -9,7 +9,8 @@ class TestSSeriesWorkflow(TransactionCase):
     def setUpClass(cls):
         super().setUpClass()
         cls.Intake = cls.env["hjig.sseries.intake.submission"]
-        cls.reviewer = cls.env["res.users"].create({
+        Users = cls.env["res.users"].with_context(no_reset_password=True)
+        cls.reviewer = Users.create({
             "name": "S-Series UAT Reviewer",
             "login": "sseries-uat-reviewer@example.com",
             "email": "sseries-uat-reviewer@example.com",
@@ -17,6 +18,16 @@ class TestSSeriesWorkflow(TransactionCase):
             "company_ids": [(6, 0, [cls.env.company.id])],
             "group_ids": [(6, 0, [cls.env.ref(
                 "new_hongyijig_custom.group_hjig_sseries_user"
+            ).id])],
+        })
+        cls.manager = Users.create({
+            "name": "S-Series UAT Manager",
+            "login": "sseries-uat-manager@example.com",
+            "email": "sseries-uat-manager@example.com",
+            "company_id": cls.env.company.id,
+            "company_ids": [(6, 0, [cls.env.company.id])],
+            "group_ids": [(6, 0, [cls.env.ref(
+                "new_hongyijig_custom.group_hjig_sseries_manager"
             ).id])],
         })
 
@@ -43,15 +54,15 @@ class TestSSeriesWorkflow(TransactionCase):
         }
 
     def _pdf(self, label):
-        return base64.b64encode(("%PDF-1.4\n%% %s\n%%EOF\n" % label).encode())
+        return base64.b64encode(b"%PDF-1.4\n% " + label.encode() + b"\n%%EOF\n")
 
     def _prepare_and_approve(self, artifact, label):
         artifact.with_user(self.reviewer).write({
             "document_data": self._pdf(label),
             "document_filename": "%s.pdf" % label,
         })
-        artifact.action_verify_qa()
-        artifact.action_approve()
+        artifact.with_user(self.manager).action_verify_qa()
+        artifact.with_user(self.manager).action_approve()
         self.assertEqual(artifact.state, "approved")
         self.assertTrue(artifact.document_sha256)
 
@@ -69,7 +80,7 @@ class TestSSeriesWorkflow(TransactionCase):
             "scope_confirmed": True,
             "internal_review_summary": "Customer identity, scope and LaunchGuard route confirmed.",
         })
-        case.action_approve_internal_review()
+        case.with_user(self.manager).action_approve_internal_review()
         self.assertEqual(case.stage, "s2_assessment")
 
         case.write({
@@ -77,49 +88,52 @@ class TestSSeriesWorkflow(TransactionCase):
             "risk_level": "medium",
             "governance_summary": "GO with controlled commercial and execution boundaries.",
         })
-        case.action_approve_governance()
+        case.with_user(self.manager).action_approve_governance()
         self.assertEqual(case.stage, "s3_proposal")
         proposal = case.artifact_ids.filtered(lambda item: item.code == "LGC-03")
         self.assertEqual(len(proposal), 1)
 
-        case.write({
+        case.with_user(self.manager).write({
             "approved_governance_fee": 350000,
             "target_margin": 0.35,
             "payment_terms_summary": "60% on acceptance and 40% before final controlled release.",
         })
-        case.action_prepare_quotation()
+        case.with_user(self.manager).action_prepare_quotation()
         self.assertTrue(case.proposal_number.startswith("HJIG-LGC-"))
         self.assertEqual(case.sale_order_id.amount_untaxed, 350000)
         self.assertEqual(case.pricing_snapshot_json["approved_governance_fee"], 350000)
 
         self._prepare_and_approve(proposal, "lgc-proposal")
-        proposal.user_final_approval = True
-        proposal.action_allow_customer_issue()
-        case.write({
+        proposal.with_user(self.manager).user_final_approval = True
+        proposal.with_user(self.manager).action_allow_customer_issue()
+        case.with_user(self.manager).write({
             "acceptance_basis": "signed_proposal",
             "acceptance_reference": "SIGNED-LGC-UAT-001",
             "acceptance_date": "2026-08-30",
         })
-        case.action_record_customer_acceptance()
+        case.with_user(self.manager).action_record_customer_acceptance()
         self.assertEqual(case.stage, "s4_activation")
 
         order_punch = case.artifact_ids.filtered(lambda item: item.code == "S5-ORDER-PUNCH")
         self._prepare_and_approve(order_punch, "order-punch")
-        case.write({
+        case.with_user(self.manager).write({
             "proforma_reference": "PI-UAT-001",
             "finance_approved": True,
             "payment_received": True,
             "payment_evidence_reference": "BANK-UAT-001",
             "tax_invoice_reference": "TAX-UAT-001",
         })
-        case.action_complete_activation()
+        case.with_user(self.manager).action_complete_activation()
         self.assertEqual(case.stage, "s6_handover")
         self.assertTrue(case.order_number.startswith("HJIG-ORD-"))
 
         team_handover = case.artifact_ids.filtered(lambda item: item.code == "S6-TEAM-HANDOVER")
         self._prepare_and_approve(team_handover, "team-handover")
-        case.write({"handover_owner_id": self.reviewer.id, "handover_accepted": True})
-        case.action_release_b0()
+        case.with_user(self.manager).write({
+            "handover_owner_id": self.reviewer.id,
+            "handover_accepted": True,
+        })
+        case.with_user(self.manager).action_release_b0()
         self.assertEqual(case.stage, "b0_released")
         self.assertTrue(case.b0_manifest_id.snapshot_sha256)
         with self.assertRaises(UserError):
@@ -141,7 +155,7 @@ class TestSSeriesWorkflow(TransactionCase):
             "document_filename": "nda.pdf",
         })
         with self.assertRaises(ValidationError):
-            artifact.action_verify_qa()
+            artifact.with_user(self.manager).action_verify_qa()
 
     def test_external_issue_cannot_skip_independent_gates(self):
         submission = self.Intake.ingest_payload(self._payload("WORKFLOW-0003"))["submission"]
@@ -155,7 +169,7 @@ class TestSSeriesWorkflow(TransactionCase):
             "template_id": template.id,
         })
         with self.assertRaises(ValidationError):
-            artifact.action_allow_customer_issue()
+            artifact.with_user(self.manager).action_allow_customer_issue()
         self._prepare_and_approve(artifact, "gated-proposal")
         with self.assertRaises(ValidationError):
-            artifact.action_allow_customer_issue()
+            artifact.with_user(self.manager).action_allow_customer_issue()
