@@ -6,19 +6,11 @@ import json
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
-from .workflow_guard import is_workflow_context, workflow_context
-
-
-def staging_self_approval_demo_enabled(env):
-    """Allow a fully audited same-user demo only on the explicitly named database."""
-    parameters = env["ir.config_parameter"].sudo()
-    enabled = parameters.get_param(
-        "new_hongyijig_custom.staging_self_approval_demo", "0"
-    ) == "1"
-    configured_database = parameters.get_param(
-        "new_hongyijig_custom.staging_self_approval_database", ""
-    )
-    return enabled and configured_database == env.cr.dbname
+from .workflow_guard import (
+    is_workflow_context,
+    staging_self_approval_demo_enabled,
+    workflow_context,
+)
 
 HJIG_PROGRAMME_SELECTION = [
     ("launchguard_complete", "LaunchGuard Complete"),
