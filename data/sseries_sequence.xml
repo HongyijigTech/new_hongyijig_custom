@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo noupdate="1">
+    <record id="seq_hjig_sseries_intake_submission" model="ir.sequence">
+        <field name="name">S-Series Intake Submission</field>
+        <field name="code">hjig.sseries.intake.submission</field>
+        <field name="prefix">S0/%(year)s/</field>
+        <field name="padding">6</field>
+        <field name="company_id" eval="False"/>
+    </record>
+    <record id="seq_hjig_sseries_case" model="ir.sequence">
+        <field name="name">S-Series Case</field>
+        <field name="code">hjig.sseries.case</field>
+        <field name="prefix">S/%(year)s/</field>
+        <field name="padding">6</field>
+        <field name="company_id" eval="False"/>
+    </record>
+    <record id="seq_hjig_sseries_proposal_lgc" model="ir.sequence"><field name="name">LaunchGuard Complete Proposal</field><field name="code">hjig.sseries.proposal.lgc</field><field name="prefix">HJIG-LGC-%(year)s-</field><field name="padding">5</field><field name="company_id" eval="False"/></record>
+    <record id="seq_hjig_sseries_proposal_lgd" model="ir.sequence"><field name="name">LaunchGuard Design Proposal</field><field name="code">hjig.sseries.proposal.lgd</field><field name="prefix">HJIG-LGD-%(year)s-</field><field name="padding">5</field><field name="company_id" eval="False"/></record>
+    <record id="seq_hjig_sseries_proposal_lgv" model="ir.sequence"><field name="name">LaunchGuard Development Proposal</field><field name="code">hjig.sseries.proposal.lgv</field><field name="prefix">HJIG-LGV-%(year)s-</field><field name="padding">5</field><field name="company_id" eval="False"/></record>
+    <record id="seq_hjig_sseries_proposal_tlc" model="ir.sequence"><field name="name">ToolLock Control Proposal</field><field name="code">hjig.sseries.proposal.tlc</field><field name="prefix">HJIG-TLC-%(year)s-</field><field name="padding">5</field><field name="company_id" eval="False"/></record>
+    <record id="seq_hjig_sseries_proposal_tll" model="ir.sequence"><field name="name">ToolLock Lite Proposal</field><field name="code">hjig.sseries.proposal.tll</field><field name="prefix">HJIG-TLL-%(year)s-</field><field name="padding">5</field><field name="company_id" eval="False"/></record>
+    <record id="seq_hjig_sseries_proposal_sbg" model="ir.sequence"><field name="name">SourceBridge Proposal</field><field name="code">hjig.sseries.proposal.sbg</field><field name="prefix">HJIG-SBG-%(year)s-</field><field name="padding">5</field><field name="company_id" eval="False"/></record>
+    <record id="seq_hjig_sseries_proposal_pgd" model="ir.sequence"><field name="name">PortfolioGuard Proposal</field><field name="code">hjig.sseries.proposal.pgd</field><field name="prefix">HJIG-PGD-%(year)s-</field><field name="padding">5</field><field name="company_id" eval="False"/></record>
+    <record id="seq_hjig_sseries_order" model="ir.sequence"><field name="name">S-Series Order Number</field><field name="code">hjig.sseries.order</field><field name="prefix">HJIG-ORD-%(year)s-</field><field name="padding">6</field><field name="company_id" eval="False"/></record>
+    <record id="seq_hjig_sseries_project_lgc" model="ir.sequence"><field name="name">LaunchGuard Complete Project</field><field name="code">hjig.sseries.project.lgc</field><field name="prefix">HJ-LGC-%(year)s-</field><field name="padding">4</field><field name="company_id" eval="False"/></record>
+    <record id="seq_hjig_sseries_project_lgd" model="ir.sequence"><field name="name">LaunchGuard Design Project</field><field name="code">hjig.sseries.project.lgd</field><field name="prefix">HJ-LGD-%(year)s-</field><field name="padding">4</field><field name="company_id" eval="False"/></record>
+    <record id="seq_hjig_sseries_project_lgv" model="ir.sequence"><field name="name">LaunchGuard Development Project</field><field name="code">hjig.sseries.project.lgv</field><field name="prefix">HJ-LGV-%(year)s-</field><field name="padding">4</field><field name="company_id" eval="False"/></record>
+    <record id="seq_hjig_sseries_project_tlc" model="ir.sequence"><field name="name">ToolLock Control Project</field><field name="code">hjig.sseries.project.tlc</field><field name="prefix">HJ-TLC-%(year)s-</field><field name="padding">4</field><field name="company_id" eval="False"/></record>
+    <record id="seq_hjig_sseries_project_tll" model="ir.sequence"><field name="name">ToolLock Lite Project</field><field name="code">hjig.sseries.project.tll</field><field name="prefix">HJ-TLL-%(year)s-</field><field name="padding">4</field><field name="company_id" eval="False"/></record>
+    <record id="seq_hjig_sseries_project_sbg" model="ir.sequence"><field name="name">SourceBridge Project</field><field name="code">hjig.sseries.project.sbg</field><field name="prefix">HJ-SBG-%(year)s-</field><field name="padding">4</field><field name="company_id" eval="False"/></record>
+    <record id="seq_hjig_sseries_sourcebridge" model="ir.sequence"><field name="name">SourceBridge Engagement</field><field name="code">hjig.sseries.sourcebridge.engagement</field><field name="prefix">SBG/%(year)s/</field><field name="padding">5</field><field name="company_id" eval="False"/></record>
+    <record id="seq_hjig_sseries_b0" model="ir.sequence"><field name="name">S-Series B0 Handover</field><field name="code">hjig.sseries.b0.handover</field><field name="prefix">B0/%(year)s/</field><field name="padding">6</field><field name="company_id" eval="False"/></record>
+</odoo>

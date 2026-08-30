@@ -24,3 +24,5 @@ from . import execution_quality
 from . import commercial_bridge
 from . import knowledge_ai
 from . import ui_compatibility
+from . import sseries_intake
+from . import sseries_workflow

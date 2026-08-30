@@ -804,7 +804,6 @@
                 <field name="stage_id"/>
                 <field name="mould_id" optional="show"/>
                 <field name="artifact_master_id"/>
-                <field name="artifact_code" optional="hide"/>
                 <field name="mandatory"/>
                 <field name="status" widget="badge"/>
                 <field name="sor_id" optional="show"/>
@@ -825,14 +824,12 @@
                     <group>
                         <group>
                             <field name="run_id" readonly="1"/>
-                            <field name="project_id" readonly="1"/>
                             <field name="run_gate_id" readonly="1"/>
                             <field name="stage_id" readonly="1"/>
                             <field name="mould_id" readonly="1"/>
                         </group>
                         <group>
                             <field name="artifact_master_id" readonly="1"/>
-                            <field name="artifact_code" readonly="1"/>
                             <field name="mandatory" readonly="1"/>
                             <field name="status" widget="badge" readonly="1"/>
                         </group>
@@ -864,7 +861,8 @@
         <field name="model">hjig.sourcebridge.engagement</field>
         <field name="arch" type="xml">
             <list><field name="code"/><field name="name"/><field name="project_id"/>
-                <field name="programme_run_id"/><field name="state" widget="badge"/></list>
+                <field name="programme_run_id"/><field name="sseries_case_id"/><field name="standalone"/>
+                <field name="state" widget="badge"/></list>
         </field>
     </record>
     <record id="view_hjig_sourcebridge_engagement_form" model="ir.ui.view">
@@ -882,6 +880,7 @@
                 <sheet>
                     <div class="oe_title"><h1><field name="name"/></h1></div>
                     <group><group><field name="code"/><field name="project_id"/><field name="programme_run_id"/>
+                        <field name="sseries_case_id"/><field name="standalone" readonly="1"/>
                         <field name="sale_order_id"/></group><group><field name="owner_designation_id"/>
                         <field name="approver_designation_id"/><field name="active"/></group></group>
                     <notebook><page string="Sourcing Components"><field name="component_ids">

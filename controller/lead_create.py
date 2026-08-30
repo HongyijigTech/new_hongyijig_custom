@@ -30,7 +30,9 @@ class WebsiteLeadController(http.Controller):
                 'email_from': data.get('email'),
                 'preferred_contact_method': preferred_contact,
                 'brief_project_context': data.get('brief_project_context'),
-                'biggest_current_risk': data.get('biggest_current_risk')}
+                'biggest_current_risk': data.get('biggest_current_risk'),
+                'stage_id': request.env['crm.lead'].sudo()._hjig_stage('pre_fd').id,
+            }
             if preferred_contact == 'phone':
                 lead_vals['phone'] = data.get('phone')
             elif preferred_contact == 'whatsapp':

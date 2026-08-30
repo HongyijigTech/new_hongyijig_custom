@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="crm_lead_form_hjig_revenue_spine" model="ir.ui.view">
+        <field name="name">crm.lead.form.hjig.revenue.spine</field>
+        <field name="model">crm.lead</field>
+        <field name="inherit_id" ref="crm.crm_lead_view_form"/>
+        <field name="priority">90</field>
+        <field name="arch" type="xml">
+            <xpath expr="//form/header" position="inside">
+                <button name="action_hjig_start_sseries" string="Start S-Series" type="object"
+                        class="btn-primary"
+                        invisible="not hjig_sseries_can_start"
+                        groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
+                <button name="action_hjig_retry_owner_routing" string="Assign Accountable Owner" type="object"
+                        invisible="hjig_owner_routing_state != 'missing'"
+                        groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
+                <field name="hjig_sseries_can_start" invisible="1"/>
+                <field name="hjig_owner_routing_state" invisible="1"/>
+            </xpath>
+
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_open_hjig_sseries" type="object" class="oe_stat_button"
+                        icon="fa-sitemap" invisible="hjig_sseries_case_count == 0"
+                        groups="new_hongyijig_custom.group_hjig_sseries_user">
+                    <field name="hjig_sseries_case_count" widget="statinfo" string="S-Series Projects"/>
+                </button>
+            </xpath>
+
+            <xpath expr="//sheet/notebook" position="inside">
+                <page string="Programme Journey" name="hjig_programme_journey">
+                    <group string="Single CRM Accountability">
+                        <group>
+                            <field name="stage_id" string="CRM Pipeline Position"/>
+                            <field name="hjig_accountability_phase" readonly="1"/>
+                            <field name="user_id" string="Accountable Person"/>
+                        </group>
+                        <group>
+                            <field name="hjig_accountable_email" readonly="1" widget="email"/>
+                            <field name="hjig_owner_routing_state" readonly="1" widget="badge"
+                                   decoration-success="hjig_owner_routing_state == 'assigned'"
+                                   decoration-danger="hjig_owner_routing_state == 'missing'"/>
+                            <field name="hjig_owner_routing_note" readonly="1"
+                                   invisible="not hjig_owner_routing_note"/>
+                        </group>
+                    </group>
+
+                    <group string="S-Series to B-Series Handover"
+                           invisible="hjig_sseries_case_count == 0"
+                           groups="new_hongyijig_custom.group_hjig_sseries_user">
+                        <group>
+                            <field name="hjig_sseries_current_status" readonly="1" widget="badge"/>
+                            <field name="hjig_sseries_next_action" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="hjig_sseries_case_count" readonly="1"/>
+                            <field name="hjig_sseries_blocker_count" readonly="1"
+                                   decoration-danger="hjig_sseries_blocker_count &gt; 0"/>
+                        </group>
+                    </group>
+                    <field name="hjig_sseries_case_ids" readonly="1"
+                           invisible="hjig_sseries_case_count == 0"
+                           groups="new_hongyijig_custom.group_hjig_sseries_user">
+                        <list create="0" delete="0"
+                              decoration-danger="exception_state == 'blocked'"
+                              decoration-success="stage == 'b0_released'">
+                            <field name="name"/>
+                            <field name="project_name"/>
+                            <field name="stage" widget="badge"/>
+                            <field name="next_action"/>
+                            <field name="owner_id"/>
+                            <field name="exception_state"/>
+                            <field name="proposal_number"/>
+                            <field name="order_number"/>
+                            <field name="programme_run_id"/>
+                            <field name="b0_manifest_id"/>
+                        </list>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

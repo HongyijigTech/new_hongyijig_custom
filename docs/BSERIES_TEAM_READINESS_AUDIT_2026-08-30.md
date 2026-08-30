@@ -1,8 +1,8 @@
 # B-Series Team-Readiness Audit — 30 August 2026
 
-**Business context:** ₹100 Cr Revenue Plan
-**Environment reviewed:** Odoo staging (`HongyijigTech_10Feb`)
-**Production:** Not changed
+**Business context:** ₹100 Cr Revenue Plan  
+**Environment reviewed:** Odoo staging (`HongyijigTech_10Feb`)  
+**Production:** Not changed  
 **Release under audit:** `new_hongyijig_custom` 19.0.3.8.1
 
 ## Controlled authority used
@@ -28,7 +28,7 @@ The older Constitution v6.10, Dependencies v1.2 and Gate Forms v1.8 files found 
 | Team usability | CORRECTED | Each activity displays open predecessors, missing evidence and a plain-language block reason. |
 | Daily work surface | CORRECTED | Added `Programme Governance → My Governed Work`, limited to assigned programme activities. |
 | Evidence access | CORRECTED | Added `Open Required Evidence` on the task governance page and dedicated requirement views. |
-| Project authority | CORRECTED | Execution now requires every designation holder to also belong to the Hongyi Project Team. |
+| Project authority | CORRECTED | Execution now synchronises every active designation holder to the Hongyi Project Team. |
 | Customer confidentiality | CORRECTED | Programme runs, gates, evidence, checklists, sessions, SourceBridge, PortfolioGuard and controlled documents follow the authorised project-team boundary; Project Managers retain oversight. |
 | Gate supremacy | PASS | Earlier gates, activities, mandatory evidence and mandatory checklist items block gate approval. |
 | Final payment logic | PASS | A-091 is authorisation only; CM-11 is the sole standard final 5% payment event before B8 closure. |
@@ -42,7 +42,7 @@ The older Constitution v6.10, Dependencies v1.2 and Gate Forms v1.8 files found 
 1. Confirm the Order Punch and its approved PDFs.
 2. Select one current approved programme version.
 3. Create or adopt the customer Project with its governed project code.
-4. Assign project-specific designation holders and add those users to the Hongyi Project Team.
+4. Assign project-specific designation holders; Odoo synchronises those users to the Hongyi Project Team.
 5. Decide every conditional activity scope.
 6. Generate the immutable programme run.
 7. Team members work from **My Governed Work**.

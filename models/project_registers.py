@@ -101,9 +101,7 @@ class HjigFinalMouldPlan(models.Model):
             "customer_shrinkage": part.x_customer_shrinkage,
             "part_weight_grams": part.x_part_weight_grams,
             "qps": part.x_qps,
-            "mould_configuration": dict(mould._fields["x_mould_configuration"].selection).get(
-                mould.x_mould_configuration
-            ),
+            "mould_configuration": dict(part._fields["x_mould_configuration"].selection).get(part.x_mould_configuration),
             "cavitation": part.x_cavitation,
             "mould_base_steel": part.x_mould_base_steel_id.display_name or part.x_mould_base_steel_grade,
             "core_steel": part.x_core_steel_id.display_name or " - ".join(filter(None, [part.x_core_steel_brand, part.x_core_steel_grade])),

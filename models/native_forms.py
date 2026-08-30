@@ -168,11 +168,7 @@ class HjigMould(models.Model):
     )
     x_mould_description = fields.Char(string="Mould Name / Description", tracking=True)
     x_mould_configuration = fields.Selection(
-        [
-            ("single", "Single Cavity"),
-            ("multi", "Multi Cavity"),
-            ("family", "Legacy Family Mould — Disabled Pending Redesign"),
-        ],
+        [("single", "Single Cavity"), ("multi", "Multi Cavity"), ("family", "Family Mould")],
         string="Mould Configuration",
         required=True,
         default="single",
@@ -222,28 +218,6 @@ class HjigMould(models.Model):
     x_submitted_by_id = fields.Many2one("res.users", readonly=True, copy=False, tracking=True)
     x_approved_by_id = fields.Many2one("res.users", readonly=True, copy=False, tracking=True)
     x_effective_date = fields.Date(tracking=True)
-    x_planning_confidence = fields.Selection(
-        [("high", "High"), ("medium", "Medium"), ("low", "Low")],
-        string="Planning Confidence",
-        default="medium",
-        required=True,
-        tracking=True,
-    )
-    x_grouping_basis = fields.Text(
-        string="Mould Allocation Basis",
-        help="Why the captured part belongs to this mould. This is not a family-mould approval.",
-        tracking=True,
-    )
-    x_planning_assumption = fields.Text(
-        string="Planning Assumption",
-        help="State what the tentative mould plan assumes and what information could change it.",
-        tracking=True,
-    )
-    x_open_technical_question = fields.Text(tracking=True)
-    x_customer_input_pending = fields.Text(tracking=True)
-    x_engineering_input_pending = fields.Text(tracking=True)
-    x_risk_flag = fields.Boolean(tracking=True)
-    x_risk_note = fields.Text(tracking=True)
     x_part_ids = fields.One2many("x_mould_part", "x_mould_id", string="Component / Part Planning")
     x_part_count = fields.Integer(compute="_compute_part_summary")
     x_completion_percent = fields.Float(compute="_compute_part_summary", store=True)
@@ -255,7 +229,7 @@ class HjigMould(models.Model):
     )
 
     @api.depends(
-        "x_mould_configuration", "x_cavitation", "x_planning_assumption", "x_risk_flag", "x_risk_note",
+        "x_mould_configuration", "x_cavitation",
         "x_part_ids", "x_part_ids.x_completion_percent", "x_part_ids.x_missing_fields",
     )
     def _compute_part_summary(self):
@@ -266,21 +240,15 @@ class HjigMould(models.Model):
                 header_missing.append(_("Mould Configuration"))
             if not mould.x_cavitation:
                 header_missing.append(_("Cavitation"))
-            if not (mould.x_planning_assumption or "").strip():
-                header_missing.append(_("Planning Assumption"))
-            if mould.x_risk_flag and not (mould.x_risk_note or "").strip():
-                header_missing.append(_("Risk Note"))
             if not mould.x_part_ids:
                 header_missing.append(_("At least one component / part is required"))
             part_completion = (
                 sum(mould.x_part_ids.mapped("x_completion_percent")) / len(mould.x_part_ids)
                 if mould.x_part_ids else 0.0
             )
-            header_controls = 3 + int(mould.x_risk_flag)
-            missing_controls = len([
-                item for item in header_missing if item != _("At least one component / part is required")
-            ])
-            header_completion = 100.0 * (header_controls - missing_controls) / header_controls
+            header_completion = 100.0 * (
+                2 - len([item for item in header_missing if item != _("At least one component / part is required")])
+            ) / 2
             mould.x_completion_percent = (header_completion + part_completion) / 2 if mould.x_part_ids else 0.0
             incomplete = mould.x_part_ids.filtered(lambda part: part.x_missing_fields)
             part_missing = [
@@ -315,8 +283,6 @@ class HjigMould(models.Model):
     def create(self, vals_list):
         template = self.env.ref("new_hongyijig_custom.native_template_mould_plan", raise_if_not_found=False)
         for vals in vals_list:
-            if vals.get("x_mould_configuration") == "family":
-                raise ValidationError(_("New Family Mould planning is disabled until its architecture is redesigned and approved."))
             vals["x_workflow_state"] = "draft"
             vals["x_mould_planning_status"] = "tentative"
             vals.setdefault("x_mould_configuration", "single")
@@ -340,10 +306,6 @@ class HjigMould(models.Model):
         return moulds
 
     def write(self, vals):
-        if vals.get("x_mould_configuration") == "family" and any(
-            mould.x_mould_configuration != "family" for mould in self
-        ):
-            raise ValidationError(_("Family Mould planning is disabled until its architecture is redesigned and approved."))
         locked_fields = set(self._fields) - {"message_follower_ids", "message_ids", "activity_ids"}
         if locked_fields.intersection(vals) and self.filtered(lambda item: item.x_workflow_state in ("approved", "superseded")):
             if not self.env.context.get("allow_native_form_workflow"):
@@ -370,8 +332,6 @@ class HjigMould(models.Model):
         for mould in self:
             if mould.x_workflow_state != "draft":
                 raise UserError(_("Only Draft mould plans can be submitted."))
-            if mould.x_mould_configuration == "family":
-                raise ValidationError(_("Legacy Family Mould records cannot be submitted until the architecture is redesigned."))
             if not mould.x_template_id or not mould.x_owner_designation_id or not mould.x_approver_designation_id:
                 raise ValidationError(_("Template and designation authority must be configured before submission."))
             if not mould.x_owner_designation_id._user_holds_for_project(
@@ -458,16 +418,12 @@ class HjigMouldPart(models.Model):
     x_customer_shrinkage = fields.Float(string="Customer Shrinkage %", tracking=True)
     x_part_weight_grams = fields.Float(string="Part Weight (grams)", tracking=True)
     x_qps = fields.Integer(string="QPS", tracking=True)
-    x_colour = fields.Char(string="Part Colour", tracking=True)
-    x_dimension_x_mm = fields.Float(string="Part Size X (mm)", tracking=True)
-    x_dimension_y_mm = fields.Float(string="Part Size Y (mm)", tracking=True)
-    x_dimension_z_mm = fields.Float(string="Part Size Z (mm)", tracking=True)
-    x_planning_remarks = fields.Text(tracking=True)
     x_mould_configuration = fields.Selection(
-        related="x_mould_id.x_mould_configuration", store=True, readonly=True,
+        [("single", "Single Cavity"), ("multi", "Multi Cavity"), ("family", "Family Mould")],
+        tracking=True,
     )
-    x_cavitation = fields.Char(related="x_mould_id.x_cavitation", store=True, readonly=True)
-    x_cavity_plan = fields.Integer(string="Legacy Family Cavity Plan", tracking=True)
+    x_cavitation = fields.Char(string="Cavitation", tracking=True)
+    x_cavity_plan = fields.Integer(string="Cavity Plan for Family Mould", tracking=True)
     x_visual_inspection_applicability = fields.Selection(
         [
             ("not_required", "Not Required"),
@@ -700,10 +656,7 @@ class HjigMouldPart(models.Model):
         parts.mapped("x_mould_id")._sync_governed_cavitation()
         return parts
 
-    @api.constrains(
-        "x_customer_shrinkage", "x_part_weight_grams", "x_qps", "x_cavity_plan",
-        "x_dimension_x_mm", "x_dimension_y_mm", "x_dimension_z_mm",
-    )
+    @api.constrains("x_customer_shrinkage", "x_part_weight_grams", "x_qps", "x_cavity_plan")
     def _check_positive_values(self):
         for part in self:
             if part.x_customer_shrinkage < 0 or part.x_customer_shrinkage > 100:
@@ -712,8 +665,6 @@ class HjigMouldPart(models.Model):
                 raise ValidationError(_("Part Weight and QPS cannot be negative."))
             if part.x_cavity_plan < 0:
                 raise ValidationError(_("Cavity Plan cannot be negative."))
-            if min(part.x_dimension_x_mm, part.x_dimension_y_mm, part.x_dimension_z_mm) < 0:
-                raise ValidationError(_("Part dimensions cannot be negative."))
 
     def write(self, vals):
         if any(part.x_mould_id.x_workflow_state in ("approved", "superseded") for part in self):
