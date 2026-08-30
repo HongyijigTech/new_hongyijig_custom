@@ -184,7 +184,8 @@ class HjigSSeriesArtifact(models.Model):
             raise ValidationError(_("Document hash is recorded only by governed QA verification."))
         if {"state", "visual_qa_verified", "content_qa_verified", "customer_issue_allowed",
             "supplier_issue_allowed", "approved_by_id", "approved_on", "issued_by_id",
-            "issued_on", "issue_reference"}.intersection(vals) and not self.env.context.get(
+            "issued_on", "issue_reference", "render_engine_version", "render_source_digest",
+            "rendered_page_count", "rendered_on", "render_manifest_json"}.intersection(vals) and not self.env.context.get(
                 "hjig_sseries_artifact_workflow"
             ):
             raise ValidationError(_("Use governed document actions to change QA, approval or issue state."))
@@ -207,6 +208,12 @@ class HjigSSeriesArtifact(models.Model):
                 raise ValidationError(_("The exact approved master is unresolved; QA must fail closed."))
             if artifact.template_id.requires_file and not artifact.document_data:
                 raise ValidationError(_("Attach the rendered candidate before QA verification."))
+            if artifact.render_engine_version:
+                manifest = artifact.render_manifest_json or {}
+                if manifest.get("unresolved_placeholder_count") != 0:
+                    raise ValidationError(_("Generated document contains unresolved placeholders."))
+                if artifact.rendered_page_count != manifest.get("expected_page_count"):
+                    raise ValidationError(_("Generated document page topology does not match its exact-native authority."))
             digest = False
             if artifact.document_data:
                 try:

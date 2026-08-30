@@ -255,6 +255,9 @@
         <field name="arch" type="xml">
             <form string="S-Series Document Control" create="0" delete="0">
                 <header>
+                    <button name="action_generate_controlled_draft" string="Generate Controlled PDF Draft" type="object" class="btn-primary"
+                            invisible="state in ['approved', 'issued'] or code not in ['S4-ACCEPTANCE', 'S5-ORDER-PUNCH', 'S6-TEAM-HANDOVER', 'S6-CHINA-HANDOVER', 'S6-SUPPLIER-RFQ-EN', 'S6-SUPPLIER-RFQ-ZH']"
+                            groups="new_hongyijig_custom.group_hjig_sseries_user,new_hongyijig_custom.group_hjig_sseries_manager"/>
                     <button name="action_verify_qa" string="Verify Visual + Content QA" type="object" class="btn-primary" invisible="state not in ['required', 'draft']" groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
                     <button name="action_approve" string="Approve" type="object" class="btn-primary" invisible="state != 'qa_verified'" groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
                     <button name="action_allow_customer_issue" string="Allow Customer Issue" type="object" invisible="state != 'approved' or audience != 'customer' or customer_issue_allowed" groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
@@ -289,6 +292,13 @@
                         <field name="issue_reference" readonly="state == 'issued'"/>
                         <field name="issued_by_id" readonly="1"/>
                         <field name="issued_on" readonly="1"/>
+                    </group>
+                    <group string="Controlled Rendering Evidence" invisible="not render_engine_version">
+                        <field name="render_engine_version" readonly="1"/>
+                        <field name="render_source_digest" readonly="1"/>
+                        <field name="rendered_page_count" readonly="1"/>
+                        <field name="rendered_on" readonly="1"/>
+                        <field name="render_manifest_json" widget="json" readonly="1"/>
                     </group>
                 </sheet>
                 <chatter/>

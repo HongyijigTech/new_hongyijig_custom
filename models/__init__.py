@@ -25,3 +25,4 @@ from . import knowledge_ai
 from . import ui_compatibility
 from . import sseries_intake
 from . import sseries_workflow
+from . import sseries_pdf_renderer

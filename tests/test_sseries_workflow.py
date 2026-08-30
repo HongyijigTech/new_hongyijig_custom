@@ -180,6 +180,19 @@ class TestSSeriesWorkflow(TransactionCase):
         self.assertEqual(artifact.state, "approved")
         self.assertTrue(artifact.document_sha256)
 
+    def _generate_and_approve(self, artifact):
+        artifact.with_user(self.reviewer).action_generate_controlled_draft()
+        self.assertEqual(artifact.state, "draft")
+        self.assertEqual(
+            artifact.rendered_page_count,
+            artifact.render_manifest_json["expected_page_count"],
+        )
+        self.assertEqual(artifact.render_manifest_json["unresolved_placeholder_count"], 0)
+        self.assertTrue(base64.b64decode(artifact.document_data).startswith(b"%PDF-"))
+        artifact.with_user(self.manager).action_verify_qa()
+        artifact.with_user(self.manager).action_approve()
+        self.assertEqual(artifact.state, "approved")
+
     def test_one_cockpit_progresses_to_immutable_b0_manifest(self):
         submission = self.Intake.ingest_payload(self._payload())["submission"]
         case = submission.case_ids
@@ -231,7 +244,7 @@ class TestSSeriesWorkflow(TransactionCase):
         self.assertEqual(case.stage, "s4_activation")
 
         order_punch = case.artifact_ids.filtered(lambda item: item.code == "S5-ORDER-PUNCH")
-        self._prepare_and_approve(order_punch, "order-punch")
+        self._generate_and_approve(order_punch)
         case.with_user(self.manager).write({
             "proforma_reference": "PI-UAT-001",
             "finance_approved": True,
@@ -245,7 +258,7 @@ class TestSSeriesWorkflow(TransactionCase):
         self.assertEqual(case.sale_order_id.state, "sale")
 
         team_handover = case.artifact_ids.filtered(lambda item: item.code == "S6-TEAM-HANDOVER")
-        self._prepare_and_approve(team_handover, "team-handover")
+        self._generate_and_approve(team_handover)
         case.with_user(self.manager).write({
             "handover_owner_id": self.reviewer.id,
             "handover_accepted": True,
@@ -374,9 +387,8 @@ class TestSSeriesWorkflow(TransactionCase):
             "acceptance_date": "2026-08-30",
         })
         case.with_user(self.manager).action_record_customer_acceptance()
-        self._prepare_and_approve(
-            case.artifact_ids.filtered(lambda item: item.code == "S5-ORDER-PUNCH"),
-            "sourcebridge-order-punch",
+        self._generate_and_approve(
+            case.artifact_ids.filtered(lambda item: item.code == "S5-ORDER-PUNCH")
         )
         case.with_user(self.manager).write({
             "proforma_reference": "PI-SBG-UAT-001",
@@ -387,11 +399,10 @@ class TestSSeriesWorkflow(TransactionCase):
         case.with_user(self.manager).action_complete_activation()
         self.assertEqual(case.stage, "s5_sourcing")
         for code in ("S6-CHINA-HANDOVER", "S6-SUPPLIER-RFQ-EN", "S6-SUPPLIER-RFQ-ZH"):
-            self._prepare_and_approve(case.artifact_ids.filtered(lambda item, c=code: item.code == c), code)
+            self._generate_and_approve(case.artifact_ids.filtered(lambda item, c=code: item.code == c))
         case.with_user(self.manager).action_complete_sourcing_pack()
-        self._prepare_and_approve(
-            case.artifact_ids.filtered(lambda item: item.code == "S6-TEAM-HANDOVER"),
-            "sourcebridge-team-handover",
+        self._generate_and_approve(
+            case.artifact_ids.filtered(lambda item: item.code == "S6-TEAM-HANDOVER")
         )
         case.with_user(self.manager).write({
             "handover_owner_id": self.reviewer.id,
