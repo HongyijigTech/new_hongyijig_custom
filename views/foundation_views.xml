@@ -185,6 +185,7 @@
                     <group>
                         <group string="Programme Route">
                             <field name="hjig_programme" readonly="1"/>
+                            <field name="hjig_programme_activation_state" readonly="1" widget="badge"/>
                             <field name="hjig_allowed_stage_ids" invisible="1"/>
                             <field name="hjig_current_stage_id" readonly="1"/>
                             <field name="hjig_programme_change_status" readonly="1"/>

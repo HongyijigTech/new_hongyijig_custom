@@ -245,14 +245,17 @@ class TestProjectRegisters(TransactionCase):
             })
 
     def test_private_project_registers_follow_project_visibility(self):
-        private_code = next(
-            code
-            for code in (f"HJ-PRIV-2099-{number:04d}" for number in range(9001, 10000))
-            if not self.env["project.project"].search_count([("x_project_code", "=", code)])
+        project_sequence = next(
+            sequence
+            for sequence in range(9001, 10000)
+            if not self.env["project.project"].with_context(active_test=False).search_count([
+                ("x_project_code", "=", "HJ-LGC-2026-%04d" % sequence),
+            ])
         )
         private_project = self.env["project.project"].create({
             "name": "Private Register Project", "privacy_visibility": "invited_users",
-            "hjig_project_record_type": "customer", "x_project_code": private_code,
+            "hjig_project_record_type": "customer",
+            "x_project_code": "HJ-LGC-2026-%04d" % project_sequence,
         })
         risk = self.env["hjig.project.risk"].create({
             "project_id": private_project.id, "description": "Private commercial risk",

@@ -333,9 +333,25 @@ class TestProgrammeTemplateGovernance(TransactionCase):
         run = self._activate_order(order)
         self.assertTrue(run)
         self.assertEqual(run.state, "generated")
+        self.assertEqual(run.project_id.hjig_programme_activation_state, "generated")
         self.assertEqual(run.template_version_id, self.version)
         self.assertEqual(run.definition_hash, self.version.definition_hash)
         self.assertEqual(len(run.task_ids), 2)
+        project_stages = self.env["project.task.type"].search([
+            ("project_ids", "in", run.project_id.id),
+        ]).sorted("sequence")
+        self.assertEqual(
+            project_stages.mapped("name"),
+            [
+                "01 — To Do",
+                "02 — In Progress",
+                "03 — Waiting for Evidence Approval",
+                "04 — Done",
+            ],
+        )
+        self.assertEqual(run.task_ids.mapped("stage_id"), project_stages[:1])
+        self.assertFalse(project_stages[:3].filtered("fold"))
+        self.assertTrue(project_stages[3].fold)
         self.assertEqual(len(run.artifact_requirement_ids), 1)
         self.assertEqual(len(run.checklist_instance_ids), 1)
         dependent = run.task_ids.filtered(lambda task: task.hjig_template_activity_id == self.activity_2)
@@ -389,7 +405,7 @@ class TestProgrammeTemplateGovernance(TransactionCase):
         dependent.stage_id = done_stage
         self.assertTrue(dependent.stage_id.fold)
 
-    def test_execution_requires_designation_holders_in_authorised_project_team(self):
+    def test_designation_holders_are_added_to_authorised_project_team(self):
         order = self._sale_order(hjig_project_code="HJ-PGT-2026-0005")
         order.action_activate_hjig_programme()
         run = order.hjig_programme_run_id
@@ -402,12 +418,10 @@ class TestProgrammeTemplateGovernance(TransactionCase):
                 "designation_id": designation.id,
                 "holder_ids": [(6, 0, [holder.id])],
             })
-        with self.assertRaisesRegex(ValidationError, "Hongyi Project Team"):
-            run.action_generate_execution()
-
-        run.project_id.hjig_authorized_user_ids = [(6, 0, [
-            self.owner_user.id, self.approver_user.id,
-        ])]
+        self.assertEqual(
+            run.project_id.hjig_authorized_user_ids,
+            self.owner_user | self.approver_user,
+        )
         run.action_generate_execution()
         self.assertEqual(run.state, "generated")
 
@@ -466,12 +480,23 @@ class TestProgrammeTemplateGovernance(TransactionCase):
         self.assertEqual(order.hjig_project_id, project)
         self.assertEqual(order.hjig_programme_run_id.project_id, project)
         self.assertEqual(order.hjig_programme_run_id.state, "draft")
+        self.assertEqual(project.hjig_programme_activation_state, "draft")
         self.assertEqual(
             self.env["project.project"].with_context(active_test=False).search_count([]),
             project_count,
         )
         with self.assertRaisesRegex(ValidationError, "Assign project-specific holders"):
             order.hjig_programme_run_id.action_generate_execution()
+
+    def test_known_template_codes_map_to_project_programme_routes(self):
+        expected_routes = {
+            "LGC": "launchguard_complete",
+            "LGD": "launchguard_design",
+            "LGV": "launchguard_development",
+            "TLC": "toollock_control",
+            "TLL": "toollock_lite",
+        }
+        self.assertEqual(self.env["sale.order"]._HJIG_TEMPLATE_PROGRAMME_KEYS, expected_routes)
 
     def test_unapproved_version_cannot_activate_order(self):
         draft = self.env["hjig.programme.template.version"].create({
