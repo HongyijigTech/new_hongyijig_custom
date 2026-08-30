@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo noupdate="1">
+    <record id="crm_stage_hjig_pre_fd" model="crm.stage">
+        <field name="name">Pre-FD</field>
+        <field name="sequence">1</field>
+    </record>
+    <record id="crm_stage_hjig_fd_series" model="crm.stage">
+        <field name="name">FD-Series</field>
+        <field name="sequence">2</field>
+    </record>
+    <record id="crm_stage_hjig_p_series" model="crm.stage">
+        <field name="name">P-Series</field>
+        <field name="sequence">3</field>
+    </record>
+    <record id="crm_stage_hjig_s_series" model="crm.stage">
+        <field name="name">S-Series</field>
+        <field name="sequence">4</field>
+    </record>
+    <record id="crm_stage_hjig_order_punch" model="crm.stage">
+        <field name="name">Order Punch</field>
+        <field name="sequence">5</field>
+    </record>
+    <record id="crm_stage_hjig_bseries_handover" model="crm.stage">
+        <field name="name">B-Series Handover</field>
+        <field name="sequence">6</field>
+        <field name="fold">True</field>
+    </record>
+</odoo>

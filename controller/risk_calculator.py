@@ -15,11 +15,8 @@ class RiskCalculatorController(http.Controller):
         try:
             data = request.get_json_data()
 
-            # ── Find Pre-FD stage ──────────────────────────────────
-            pre_fd = request.env['crm.stage'].sudo().search(
-                [('name', 'ilike', 'Pre-FD')], limit=1)
-            if not pre_fd:
-                pre_fd = request.env['crm.stage'].sudo().search([], limit=1)
+            # ── Governed single CRM spine entry point ─────────────
+            pre_fd = request.env['crm.lead'].sudo()._hjig_stage('pre_fd')
 
             # ── Find or create Risk-Calculator-Inbound tag ─────────
             tag = request.env['crm.tag'].sudo().search(

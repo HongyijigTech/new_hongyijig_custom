@@ -325,7 +325,7 @@
     <record id="action_hjig_sseries_b0" model="ir.actions.act_window"><field name="name">B0 Handover Manifests</field><field name="res_model">hjig.sseries.b0.handover</field><field name="view_mode">list,form</field></record>
 
     <menuitem id="menu_hjig_sseries" name="S-Series" parent="project.menu_main_pm"
-              sequence="4" groups="new_hongyijig_custom.group_hjig_sseries_user"/>
+              sequence="4" groups="base.group_no_one"/>
     <menuitem id="menu_hjig_sseries_cases" name="Cockpit" parent="menu_hjig_sseries"
               action="action_hjig_sseries_cases" sequence="10"/>
     <menuitem id="menu_hjig_sseries_submissions" name="Website Submissions" parent="menu_hjig_sseries"

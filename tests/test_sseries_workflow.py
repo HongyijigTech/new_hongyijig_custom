@@ -31,6 +31,24 @@ class TestSSeriesWorkflow(TransactionCase):
                 "new_hongyijig_custom.group_hjig_sseries_manager"
             ).id])],
         })
+        cls.intake_owner = Users.create({
+            "name": "Intake Accountability",
+            "login": "intake@thehongyijig.com",
+            "email": "intake@thehongyijig.com",
+            "company_id": cls.env.company.id,
+            "company_ids": [(6, 0, [cls.env.company.id])],
+            "group_ids": [(6, 0, [cls.env.ref("project.group_project_user").id])],
+        })
+        cls.business_crm_owner = Users.create({
+            "name": "Business CRM Accountability",
+            "login": "businesscrm@thehongyijig.com",
+            "email": "businesscrm@thehongyijig.com",
+            "company_id": cls.env.company.id,
+            "company_ids": [(6, 0, [cls.env.company.id])],
+            "group_ids": [(6, 0, [cls.env.ref(
+                "new_hongyijig_custom.group_hjig_sseries_manager"
+            ).id])],
+        })
         template = cls.env.ref("new_hongyijig_custom.programme_launchguard_complete")
         cls.lgc_version = cls.env["hjig.programme.template.version"].search([
             ("template_id", "=", template.id),
@@ -229,6 +247,61 @@ class TestSSeriesWorkflow(TransactionCase):
         self.assertTrue(case.b0_manifest_id.snapshot_sha256)
         with self.assertRaises(UserError):
             case.b0_manifest_id.write({"name": "Changed"})
+
+    def test_one_crm_opportunity_routes_accountability_and_embeds_sseries(self):
+        submission = self.Intake.ingest_payload(
+            self._payload("CRM-SPINE-0001")
+        )["submission"]
+        case = submission.case_ids
+        lead = case.lead_id
+        self.assertTrue(lead)
+        self.assertEqual(lead.stage_id, self.env.ref(
+            "new_hongyijig_custom.crm_stage_hjig_pre_fd"
+        ))
+        self.assertEqual(lead.user_id, self.intake_owner)
+        self.assertEqual(lead.hjig_accountability_phase, "pre_fd_fd")
+        self.assertEqual(lead.hjig_accountable_email, "intake@thehongyijig.com")
+        self.assertEqual(lead.hjig_sseries_case_ids, case)
+        self.assertEqual(lead.hjig_sseries_case_count, 1)
+
+        lead.write({"stage_id": self.env.ref(
+            "new_hongyijig_custom.crm_stage_hjig_fd_series"
+        ).id})
+        self.assertEqual(lead.user_id, self.intake_owner)
+        lead.write({"stage_id": self.env.ref(
+            "new_hongyijig_custom.crm_stage_hjig_p_series"
+        ).id})
+        self.assertEqual(lead.user_id, self.business_crm_owner)
+
+        case.with_user(self.manager).action_start_internal_review()
+        self.assertEqual(lead.stage_id, self.env.ref(
+            "new_hongyijig_custom.crm_stage_hjig_s_series"
+        ))
+        self.assertEqual(lead.user_id, self.business_crm_owner)
+        self.assertEqual(lead.hjig_accountability_phase, "p_s")
+        self.assertEqual(lead.hjig_accountable_email, "businesscrm@thehongyijig.com")
+
+        action = lead.with_user(self.manager).action_open_hjig_sseries()
+        self.assertEqual(action["res_id"], case.id)
+        self.assertEqual(action["view_mode"], "form")
+
+    def test_portfolioguard_children_share_one_crm_opportunity(self):
+        submission = self.Intake.ingest_payload(self._portfolio_payload())["submission"]
+        cases = submission.case_ids
+        self.assertEqual(len(cases), 2)
+        self.assertEqual(len(cases.mapped("lead_id")), 1)
+        lead = cases.mapped("lead_id")
+        self.assertEqual(lead.hjig_sseries_case_count, 2)
+        self.assertEqual(lead.user_id, self.intake_owner)
+        cases.with_user(self.manager).action_start_internal_review()
+        self.assertEqual(lead.user_id, self.business_crm_owner)
+        self.assertEqual(lead.stage_id, self.env.ref(
+            "new_hongyijig_custom.crm_stage_hjig_s_series"
+        ))
+
+    def test_separate_sseries_menu_is_hidden_from_employee_navigation(self):
+        menu = self.env.ref("new_hongyijig_custom.menu_hjig_sseries")
+        self.assertEqual(menu.group_ids, self.env.ref("base.group_no_one"))
 
     def test_unresolved_exact_master_fails_closed(self):
         submission = self.Intake.ingest_payload(self._payload("WORKFLOW-0002"))["submission"]

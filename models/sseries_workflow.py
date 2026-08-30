@@ -308,9 +308,71 @@ class HjigSSeriesIntakeSubmission(models.Model):
     @api.model
     def ingest_payload(self, payload, signature_timestamp=None):
         result = super().ingest_payload(payload, signature_timestamp=signature_timestamp)
+        result["submission"]._ensure_crm_spine()
         if not result["idempotent"]:
             result["submission"]._queue_acknowledgement_if_enabled()
         return result
+
+    def _ensure_crm_spine(self):
+        """Create or reconcile one CRM opportunity for the complete submitted portfolio."""
+        Partner = self.env["res.partner"].sudo()
+        Lead = self.env["crm.lead"].sudo()
+        for submission in self:
+            cases = submission.case_ids.sorted("id")
+            if not cases:
+                continue
+            partner = cases.mapped("partner_id")[:1]
+            if not partner:
+                partner = Partner.search([
+                    ("email", "=ilike", submission.customer_email),
+                    ("is_company", "=", True),
+                ], limit=1)
+            if not partner:
+                partner = Partner.create({
+                    "name": submission.company_name,
+                    "is_company": True,
+                    "email": submission.customer_email,
+                    "phone": submission.customer_mobile,
+                })
+
+            lead = cases.mapped("lead_id")[:1]
+            if not lead:
+                project_label = (
+                    _("PortfolioGuard - %s projects") % len(cases)
+                    if submission.form_type == "portfolio_guard"
+                    else cases[0].project_name
+                )
+                lead = Lead.create({
+                    "name": "%s - %s" % (submission.company_name, project_label),
+                    "partner_id": partner.id,
+                    "partner_name": submission.company_name,
+                    "contact_name": submission.contact_name,
+                    "email_from": submission.customer_email,
+                    "phone": submission.customer_mobile,
+                    "type": "opportunity",
+                    "company_id": submission.company_id.id,
+                    "stage_id": Lead._hjig_stage("pre_fd").id,
+                })
+
+            cases.with_context(
+                hjig_sseries_workflow=True,
+                hjig_crm_spine_reconcile=True,
+            ).write({
+                "partner_id": partner.id,
+                "lead_id": lead.id,
+            })
+            active_stages = set(cases.filtered(lambda case: case.stage != "cancelled").mapped("stage"))
+            if active_stages and active_stages.issubset({"b0_released"}):
+                lead._hjig_move_on_spine("b_handover")
+            elif active_stages.intersection({"s5_sourcing", "s6_handover"}):
+                lead._hjig_move_on_spine("order_punch")
+            elif active_stages.intersection({
+                "s1_review", "s2_assessment", "s3_proposal", "s4_activation"
+            }):
+                lead._hjig_move_on_spine("s")
+            elif not lead.hjig_accountability_phase:
+                lead._hjig_move_on_spine("pre_fd")
+        return True
 
     def _portfolio_acknowledgement_summary(self):
         self.ensure_one()
@@ -514,42 +576,22 @@ class HjigSSeriesCase(models.Model):
                     raise ValidationError(_("Finance and payment evidence is editable only during activation."))
                 if case.stage not in ("s5_sourcing", "s6_handover") and handover_fields.intersection(vals):
                     raise ValidationError(_("Team handover fields are editable only before B0 release."))
-                if case.stage == "b0_released" and set(vals) - {
+                if case.stage == "b0_released" and not self.env.context.get(
+                    "hjig_crm_spine_reconcile"
+                ) and set(vals) - {
                     "message_follower_ids", "message_partner_ids", "activity_ids"
                 }:
                     raise ValidationError(_("A B0-released S-Series case is frozen."))
         return super().write(vals)
 
     def _ensure_customer_records(self):
-        Partner = self.env["res.partner"].sudo()
-        Lead = self.env["crm.lead"].sudo()
-        for case in self:
-            if not case.partner_id:
-                partner = Partner.search([
-                    ("email", "=ilike", case.submission_id.customer_email),
-                    ("is_company", "=", True),
-                ], limit=1)
-                if not partner:
-                    partner = Partner.create({
-                        "name": case.customer_name,
-                        "is_company": True,
-                        "email": case.submission_id.customer_email,
-                        "phone": case.submission_id.customer_mobile,
-                    })
-                case.partner_id = partner.id
-            if not case.lead_id:
-                case.lead_id = Lead.create({
-                    "name": "%s - %s" % (case.customer_name, case.project_name),
-                    "partner_id": case.partner_id.id,
-                    "email_from": case.submission_id.customer_email,
-                    "type": "opportunity",
-                    "company_id": case.company_id.id,
-                }).id
+        self.mapped("submission_id")._ensure_crm_spine()
 
     def action_start_internal_review(self):
         result = super().action_start_internal_review()
         self._ensure_customer_records()
         self._ensure_artifact_codes(["S0-SUBMISSION", "S1-INTERNAL-REVIEW"])
+        self.mapped("lead_id")._hjig_move_on_spine("s")
         return result
 
     def _ensure_artifact_codes(self, codes):
@@ -817,6 +859,7 @@ class HjigSSeriesCase(models.Model):
                     "next_action": _("Approve the conditional sourcing pack") if child.sourcebridge_required
                                    else _("Complete team handover and release B0"),
                 })
+            case.lead_id._hjig_move_on_spine("order_punch")
         return True
 
     def action_complete_sourcing_pack(self):
@@ -1062,6 +1105,11 @@ class HjigSSeriesCase(models.Model):
                 "exception_state": "clear",
                 "blocker_summary": False,
             })
+            lead_cases = case.lead_id.hjig_sseries_case_ids.filtered(
+                lambda item: item.stage != "cancelled"
+            )
+            if lead_cases and all(item.stage == "b0_released" for item in lead_cases):
+                case.lead_id._hjig_move_on_spine("b_handover")
         return True
 
 
