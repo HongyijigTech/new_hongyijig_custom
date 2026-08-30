@@ -11,7 +11,22 @@ class TestSSeriesWorkflow(TransactionCase):
         super().setUpClass()
         cls.Intake = cls.env["hjig.sseries.intake.submission"]
         Users = cls.env["res.users"].with_context(no_reset_password=True)
-        cls.reviewer = Users.create({
+
+        def get_or_create_user(values):
+            user = Users.with_context(active_test=False).search([
+                ("login", "=", values["login"]),
+            ], limit=1)
+            if user:
+                user.write({
+                    "active": True,
+                    "company_id": values["company_id"],
+                    "company_ids": values["company_ids"],
+                    "group_ids": values["group_ids"],
+                })
+                return user
+            return Users.create(values)
+
+        cls.reviewer = get_or_create_user({
             "name": "S-Series UAT Reviewer",
             "login": "sseries-uat-reviewer@example.com",
             "email": "sseries-uat-reviewer@example.com",
@@ -21,7 +36,7 @@ class TestSSeriesWorkflow(TransactionCase):
                 "new_hongyijig_custom.group_hjig_sseries_user"
             ).id])],
         })
-        cls.manager = Users.create({
+        cls.manager = get_or_create_user({
             "name": "S-Series UAT Manager",
             "login": "sseries-uat-manager@example.com",
             "email": "sseries-uat-manager@example.com",
@@ -31,7 +46,7 @@ class TestSSeriesWorkflow(TransactionCase):
                 "new_hongyijig_custom.group_hjig_sseries_manager"
             ).id])],
         })
-        cls.intake_owner = Users.create({
+        cls.intake_owner = get_or_create_user({
             "name": "Intake Accountability",
             "login": "intake@thehongyijig.com",
             "email": "intake@thehongyijig.com",
@@ -39,7 +54,7 @@ class TestSSeriesWorkflow(TransactionCase):
             "company_ids": [(6, 0, [cls.env.company.id])],
             "group_ids": [(6, 0, [cls.env.ref("project.group_project_user").id])],
         })
-        cls.business_crm_owner = Users.create({
+        cls.business_crm_owner = get_or_create_user({
             "name": "Business CRM Accountability",
             "login": "businesscrm@thehongyijig.com",
             "email": "businesscrm@thehongyijig.com",
