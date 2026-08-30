@@ -1259,7 +1259,11 @@ class HjigProgrammeRun(models.Model):
     def _ensure_project_execution_stages(self):
         """Create one predictable employee board for each governed project."""
         self.ensure_one()
-        Stage = self.env["project.task.type"]
+        # Programme owners are deliberately not required to be Project
+        # Administrators.  Once the governed authority checks have passed,
+        # creating the module's fixed employee-board stages is an internal
+        # setup operation and must not depend on the holder's generic ACLs.
+        Stage = self.env["project.task.type"].sudo()
         project_stages = Stage.search([("project_ids", "in", self.project_id.id)])
         stage_by_name = {stage.name: stage for stage in project_stages}
         first_stage = Stage
@@ -1461,7 +1465,11 @@ class HjigProgrammeRun(models.Model):
 
     def _create_gate_scope(self, template_gate, mould=False):
         self.ensure_one()
-        gate = self.env["hjig.programme.run.gate"].create({
+        # Gate rows are system-generated controls.  Project users may operate
+        # them but intentionally do not have generic create access, so the
+        # governed generator creates only this fixed control record with
+        # elevated rights after role and scope validation has passed.
+        gate = self.env["hjig.programme.run.gate"].sudo().create({
             "run_id": self.id,
             "template_gate_id": template_gate.id,
             "stage_id": template_gate.stage_id.id,

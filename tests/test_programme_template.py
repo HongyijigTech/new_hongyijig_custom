@@ -436,6 +436,29 @@ class TestProgrammeTemplateGovernance(TransactionCase):
         run.action_generate_execution()
         self.assertEqual(run.state, "generated")
 
+    def test_designated_non_manager_can_generate_standard_employee_stages(self):
+        order = self._sale_order(hjig_project_code="HJ-PGT-2026-0015")
+        order.action_activate_hjig_programme()
+        run = order.hjig_programme_run_id
+        for designation, holder in (
+            (self.owner_designation, self.owner_user),
+            (self.approver_designation, self.approver_user),
+        ):
+            self.env["hjig.project.designation.assignment"].create({
+                "project_id": run.project_id.id,
+                "designation_id": designation.id,
+                "holder_ids": [(6, 0, [holder.id])],
+            })
+
+        self.assertFalse(self.owner_user.has_group("project.group_project_manager"))
+        run.with_user(self.owner_user).action_generate_execution()
+
+        self.assertEqual(run.state, "generated")
+        self.assertEqual(
+            set(run.project_id.type_ids.mapped("name")),
+            {name for name, _sequence, _folded in run._EXECUTION_STAGE_DEFINITIONS},
+        )
+
     def test_generated_plan_follows_dependencies_and_sets_project_end(self):
         order = self._sale_order(hjig_project_code="HJ-PGT-2026-0008")
         order.action_activate_hjig_programme()
