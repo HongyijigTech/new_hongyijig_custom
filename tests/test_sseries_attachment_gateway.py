@@ -84,7 +84,7 @@ class TestSSeriesAttachmentGateway(TransactionCase):
         gateway = self.Gateway.with_user(api_user).create(
             self._upload_values(submission_id="PB-ATTACHMENT-API-UAT-0001")
         )
-        self.assertTrue(gateway.attachment_id)
+        self.assertTrue(gateway.sudo().attachment_id)
         with self.assertRaises(UserError):
             gateway.with_user(api_user).write({"file_name": "changed.png"})
 
