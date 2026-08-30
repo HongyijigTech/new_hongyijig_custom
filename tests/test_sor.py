@@ -76,7 +76,7 @@ class TestHongyiSor(TransactionCase):
 
     def test_blank_is_not_a_requirement_state(self):
         sor = self._create_sor()
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValidationError):
             self.env["hjig.sor.requirement"].create({
                 "sor_id": sor.id, "requirement_id": "1.1", "category": "technical",
                 "requirement_text": "Material requirement", "declaration_state": False,

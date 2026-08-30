@@ -473,12 +473,20 @@ class HjigSorRequirement(models.Model):
         "UNIQUE(sor_id, requirement_id)", "Requirement ID must be unique within the SOR."
     )
 
+    @api.model_create_multi
+    def create(self, vals_list):
+        if any(not vals.get("declaration_state") for vals in vals_list):
+            raise ValidationError(_("Declaration State is required; blank is not allowed."))
+        return super().create(vals_list)
+
     @api.constrains("sor_id")
     def _check_sor_not_frozen(self):
         if any(requirement.sor_id.state in ("review", "frozen", "superseded") for requirement in self):
             raise ValidationError(_("Requirements cannot be added after SOR review begins."))
 
     def write(self, vals):
+        if "declaration_state" in vals and not vals["declaration_state"]:
+            raise ValidationError(_("Declaration State is required; blank is not allowed."))
         if any(requirement.sor_id.state in ("review", "frozen", "superseded") for requirement in self):
             raise ValidationError(_("Requirements are read-only after SOR review begins."))
         return super().write(vals)
