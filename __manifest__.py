@@ -2,7 +2,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 {
     'name': 'HongyiJigTechNew',
-    'version': '19.0.3.12.0',
+    'version': '19.0.3.15.0',
     'summary': 'Hongyijig Tech New',
     'sequence': 10,
     'description': """
@@ -23,6 +23,9 @@ Hongyijig Tech
              'data/execution_quality_sequence.xml',
              'data/commercial_bridge_sequence.xml',
              'data/knowledge_ai_sequence.xml',
+             'data/crm_spine_stage_data.xml',
+             'data/sseries_sequence.xml',
+             'data/sseries_document_template_data.xml',
              'data/governance_master_data.xml',
              'data/programme_template_data.xml',
              'data/engineering_reference_data.xml',
@@ -31,6 +34,7 @@ Hongyijig Tech
              'data/checklist_template_data.xml',
              'data/ui_compatibility.xml',
              'views/crm_lead.xml',
+             'views/crm_sseries_views.xml',
              'views/risk_Report_temp.xml',
              'views/email_template.xml',
              'views/project_document_views.xml',
@@ -45,7 +49,8 @@ Hongyijig Tech
              'views/execution_quality_views.xml',
              'views/commercial_bridge_views.xml',
              'views/knowledge_ai_views.xml',
-             'views/governance_master_views.xml'],
+             'views/governance_master_views.xml',
+             'views/sseries_intake_views.xml'],
     'installable': True,
     'application': True,
     'assets': {},

@@ -10,7 +10,7 @@ SOURCE_VERSION = "v1.9 / Controlled Updated / 21-Aug-2026"
 GATE_FORM_EXIT_ITEMS = (
     ("TG-01", 1, "[LAUNCHGUARD COMPLETE + LAUNCHGUARD DESIGN ONLY] Post-Design Revision confirmed: SOR revised + BOP revised + Design Challenges revised + Mould Planning revised — all re-signed after A-011 Design Sign-Off\nMandatory revision after R&D. B2 cannot begin until all four revised documents are signed off."),
     ("TG-01", 2, "Engraving specification confirmed and documented"),
-    ("TG-01", 3, "Mould list LOCKED — mould-to-part allocation and cavity-count decisions finalised (A-012). Family-mould architecture is excluded pending separate redesign and approval."),
+    ("TG-01", 3, "Mould list LOCKED — moulds, cavity count, family mould decisions finalised (A-012)"),
     ("TG-01", 4, "NDA signed by BOTH parties — HJIG and Customer"),
     ("TG-01", 5, "Solicitation Agreement signed by BOTH parties — HJIG and Customer"),
     ("TG-01", 6, "Updated SOR signed off by customer (A-013)"),
@@ -22,7 +22,7 @@ GATE_FORM_EXIT_ITEMS = (
     ("TG-01", 12, "No open critical design issues without documented resolution plan"),
     ("TG-01", 13, "Risk Register reviewed — no new risk with score ≥16 unresolved\nIf new risk ≥16: document in Risk Register + escalate to PMO before gate closes."),
     ("TG-02", 1, "Client ships reference samples to toolmaker (A-018)\nv2.5 CHANGE: Moved from entry condition to exit condition."),
-    ("TG-02", 2, "DFM Sign-Off complete — ALL components (A-019). Partial GO is not allowed for any approved multi-component tooling scope."),
+    ("TG-02", 2, "DFM Sign-Off complete — ALL components (A-019)\nFamily mould: ALL components DFM confirmed. Partial GO not allowed."),
     ("TG-02", 3, "Moldflow Sign-Off complete — ALL components (A-020)\nCONDITIONAL: For small parts where gate change cannot impact steel size, PMO may approve Steel GO before Moldflow. If Moldflow may affect steel size — Moldflow must complete first."),
     ("TG-02", 4, "Tool Design Layout / Construction Concept confirmed (A-021)\nConcept only. Full detailed tool design runs parallel in B3."),
     ("TG-02", 5, "Steel sizes finalised per mould"),

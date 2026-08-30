@@ -1,0 +1,339 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_hjig_sseries_case_list" model="ir.ui.view">
+        <field name="name">hjig.sseries.case.list</field>
+        <field name="model">hjig.sseries.case</field>
+        <field name="arch" type="xml">
+            <list decoration-danger="exception_state == 'blocked'" decoration-warning="exception_state == 'attention'">
+                <field name="priority" widget="priority"/>
+                <field name="name"/>
+                <field name="customer_name"/>
+                <field name="project_name"/>
+                <field name="form_type"/>
+                <field name="stage"/>
+                <field name="owner_id"/>
+                <field name="next_action"/>
+                <field name="exception_state"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_sseries_case_form" model="ir.ui.view">
+        <field name="name">hjig.sseries.case.form</field>
+        <field name="model">hjig.sseries.case</field>
+        <field name="arch" type="xml">
+            <form string="S-Series Cockpit">
+                <header>
+                    <button name="action_assign_to_me" string="Assign to Me" type="object"
+                            invisible="owner_id == uid"/>
+                    <button name="action_start_internal_review" string="Start Internal Review" type="object"
+                            class="btn-primary" invisible="stage != 's0_received'"/>
+                    <button name="action_approve_internal_review" string="Approve Internal Review" type="object"
+                            class="btn-primary" invisible="stage != 's1_review'"
+                            groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
+                    <button name="action_approve_governance" string="Approve Governance Decision" type="object"
+                            class="btn-primary" invisible="stage != 's2_assessment'"
+                            groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
+                    <button name="action_prepare_quotation" string="Prepare Odoo Quotation" type="object"
+                            class="btn-primary" invisible="stage != 's3_proposal' or (form_type == 'portfolio_guard' and not portfolio_commercial_lead)"
+                            groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
+                    <button name="action_record_customer_acceptance" string="Record Customer Acceptance" type="object"
+                            invisible="stage != 's3_proposal' or (form_type == 'portfolio_guard' and not portfolio_commercial_lead)"
+                            groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
+                    <button name="action_complete_activation" string="Complete Activation Pack" type="object"
+                            class="btn-primary" invisible="stage != 's4_activation' or (form_type == 'portfolio_guard' and not portfolio_commercial_lead)"
+                            groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
+                    <button name="action_complete_sourcing_pack" string="Complete Sourcing Pack" type="object"
+                            class="btn-primary" invisible="stage != 's5_sourcing'"
+                            groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
+                    <button name="action_release_b0" string="Release to B0" type="object"
+                            class="btn-primary" invisible="stage != 's6_handover'"
+                            groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
+                    <field name="stage" widget="statusbar"
+                           statusbar_visible="s0_received,s1_review,s2_assessment,s3_proposal,s4_activation,s5_sourcing,s6_handover,b0_released"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                        <h2><field name="project_name" readonly="1"/></h2>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="customer_name"/>
+                            <field name="form_type"/>
+                            <field name="client_submission_id"/>
+                            <field name="client_project_id"/>
+                        </group>
+                        <group>
+                            <field name="priority" widget="priority"/>
+                            <field name="owner_id"/>
+                            <field name="reviewer_id"/>
+                            <field name="sourcebridge_required"/>
+                            <field name="portfolio_commercial_lead" readonly="1" invisible="form_type != 'portfolio_guard'"/>
+                            <field name="portfolio_case_count" readonly="1" invisible="form_type != 'portfolio_guard'"/>
+                        </group>
+                    </group>
+                    <group string="Work Queue">
+                        <field name="next_action"/>
+                        <field name="exception_state"/>
+                        <field name="blocker_summary" placeholder="No blocker recorded"/>
+                    </group>
+                    <notebook>
+                        <page string="Intake Snapshot">
+                            <field name="intake_project_id" readonly="1"/>
+                            <field name="submission_id" readonly="1"/>
+                        </page>
+                        <page string="Internal Review">
+                            <group>
+                                <field name="partner_id"/>
+                                <field name="lead_id"/>
+                                <field name="programme_route"/>
+                                <field name="scope_confirmed"/>
+                                <field name="internal_review_summary" placeholder="Confirmed customer, scope and route summary"/>
+                                <field name="internal_review_approved_by_id" readonly="1"/>
+                                <field name="internal_review_approved_on" readonly="1"/>
+                            </group>
+                        </page>
+                        <page string="Governance" invisible="stage in ['s0_received', 's1_review']">
+                            <group>
+                                <field name="governance_decision"/>
+                                <field name="risk_level"/>
+                                <field name="governance_summary" placeholder="Internal-only governance assessment"/>
+                                <field name="governance_approved_by_id" readonly="1"/>
+                                <field name="governance_approved_on" readonly="1"/>
+                            </group>
+                        </page>
+                        <page string="Commercial / Activation">
+                            <group>
+                                <field name="approved_governance_fee"/>
+                                <field name="target_margin" widget="percentage"/>
+                                <field name="costing_rule_version" readonly="1"/>
+                                <field name="payment_terms_summary" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                <field name="proposal_number" readonly="1"/>
+                                <field name="proposal_version" readonly="1"/>
+                                <field name="sale_order_id" readonly="1"/>
+                            </group>
+                            <group string="Acceptance and Activation" invisible="stage in ['s0_received', 's1_review', 's2_assessment']">
+                                <field name="nda_required" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                <field name="nda_completed" invisible="not nda_required" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                <field name="acceptance_basis" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                <field name="customer_signature_received" invisible="acceptance_basis != 'signed_proposal'" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                <field name="hongyi_countersigned" invisible="acceptance_basis != 'signed_proposal'" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                <field name="purchase_order_received" invisible="acceptance_basis != 'purchase_order'" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                <field name="acceptance_reference" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                <field name="acceptance_date" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                <field name="order_number" readonly="1"/>
+                                <field name="order_punch_approved" readonly="1"/>
+                                <field name="proforma_reference" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                <field name="finance_approved" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                <field name="payment_received" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                <field name="payment_evidence_reference" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                            </group>
+                            <group string="B0 Handover" invisible="stage not in ['s5_sourcing', 's6_handover', 'b0_released']">
+                                <field name="handover_owner_id"/>
+                                <field name="handover_accepted"/>
+                                <field name="project_id" readonly="1"/>
+                                <field name="programme_run_id" readonly="1"/>
+                                <field name="sourcebridge_engagement_id" readonly="1"/>
+                                <field name="portfolio_guard_id" readonly="1" invisible="form_type != 'portfolio_guard'"/>
+                                <field name="b0_manifest_id" readonly="1"/>
+                            </group>
+                        </page>
+                        <page string="Documents">
+                            <field name="artifact_ids" readonly="1">
+                                <list create="0" delete="0" decoration-danger="state == 'blocked'" decoration-success="state in ['approved', 'issued']">
+                                    <field name="code"/>
+                                    <field name="name"/>
+                                    <field name="audience"/>
+                                    <field name="state"/>
+                                    <field name="visual_qa_verified"/>
+                                    <field name="content_qa_verified"/>
+                                    <field name="customer_issue_allowed"/>
+                                    <field name="supplier_issue_allowed"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hjig_sseries_submission_list" model="ir.ui.view">
+        <field name="name">hjig.sseries.intake.submission.list</field>
+        <field name="model">hjig.sseries.intake.submission</field>
+        <field name="arch" type="xml">
+            <list create="0" delete="0">
+                <field name="name"/>
+                <field name="client_submission_id"/>
+                <field name="form_type"/>
+                <field name="company_name"/>
+                <field name="contact_name"/>
+                <field name="customer_email"/>
+                <field name="project_count"/>
+                <field name="received_at"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_sseries_submission_form" model="ir.ui.view">
+        <field name="name">hjig.sseries.intake.submission.form</field>
+        <field name="model">hjig.sseries.intake.submission</field>
+        <field name="arch" type="xml">
+            <form string="S-Series Submission" create="0" edit="0" delete="0">
+                <sheet>
+                    <div class="oe_title"><h1><field name="name"/></h1></div>
+                    <group>
+                        <group>
+                            <field name="client_submission_id"/>
+                            <field name="form_type"/>
+                            <field name="frontend_spec_version"/>
+                            <field name="payload_hash"/>
+                        </group>
+                        <group>
+                            <field name="company_name"/>
+                            <field name="contact_name"/>
+                            <field name="customer_email"/>
+                            <field name="received_at"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Projects">
+                            <field name="project_ids">
+                                <list create="0" delete="0">
+                                    <field name="client_project_id"/>
+                                    <field name="name"/>
+                                    <field name="current_project_stage"/>
+                                    <field name="engagement_model"/>
+                                    <field name="sourcebridge_selected"/>
+                                    <field name="sourcebridge_package_count"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Diagnostic Payload" groups="new_hongyijig_custom.group_hjig_sseries_manager">
+                            <field name="raw_payload_json" widget="json"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_hjig_sseries_cases" model="ir.actions.act_window">
+        <field name="name">S-Series Cockpit</field>
+        <field name="res_model">hjig.sseries.case</field>
+        <field name="view_mode">list,form</field>
+    </record>
+    <record id="action_hjig_sseries_submissions" model="ir.actions.act_window">
+        <field name="name">Website Submissions</field>
+        <field name="res_model">hjig.sseries.intake.submission</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="view_hjig_sseries_artifact_list" model="ir.ui.view">
+        <field name="name">hjig.sseries.artifact.list</field>
+        <field name="model">hjig.sseries.artifact</field>
+        <field name="arch" type="xml">
+            <list create="0" delete="0" decoration-danger="state == 'blocked'" decoration-success="state in ['approved', 'issued']">
+                <field name="case_id"/>
+                <field name="code"/>
+                <field name="name"/>
+                <field name="audience"/>
+                <field name="state"/>
+                <field name="prepared_by_id"/>
+                <field name="approved_by_id"/>
+                <field name="customer_issue_allowed"/>
+                <field name="supplier_issue_allowed"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_sseries_artifact_form" model="ir.ui.view">
+        <field name="name">hjig.sseries.artifact.form</field>
+        <field name="model">hjig.sseries.artifact</field>
+        <field name="arch" type="xml">
+            <form string="S-Series Document Control" create="0" delete="0">
+                <header>
+                    <button name="action_verify_qa" string="Verify Visual + Content QA" type="object" class="btn-primary" invisible="state not in ['required', 'draft']" groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
+                    <button name="action_approve" string="Approve" type="object" class="btn-primary" invisible="state != 'qa_verified'" groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
+                    <button name="action_allow_customer_issue" string="Allow Customer Issue" type="object" invisible="state != 'approved' or audience != 'customer' or customer_issue_allowed" groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
+                    <button name="action_allow_supplier_issue" string="Allow Supplier Issue" type="object" invisible="state != 'approved' or audience != 'supplier' or supplier_issue_allowed" groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
+                    <button name="action_record_issue" string="Record External Issue" type="object" invisible="not customer_issue_allowed and not supplier_issue_allowed" groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
+                    <field name="state" widget="statusbar" statusbar_visible="required,draft,qa_verified,approved,issued,blocked"/>
+                </header>
+                <sheet>
+                    <div class="oe_title"><h1><field name="name" readonly="1"/></h1></div>
+                    <group>
+                        <group>
+                            <field name="case_id" readonly="1"/>
+                            <field name="template_id" readonly="1"/>
+                            <field name="code" readonly="1"/>
+                            <field name="audience" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="document_data" filename="document_filename" readonly="state in ['approved', 'issued']"/>
+                            <field name="document_filename" invisible="1"/>
+                            <field name="document_sha256" readonly="1"/>
+                            <field name="prepared_by_id" readonly="1"/>
+                        </group>
+                    </group>
+                    <group string="Independent Release Gates">
+                        <field name="visual_qa_verified" readonly="1"/>
+                        <field name="content_qa_verified" readonly="1"/>
+                        <field name="user_final_approval"/>
+                        <field name="customer_issue_allowed" readonly="1"/>
+                        <field name="supplier_issue_allowed" readonly="1"/>
+                        <field name="approved_by_id" readonly="1"/>
+                        <field name="approved_on" readonly="1"/>
+                        <field name="issue_reference" readonly="state == 'issued'"/>
+                        <field name="issued_by_id" readonly="1"/>
+                        <field name="issued_on" readonly="1"/>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hjig_sseries_b0_list" model="ir.ui.view">
+        <field name="name">hjig.sseries.b0.handover.list</field>
+        <field name="model">hjig.sseries.b0.handover</field>
+        <field name="arch" type="xml">
+            <list create="0" edit="0" delete="0">
+                <field name="name"/><field name="case_id"/><field name="programme_route"/>
+                <field name="partner_id"/><field name="sale_order_id"/><field name="portfolio_guard_id"/><field name="sourcebridge_required"/>
+                <field name="released_by_id"/><field name="released_on"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_hjig_sseries_b0_form" model="ir.ui.view">
+        <field name="name">hjig.sseries.b0.handover.form</field>
+        <field name="model">hjig.sseries.b0.handover</field>
+        <field name="arch" type="xml">
+            <form string="B0 Handover Manifest" create="0" edit="0" delete="0"><sheet>
+                <div class="oe_title"><h1><field name="name"/></h1></div>
+                <group><group><field name="case_id"/><field name="programme_route"/><field name="partner_id"/><field name="sale_order_id"/></group>
+                <group><field name="project_id"/><field name="programme_run_id"/><field name="sourcebridge_engagement_id"/><field name="portfolio_guard_id"/><field name="sourcebridge_required"/><field name="snapshot_sha256"/><field name="released_by_id"/><field name="released_on"/></group></group>
+                <field name="snapshot_json" widget="json"/>
+            </sheet></form>
+        </field>
+    </record>
+
+    <record id="action_hjig_sseries_artifacts" model="ir.actions.act_window"><field name="name">Document Control</field><field name="res_model">hjig.sseries.artifact</field><field name="view_mode">list,form</field></record>
+    <record id="action_hjig_sseries_b0" model="ir.actions.act_window"><field name="name">B0 Handover Manifests</field><field name="res_model">hjig.sseries.b0.handover</field><field name="view_mode">list,form</field></record>
+
+    <menuitem id="menu_hjig_sseries" name="S-Series" parent="project.menu_main_pm"
+              sequence="4" groups="base.group_no_one"/>
+    <record id="menu_hjig_sseries" model="ir.ui.menu">
+        <field name="group_ids" eval="[(6, 0, [ref('base.group_no_one')])]"/>
+    </record>
+    <menuitem id="menu_hjig_sseries_cases" name="Cockpit" parent="menu_hjig_sseries"
+              action="action_hjig_sseries_cases" sequence="10"/>
+    <menuitem id="menu_hjig_sseries_submissions" name="Website Submissions" parent="menu_hjig_sseries"
+              action="action_hjig_sseries_submissions" sequence="20"
+              groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
+    <menuitem id="menu_hjig_sseries_artifacts" name="Document Control" parent="menu_hjig_sseries" action="action_hjig_sseries_artifacts" sequence="30"/>
+    <menuitem id="menu_hjig_sseries_b0" name="B0 Handover" parent="menu_hjig_sseries" action="action_hjig_sseries_b0" sequence="40"/>
+</odoo>

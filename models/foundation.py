@@ -26,6 +26,7 @@ HJIG_PROGRAMME_SELECTION = [
     ("launchguard_development", "LaunchGuard Development"),
     ("toollock_control", "ToolLock Control"),
     ("toollock_lite", "ToolLock Lite"),
+    ("sourcebridge_only", "SourceBridge Only"),
 ]
 
 
@@ -46,6 +47,7 @@ class ProjectProject(models.Model):
             "TG-01", "TG-02", "TG-03", "TG-04", "TG-05", "TG-06", "TG-09",
         ),
         "toollock_lite": (),
+        "sourcebridge_only": (),
     }
 
     hjig_programme = fields.Selection(
@@ -327,9 +329,12 @@ class ProjectProject(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         governed = {"hjig_authorized_user_ids", "hjig_programme"}
+        controlled_sseries_activation = (
+            self.env.su and self.env.context.get("hjig_sseries_activation")
+        )
         if any(governed.intersection(vals) for vals in vals_list) and not self.env.user.has_group(
             "project.group_project_manager"
-        ):
+        ) and not controlled_sseries_activation:
             raise UserError(_("Only Project Managers may configure the governed Hongyi project route and team."))
         if any(vals.get("hjig_current_stage_id") for vals in vals_list):
             raise ValidationError(_("The current governance stage can only be established by an approved GO decision."))

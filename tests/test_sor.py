@@ -128,43 +128,6 @@ class TestHongyiSor(TransactionCase):
         with self.assertRaises(ValidationError):
             sor.action_submit_review()
 
-    def test_unresolved_clarification_blocks_freeze_submission(self):
-        sor = self._create_sor(revision="R13")
-        requirement = self.env["hjig.sor.requirement"].create({
-            "sor_id": sor.id,
-            "requirement_id": "CLAR-1",
-            "category": "technical",
-            "requirement_text": "Customer material grade must be confirmed.",
-            "original_customer_wording": "Use a good plastic.",
-            "declaration_state": "pending",
-            "owner_id": self.requester.id,
-            "clarification_due_date": "2026-08-31",
-            "clarification_question": "Which exact material grade and supplier are approved?",
-        })
-        with self.assertRaisesRegex(ValidationError, "unresolved"):
-            sor.action_submit_review()
-        requirement.write({
-            "declaration_state": "specified",
-            "customer_declaration": "ABS grade XYZ approved.",
-            "acceptance_criteria": "Material certificate matches ABS grade XYZ.",
-        })
-
-    def test_conflict_requires_human_party_and_resolution(self):
-        sor = self._create_sor(revision="R14")
-        requirement = self._add_specified_requirement(sor)
-        requirement.write({
-            "original_customer_wording": "Supplier shall provide a two-year product warranty.",
-            "interpretation_confidence": 97,
-            "critical_review": True,
-            "conflict_detected": True,
-        })
-        with self.assertRaisesRegex(ValidationError, "confirmation party"):
-            sor.action_submit_review()
-        requirement.confirmation_party = "joint"
-        with self.assertRaisesRegex(ValidationError, "documented resolution"):
-            sor.action_submit_review()
-        requirement.conflict_resolution = "Customer removed the product-warranty clause; contracted support scope retained."
-
     def test_verification_create_rejects_forged_controlled_result(self):
         sor = self._create_sor(revision="R06")
         requirement = self.env["hjig.sor.requirement"].create({

@@ -93,7 +93,7 @@ class HjigProjectDesignationAssignment(models.Model):
         """A role assignment is the source of truth for governed project access.
 
         Adding the same person again on the project form was duplicate setup work and
-        made a valid role assignment look incomplete.  We only add current holders;
+        made a valid role assignment look incomplete. We only add current holders;
         we never remove an existing project-team member because that user may hold a
         different role or have separately approved project access.
         """

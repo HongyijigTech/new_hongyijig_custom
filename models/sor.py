@@ -441,32 +441,6 @@ class HjigSorRequirement(models.Model):
         tracking=True,
     )
     requirement_text = fields.Text(required=True, tracking=True)
-    original_customer_wording = fields.Text(
-        string="Original Customer Wording",
-        tracking=True,
-        help="Verbatim customer wording or questionnaire response. Keep this separate from the governed Hongyi interpretation.",
-    )
-    interpretation_confidence = fields.Integer(
-        string="Interpretation Confidence %",
-        tracking=True,
-        help="Optional review aid only. It never replaces human review or approval.",
-    )
-    confirmation_party = fields.Selection(
-        [
-            ("hongyi", "Hongyi Technical / PMO"),
-            ("customer", "Customer Technical"),
-            ("joint", "Joint Confirmation"),
-        ],
-        tracking=True,
-    )
-    critical_review = fields.Boolean(string="Critical Review Required", tracking=True)
-    conflict_detected = fields.Boolean(string="Conflict Detected", tracking=True)
-    review_flag = fields.Text(string="Review Flag / Reason", tracking=True)
-    clarification_question = fields.Text(tracking=True)
-    conflict_resolution = fields.Text(
-        help="Required before a conflicting requirement can be submitted for SOR freeze.",
-        tracking=True,
-    )
     response_options = fields.Text(readonly=True)
     customer_declaration = fields.Text(tracking=True)
     declaration_state = fields.Selection(
@@ -499,12 +473,6 @@ class HjigSorRequirement(models.Model):
         "UNIQUE(sor_id, requirement_id)", "Requirement ID must be unique within the SOR."
     )
 
-    @api.constrains("interpretation_confidence")
-    def _check_interpretation_confidence(self):
-        for requirement in self:
-            if requirement.interpretation_confidence < 0 or requirement.interpretation_confidence > 100:
-                raise ValidationError(_("Interpretation Confidence must be between 0 and 100 percent."))
-
     @api.model_create_multi
     def create(self, vals_list):
         if any(not vals.get("declaration_state") for vals in vals_list):
@@ -530,11 +498,6 @@ class HjigSorRequirement(models.Model):
 
     def _check_review_readiness(self):
         self.ensure_one()
-        if self.declaration_state in ("unknown_recommendation", "pending"):
-            raise ValidationError(
-                _("Requirement %s still has an unresolved recommendation or customer clarification.")
-                % self.requirement_id
-            )
         if self.declaration_state == "specified":
             if self.template_key and not (self.customer_declaration or "").strip():
                 raise ValidationError(_("Template requirement %s needs the customer's declaration.") % self.requirement_id)
@@ -542,21 +505,11 @@ class HjigSorRequirement(models.Model):
                 raise ValidationError(_("Specified requirement %s needs acceptance criteria.") % self.requirement_id)
             if not self.verification_ids.filtered("check_required"):
                 raise ValidationError(_("Specified requirement %s must be allocated to at least one phase.") % self.requirement_id)
-            if (self.critical_review or self.conflict_detected) and not self.confirmation_party:
-                raise ValidationError(
-                    _("Critical or conflicting requirement %s needs a confirmation party.") % self.requirement_id
-                )
-            if self.conflict_detected and not (self.conflict_resolution or "").strip():
-                raise ValidationError(
-                    _("Conflicting requirement %s needs a documented resolution before freeze.") % self.requirement_id
-                )
         if self.sor_id.intake_route == "customer_sor" and not (self.source_reference or "").strip():
             raise ValidationError(_("Route A requirement %s needs its customer source clause/page.") % self.requirement_id)
         if self.declaration_state in ("unknown_recommendation", "pending"):
-            if not self.owner_id or not self.clarification_due_date or not (self.clarification_question or "").strip():
-                raise ValidationError(
-                    _("Open requirement %s needs an owner, clarification question, and due date.") % self.requirement_id
-                )
+            if not self.owner_id or not self.clarification_due_date:
+                raise ValidationError(_("Open requirement %s needs an owner and clarification due date.") % self.requirement_id)
 
 
 class HjigSorRequirementVerification(models.Model):

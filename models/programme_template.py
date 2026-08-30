@@ -1067,14 +1067,30 @@ class HjigProgrammeRun(models.Model):
         "hjig.portfolio.guard", ondelete="restrict", index=True, tracking=True
     )
 
-    _sale_order_unique = models.Constraint(
-        "UNIQUE(sale_order_id)",
-        "An Order Punch can activate only one programme run.",
-    )
     _project_unique = models.Constraint(
         "UNIQUE(project_id)",
         "A project can have only one programme run.",
     )
+
+    @api.constrains("sale_order_id", "portfolio_guard_id")
+    def _check_sale_order_run_scope(self):
+        """One order normally has one run; PortfolioGuard is the governed exception."""
+        for run in self:
+            siblings = self.search([
+                ("sale_order_id", "=", run.sale_order_id.id),
+                ("id", "!=", run.id),
+            ])
+            if not siblings:
+                continue
+            portfolio = run.portfolio_guard_id
+            if (
+                not portfolio
+                or portfolio.sale_order_id != run.sale_order_id
+                or siblings.filtered(lambda item: item.portfolio_guard_id != portfolio)
+            ):
+                raise ValidationError(_(
+                    "An Order Punch can activate multiple programme runs only inside one PortfolioGuard umbrella."
+                ))
 
     _EXECUTION_STAGE_DEFINITIONS = (
         ("01 — To Do", 10, False),
@@ -1282,13 +1298,7 @@ class HjigProgrammeRun(models.Model):
         return True
 
     def _sync_dependency_planning(self):
-        """Calculate an executable plan from the approved dependency graph.
-
-        Template offsets remain the earliest allowed start.  A successor starts on
-        the next working day after its latest scoped predecessor finishes.  This
-        turns the immutable dependency snapshot into a usable employee schedule
-        without rewriting the approved programme DNA.
-        """
+        """Calculate an executable plan from the approved dependency graph."""
         for run in self.filtered(lambda item: item.project_id.date_start):
             pending = run.task_ids
             while pending:
@@ -1482,7 +1492,6 @@ class HjigProgrammeRunGate(models.Model):
     _order = "run_id, sequence, id"
 
     run_id = fields.Many2one("hjig.programme.run", required=True, ondelete="cascade", index=True)
-    project_id = fields.Many2one(related="run_id.project_id", store=True, readonly=True, index=True)
     name = fields.Char(compute="_compute_name", store=True)
     template_gate_id = fields.Many2one(
         "hjig.programme.template.gate", required=True, readonly=True, ondelete="restrict"
@@ -1651,14 +1660,12 @@ class HjigProgrammeRunArtifact(models.Model):
     _order = "stage_id, artifact_master_id"
 
     run_id = fields.Many2one("hjig.programme.run", required=True, ondelete="cascade", index=True)
-    project_id = fields.Many2one(related="run_id.project_id", store=True, readonly=True, index=True)
     run_gate_id = fields.Many2one(
         "hjig.programme.run.gate", required=True, ondelete="cascade", index=True, readonly=True
     )
     artifact_master_id = fields.Many2one(
         "hjig.governance.artifact.master", required=True, ondelete="restrict", index=True
     )
-    artifact_code = fields.Char(related="artifact_master_id.code", store=True, readonly=True)
     stage_id = fields.Many2one(
         "hjig.launchguard.stage", required=True, ondelete="restrict", index=True
     )
@@ -1670,32 +1677,20 @@ class HjigProgrammeRunArtifact(models.Model):
         store=True,
     )
     project_document_id = fields.Many2one("hjig.project.document", ondelete="restrict")
-    sor_id = fields.Many2one("hjig.sor", string="Native SOR Record", ondelete="restrict")
-    mould_plan_id = fields.Many2one("x_mould", string="Native Mould Planning Record", ondelete="restrict")
 
     _run_artifact_stage_unique = models.Constraint(
         "UNIQUE(run_id, artifact_master_id, stage_id, mould_id)",
         "A programme-run SOP/Form requirement may appear only once per gate scope.",
     )
 
-    @api.depends(
-        "project_document_id", "project_document_id.status",
-        "sor_id", "sor_id.state", "mould_plan_id", "mould_plan_id.x_workflow_state",
-    )
+    @api.depends("project_document_id", "project_document_id.status")
     def _compute_status(self):
         for requirement in self:
             document = requirement.project_document_id
-            if requirement.sor_id:
-                requirement.status = "approved" if requirement.sor_id.state == "frozen" else "available"
-            elif requirement.mould_plan_id:
-                requirement.status = (
-                    "approved" if requirement.mould_plan_id.x_workflow_state == "approved" else "available"
-                )
-            else:
-                requirement.status = (
-                    "approved" if document and document.status == "approved"
-                    else "available" if document else "required"
-                )
+            requirement.status = (
+                "approved" if document and document.status == "approved"
+                else "available" if document else "required"
+            )
 
     @api.constrains("run_id", "run_gate_id", "stage_id", "mould_id")
     def _check_gate_scope(self):
@@ -1715,26 +1710,8 @@ class HjigProgrammeRunArtifact(models.Model):
             if duplicate:
                 raise ValidationError(_("A programme SOP/Form requirement can appear only once in the same scope."))
 
-    @api.constrains("project_document_id", "sor_id", "mould_plan_id")
-    def _check_controlled_record(self):
-        for requirement in self:
-            linked = [
-                bool(requirement.project_document_id), bool(requirement.sor_id), bool(requirement.mould_plan_id)
-            ]
-            if sum(linked) > 1:
-                raise ValidationError(_("Link only one authoritative controlled record; duplicate evidence is not allowed."))
-            if requirement.sor_id:
-                if requirement.artifact_code != "FRM-003":
-                    raise ValidationError(_("A native SOR record may satisfy only FRM-003."))
-                if requirement.sor_id.project_id != requirement.run_id.project_id:
-                    raise ValidationError(_("The native SOR record must belong to the programme-run project."))
-            if requirement.mould_plan_id:
-                if requirement.artifact_code != "FRM-005":
-                    raise ValidationError(_("A native Mould Planning record may satisfy only FRM-005."))
-                if requirement.mould_plan_id.x_project_id != requirement.run_id.project_id:
-                    raise ValidationError(_("The native Mould Planning record must belong to the programme-run project."))
-                if requirement.mould_id and requirement.mould_plan_id != requirement.mould_id:
-                    raise ValidationError(_("The native Mould Planning record must match the requirement's mould scope."))
+    @api.constrains("project_document_id")
+    def _check_project_document(self):
         for requirement in self.filtered("project_document_id"):
             document = requirement.project_document_id
             if document.project_id != requirement.run_id.project_id:
@@ -1752,7 +1729,7 @@ class HjigProgrammeRunArtifact(models.Model):
         }
         if frozen.intersection(vals):
             raise ValidationError(_("Generated SOP/Form requirement identity is immutable."))
-        if {"project_document_id", "sor_id", "mould_plan_id"}.intersection(vals) and self.filtered(
+        if "project_document_id" in vals and self.filtered(
             lambda item: item.run_gate_id.state == "approved"
         ):
             raise ValidationError(_("Approved gate evidence cannot be replaced."))
@@ -1835,8 +1812,13 @@ class HjigSourcebridgeEngagement(models.Model):
     name = fields.Char(required=True, tracking=True)
     project_id = fields.Many2one("project.project", required=True, ondelete="restrict", index=True)
     programme_run_id = fields.Many2one(
-        "hjig.programme.run", required=True, ondelete="restrict", index=True, tracking=True
+        "hjig.programme.run", ondelete="restrict", index=True, tracking=True
     )
+    sseries_case_id = fields.Many2one(
+        "hjig.sseries.case", string="S-Series Handover Case", ondelete="restrict",
+        index=True, tracking=True,
+    )
+    standalone = fields.Boolean(compute="_compute_standalone", store=True, readonly=True)
     sale_order_id = fields.Many2one("sale.order", ondelete="restrict", tracking=True)
     owner_designation_id = fields.Many2one(
         "hjig.governance.designation", required=True, ondelete="restrict", tracking=True
@@ -1854,6 +1836,14 @@ class HjigSourcebridgeEngagement(models.Model):
     active = fields.Boolean(default=True)
 
     _code_unique = models.Constraint("UNIQUE(code)", "SourceBridge engagement code must be unique.")
+    _sseries_case_unique = models.Constraint(
+        "UNIQUE(sseries_case_id)", "An S-Series case can create only one SourceBridge engagement."
+    )
+
+    @api.depends("programme_run_id")
+    def _compute_standalone(self):
+        for engagement in self:
+            engagement.standalone = not bool(engagement.programme_run_id)
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -1862,11 +1852,20 @@ class HjigSourcebridgeEngagement(models.Model):
                 vals["code"] = vals["code"].strip().upper()
         return super().create(vals_list)
 
-    @api.constrains("project_id", "programme_run_id", "owner_designation_id", "approver_designation_id")
+    @api.constrains(
+        "project_id", "programme_run_id", "sseries_case_id",
+        "owner_designation_id", "approver_designation_id",
+    )
     def _check_engagement_governance(self):
         for engagement in self:
-            if engagement.programme_run_id.project_id != engagement.project_id:
+            if not engagement.programme_run_id and not engagement.sseries_case_id:
+                raise ValidationError(_(
+                    "SourceBridge requires either a governed programme run or an S-Series handover case."
+                ))
+            if engagement.programme_run_id and engagement.programme_run_id.project_id != engagement.project_id:
                 raise ValidationError(_("SourceBridge must link to the programme run of the same project."))
+            if engagement.sseries_case_id.project_id and engagement.sseries_case_id.project_id != engagement.project_id:
+                raise ValidationError(_("SourceBridge must link to the project released by its S-Series case."))
             if engagement.owner_designation_id == engagement.approver_designation_id:
                 raise ValidationError(_("SourceBridge owner and approver designations must differ."))
 
@@ -1896,7 +1895,7 @@ class HjigSourcebridgeEngagement(models.Model):
         if "state" in vals and not self.env.context.get("hjig_sourcebridge_workflow"):
             raise ValidationError(_("Use the governed SourceBridge workflow actions."))
         frozen = {
-            "code", "project_id", "programme_run_id", "sale_order_id",
+            "code", "project_id", "programme_run_id", "sseries_case_id", "sale_order_id",
             "owner_designation_id", "approver_designation_id",
         }
         if frozen.intersection(vals) and self.filtered(lambda item: item.state in ("active", "closed")):
@@ -2022,6 +2021,10 @@ class SaleOrder(models.Model):
     )
     hjig_project_id = fields.Many2one("project.project", copy=False, readonly=True, tracking=True)
     hjig_programme_run_id = fields.Many2one("hjig.programme.run", copy=False, readonly=True)
+    hjig_sseries_case_id = fields.Many2one(
+        "hjig.sseries.case", string="S-Series Commercial Case", copy=False, readonly=True,
+        ondelete="restrict", index=True,
+    )
     hjig_order_punch_pdf_url = fields.Char(string="Approved Order Punch PDF", copy=False, tracking=True)
     hjig_commercial_pdf_url = fields.Char(string="Approved Commercial PDF", copy=False, tracking=True)
 
@@ -2029,6 +2032,7 @@ class SaleOrder(models.Model):
         governed = {
             "hjig_programme_version_id", "hjig_project_code", "hjig_project_id", "hjig_programme_run_id",
             "hjig_order_punch_pdf_url", "hjig_commercial_pdf_url",
+            "hjig_sseries_case_id",
         }
         if governed.intersection(vals) and self.filtered("hjig_programme_run_id"):
             if not self.env.context.get("hjig_programme_activation"):
@@ -2062,7 +2066,11 @@ class SaleOrder(models.Model):
 
     def action_activate_hjig_programme(self):
         self.ensure_one()
-        existing = self.env["hjig.programme.run"].search([("sale_order_id", "=", self.id)], limit=1)
+        existing = self.env["hjig.programme.run"].search([("sale_order_id", "=", self.id)])
+        if len(existing) > 1:
+            raise ValidationError(_(
+                "This is a PortfolioGuard umbrella order. Open its child programme runs from PortfolioGuard."
+            ))
         if existing:
             return self._hjig_run_action(existing)
         if self.state not in ("sale", "done"):
@@ -2085,11 +2093,34 @@ class SaleOrder(models.Model):
                 _("The Project Code programme segment must match the selected programme template (%s).")
                 % version.template_id.code
             )
-        drive_pdf_pattern = re.compile(r"^https://drive\.google\.com/(?:file/d/|open\?id=)[A-Za-z0-9_-]+")
-        if not drive_pdf_pattern.match((self.hjig_order_punch_pdf_url or "").strip()):
-            raise ValidationError(_("Link the approved Order Punch PDF before programme activation."))
-        if not drive_pdf_pattern.match((self.hjig_commercial_pdf_url or "").strip()):
-            raise ValidationError(_("Link the approved Commercial PDF before programme activation."))
+        sseries_case = self.hjig_sseries_case_id
+        if sseries_case:
+            if sseries_case.sale_order_id != self or sseries_case.stage not in ("s6_handover", "b0_released"):
+                raise ValidationError(_("The linked S-Series case has not reached governed S6 handover."))
+            order_punch = sseries_case.artifact_ids.filtered(
+                lambda item: item.code == "S5-ORDER-PUNCH" and item.state == "approved"
+            )[:1]
+            proposal_codes = {
+                "launchguard_complete": "LGC-03", "launchguard_design": "LGD-03",
+                "launchguard_development": "LGV-03", "toollock_control": "TLC-03",
+                "toollock_lite": "TLL-03", "sourcebridge_only": "SB-03",
+            }
+            proposal_code = "PG-03" if sseries_case.form_type == "portfolio_guard" else proposal_codes.get(
+                sseries_case.programme_route
+            )
+            proposal = sseries_case.artifact_ids.filtered(
+                lambda item: item.code == proposal_code
+                and item.state in ("approved", "issued")
+                and item.customer_issue_allowed
+            )[:1]
+            if not order_punch or not proposal or not sseries_case.order_punch_approved:
+                raise ValidationError(_("Approved S-Series proposal and Order Punch evidence are required."))
+        else:
+            drive_pdf_pattern = re.compile(r"^https://drive\.google\.com/(?:file/d/|open\?id=)[A-Za-z0-9_-]+")
+            if not drive_pdf_pattern.match((self.hjig_order_punch_pdf_url or "").strip()):
+                raise ValidationError(_("Link the approved Order Punch PDF before programme activation."))
+            if not drive_pdf_pattern.match((self.hjig_commercial_pdf_url or "").strip()):
+                raise ValidationError(_("Link the approved Commercial PDF before programme activation."))
         if not project:
             project_values = {
                 "name": "%s - %s" % (self.partner_id.name, version.template_id.name),

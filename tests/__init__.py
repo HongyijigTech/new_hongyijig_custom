@@ -13,3 +13,5 @@ from . import test_execution_quality
 from . import test_commercial_bridge
 from . import test_knowledge_ai
 from . import test_ui_compatibility
+from . import test_sseries_intake
+from . import test_sseries_workflow

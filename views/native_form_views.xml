@@ -114,11 +114,7 @@
                 <field name="x_part_material" optional="hide"/>
                 <field name="x_part_weight_grams"/>
                 <field name="x_qps"/>
-                <field name="x_colour" optional="show"/>
-                <field name="x_dimension_x_mm" optional="hide"/>
-                <field name="x_dimension_y_mm" optional="hide"/>
-                <field name="x_dimension_z_mm" optional="hide"/>
-                <field name="x_cavity_plan" optional="hide"/>
+                <field name="x_cavity_plan" optional="show"/>
                 <field name="x_visual_inspection_applicability" optional="show"/>
                 <field name="x_dimensional_inspection_applicability" optional="show"/>
                 <field name="x_assumption_status"/>
@@ -168,26 +164,13 @@
                                     <field name="x_customer_shrinkage"/>
                                     <field name="x_part_weight_grams"/>
                                     <field name="x_qps"/>
-                                    <field name="x_colour"/>
-                                </group>
-                            </group>
-                        </page>
-                        <page string="Size and Planning Notes">
-                            <group>
-                                <group string="Part Size in Moulding Orientation">
-                                    <field name="x_dimension_x_mm"/>
-                                    <field name="x_dimension_y_mm"/>
-                                    <field name="x_dimension_z_mm"/>
-                                </group>
-                                <group string="Planning Notes">
-                                    <field name="x_planning_remarks"/>
                                 </group>
                             </group>
                         </page>
                         <page string="Mould Configuration">
                             <group>
                                 <group>
-                                    <field name="x_cavity_plan" invisible="1"/>
+                                    <field name="x_cavity_plan"/>
                                     <field name="x_mould_configuration" invisible="1"/>
                                     <field name="x_cavitation" invisible="1"/>
                                     <field name="x_mould_base_steel_id" options="{'no_create': True, 'no_create_edit': True}"/>
@@ -287,25 +270,6 @@
                         <field name="x_missing_fields" readonly="1"/>
                     </group>
                     <notebook>
-                        <page string="Planning Basis and Risks">
-                            <group>
-                                <group string="Planning Basis">
-                                    <field name="x_planning_confidence"/>
-                                    <field name="x_grouping_basis"/>
-                                    <field name="x_planning_assumption"/>
-                                    <field name="x_open_technical_question"/>
-                                </group>
-                                <group string="Pending Inputs and Risk">
-                                    <field name="x_customer_input_pending"/>
-                                    <field name="x_engineering_input_pending"/>
-                                    <field name="x_risk_flag"/>
-                                    <field name="x_risk_note" invisible="not x_risk_flag"/>
-                                </group>
-                            </group>
-                            <div class="alert alert-warning" role="alert">
-                                Family-mould architecture is intentionally excluded from new planning records until a separate controlled redesign is approved.
-                            </div>
-                        </page>
                         <page string="Component / Part Planning">
                             <field name="x_part_ids" context="{'default_x_mould_id': id}" readonly="x_workflow_state != 'draft'"/>
                         </page>
