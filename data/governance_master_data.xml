@@ -47,7 +47,7 @@
         <field name="code">TOOLMAKER</field><field name="name">Approved Toolmaker Representative</field><field name="category">supplier</field>
     </record>
 
-    <record id="stage_pa00" model="hjig.launchguard.stage"><field name="code">PA-00</field><field name="legacy_code">IG-01</field><field name="name">Project Activation</field><field name="sequence">0</field><field name="stage_type">activation</field></record>
+    <record id="stage_pa00" model="hjig.launchguard.stage"><field name="code">PA-00</field><field name="legacy_code">IG-01</field><field name="name">IG-01 — Information &amp; Planning Gate</field><field name="sequence">0</field><field name="stage_type">activation</field></record>
     <record id="stage_tg01" model="hjig.launchguard.stage"><field name="code">TG-01</field><field name="name">Product Design Sign-off and Toolmaker Selection</field><field name="sequence">10</field><field name="stage_type">technical_gate</field></record>
     <record id="stage_lgd_signoff" model="hjig.launchguard.stage"><field name="code">LGD-SIGNOFF</field><field name="legacy_code">DESIGN-SIGNOFF</field><field name="name">LaunchGuard Design Terminal Sign-Off Milestone</field><field name="sequence">12</field><field name="stage_type">milestone</field></record>
     <record id="stage_pre_b2" model="hjig.launchguard.stage"><field name="code">PRE-B2</field><field name="name">Pre-B2 Direct-Entry Completion Control (No Gate)</field><field name="sequence">15</field><field name="stage_type">milestone</field></record>

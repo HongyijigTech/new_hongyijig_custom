@@ -202,6 +202,15 @@ class TestProgrammeTemplateGovernance(TransactionCase):
         self.assertEqual(action["view_mode"], "list,form")
         self.assertEqual(action["domain"], [("template_id", "=", self.template.id)])
 
+    def test_employee_workbench_shows_only_the_current_gate_work(self):
+        run = self._activate_order(self._sale_order())
+        self.assertEqual(run.current_gate_ids, run.gate_ids)
+        self.assertEqual(run.current_activity_ids, run.task_ids.filtered(lambda task: not task.stage_id.fold))
+        self.assertEqual(run.current_form_requirement_ids, run.artifact_requirement_ids)
+        self.assertEqual(run.upcoming_gate_ids, self.env["hjig.programme.run.gate"])
+        action = run.action_open_current_forms()
+        self.assertEqual(action["domain"], [("id", "in", run.artifact_requirement_ids.ids)])
+
     def test_review_verification_is_evidenced_authorised_and_invalidated_on_change(self):
         draft = self.env["hjig.programme.template.version"].create({
             "template_id": self.template.id,

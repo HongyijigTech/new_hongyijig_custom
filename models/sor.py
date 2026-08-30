@@ -235,7 +235,13 @@ class HjigSor(models.Model):
             vals["no_product_warranty"] = True
             if vals.get("code", _("New")) == _("New"):
                 vals["code"] = sequence.next_by_code("hjig.sor") or _("New")
-        return super().create(vals_list)
+        records = super().create(vals_list)
+        requirement_id = self.env.context.get("hjig_programme_artifact_requirement_id")
+        if requirement_id and len(records) == 1:
+            requirement = self.env["hjig.programme.run.artifact"].browse(requirement_id).exists()
+            if requirement and requirement.artifact_code == "FRM-003":
+                requirement.sor_id = records.id
+        return records
 
     @api.constrains("no_product_warranty")
     def _check_no_product_warranty(self):

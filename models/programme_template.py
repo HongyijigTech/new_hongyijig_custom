@@ -1066,6 +1066,36 @@ class HjigProgrammeRun(models.Model):
     portfolio_guard_id = fields.Many2one(
         "hjig.portfolio.guard", ondelete="restrict", index=True, tracking=True
     )
+    current_gate_ids = fields.Many2many(
+        "hjig.programme.run.gate", compute="_compute_employee_workbench",
+        string="Current Gate / Control",
+    )
+    upcoming_gate_ids = fields.Many2many(
+        "hjig.programme.run.gate", compute="_compute_employee_workbench",
+        string="Upcoming Gates",
+    )
+    completed_gate_ids = fields.Many2many(
+        "hjig.programme.run.gate", compute="_compute_employee_workbench",
+        string="Completed Gates",
+    )
+    current_activity_ids = fields.Many2many(
+        "project.task", compute="_compute_employee_workbench", string="Current Gate Activities"
+    )
+    blocked_activity_ids = fields.Many2many(
+        "project.task", compute="_compute_employee_workbench", string="Blocked Activities"
+    )
+    current_form_requirement_ids = fields.Many2many(
+        "hjig.programme.run.artifact", compute="_compute_employee_workbench",
+        string="Current Forms and Evidence",
+    )
+    current_instruction_requirement_ids = fields.Many2many(
+        "hjig.programme.run.artifact", compute="_compute_employee_workbench",
+        string="Current Operating Instructions",
+    )
+    current_gate_count = fields.Integer(compute="_compute_employee_workbench")
+    current_activity_count = fields.Integer(compute="_compute_employee_workbench")
+    blocked_activity_count = fields.Integer(compute="_compute_employee_workbench")
+    missing_evidence_count = fields.Integer(compute="_compute_employee_workbench")
 
     _sale_order_unique = models.Constraint(
         "UNIQUE(sale_order_id)",
@@ -1082,6 +1112,66 @@ class HjigProgrammeRun(models.Model):
         ("03 — Waiting for Evidence Approval", 30, False),
         ("04 — Done", 40, True),
     )
+
+    @api.depends(
+        "gate_ids.state", "gate_ids.sequence", "task_ids.stage_id.fold",
+        "task_ids.hjig_execution_blocked", "task_ids.hjig_governance_stage_id",
+        "artifact_requirement_ids.status", "artifact_requirement_ids.run_gate_id",
+        "artifact_requirement_ids.artifact_master_id.artifact_type",
+    )
+    def _compute_employee_workbench(self):
+        for run in self:
+            open_gates = run.gate_ids.filtered(lambda gate: gate.required and gate.state != "approved")
+            current_sequence = min(open_gates.mapped("sequence"), default=False)
+            current_gates = open_gates.filtered(
+                lambda gate: current_sequence is not False and gate.sequence == current_sequence
+            )
+            current_stages = current_gates.mapped("stage_id")
+            current_tasks = run.task_ids.filtered(
+                lambda task: task.hjig_governance_stage_id in current_stages and not task.stage_id.fold
+            )
+            current_requirements = run.artifact_requirement_ids.filtered(
+                lambda item: item.run_gate_id in current_gates
+            )
+            forms = current_requirements.filtered(
+                lambda item: item.artifact_master_id.artifact_type == "form"
+            )
+            instructions = current_requirements.filtered(
+                lambda item: item.artifact_master_id.artifact_type == "sop"
+            )
+            run.current_gate_ids = current_gates
+            run.upcoming_gate_ids = open_gates - current_gates
+            run.completed_gate_ids = run.gate_ids.filtered(lambda gate: gate.state == "approved")
+            run.current_activity_ids = current_tasks
+            run.blocked_activity_ids = current_tasks.filtered("hjig_execution_blocked")
+            run.current_form_requirement_ids = forms
+            run.current_instruction_requirement_ids = instructions
+            run.current_gate_count = len(current_gates)
+            run.current_activity_count = len(current_tasks)
+            run.blocked_activity_count = len(run.blocked_activity_ids)
+            run.missing_evidence_count = len(forms.filtered(lambda item: item.status != "approved"))
+
+    def action_open_current_activities(self):
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Current Gate Activities — %s") % self.project_id.display_name,
+            "res_model": "project.task",
+            "view_mode": "list,form",
+            "domain": [("id", "in", self.current_activity_ids.ids)],
+            "context": {"create": False, "delete": False},
+        }
+
+    def action_open_current_forms(self):
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Current Forms and Evidence — %s") % self.project_id.display_name,
+            "res_model": "hjig.programme.run.artifact",
+            "view_mode": "list,form",
+            "domain": [("id", "in", self.current_form_requirement_ids.ids)],
+            "context": {"create": False, "delete": False},
+        }
 
     def write(self, vals):
         frozen = {
@@ -1506,6 +1596,7 @@ class HjigProgrammeRunGate(models.Model):
     approved_by_id = fields.Many2one("res.users", readonly=True, copy=False)
     approved_on = fields.Datetime(readonly=True, copy=False)
     approval_note = fields.Text(tracking=True)
+    block_reason = fields.Text(compute="_compute_block_reason", string="What Is Blocking This Gate")
 
     _run_gate_unique = models.Constraint(
         "UNIQUE(run_id, template_gate_id, mould_id)",
@@ -1519,6 +1610,14 @@ class HjigProgrammeRunGate(models.Model):
                 gate.stage_id.name or _("Gate"),
                 " — %s" % gate.mould_id.x_mould_number if gate.mould_id else "",
             )
+
+    @api.depends(
+        "state", "run_id.task_ids.stage_id.fold", "run_id.task_ids.hjig_commercial_control_current",
+        "run_id.artifact_requirement_ids.status", "run_id.checklist_instance_ids.status",
+    )
+    def _compute_block_reason(self):
+        for gate in self:
+            gate.block_reason = False if gate.state == "approved" else "\n".join(gate._blocking_reasons())
 
     @api.constrains("run_id", "template_gate_id", "mould_id")
     def _check_gate_scope(self):
@@ -1659,6 +1758,11 @@ class HjigProgrammeRunArtifact(models.Model):
         "hjig.governance.artifact.master", required=True, ondelete="restrict", index=True
     )
     artifact_code = fields.Char(related="artifact_master_id.code", store=True, readonly=True)
+    artifact_type = fields.Selection(related="artifact_master_id.artifact_type", readonly=True)
+    employee_quick_guide = fields.Text(related="artifact_master_id.employee_quick_guide", readonly=True)
+    entry_control_summary = fields.Text(related="artifact_master_id.entry_control_summary", readonly=True)
+    hard_stop_summary = fields.Text(related="artifact_master_id.hard_stop_summary", readonly=True)
+    exit_control_summary = fields.Text(related="artifact_master_id.exit_control_summary", readonly=True)
     stage_id = fields.Many2one(
         "hjig.launchguard.stage", required=True, ondelete="restrict", index=True
     )
@@ -1671,7 +1775,14 @@ class HjigProgrammeRunArtifact(models.Model):
     )
     project_document_id = fields.Many2one("hjig.project.document", ondelete="restrict")
     sor_id = fields.Many2one("hjig.sor", string="Native SOR Record", ondelete="restrict")
+    bop_id = fields.Many2one("hjig.bop", string="Native BOP Register", ondelete="restrict")
     mould_plan_id = fields.Many2one("x_mould", string="Native Mould Planning Record", ondelete="restrict")
+    risk_count = fields.Integer(compute="_compute_risk_checkpoint")
+    unresolved_escalated_risk_count = fields.Integer(compute="_compute_risk_checkpoint")
+    risk_reviewed = fields.Boolean(default=False, readonly=True)
+    risk_review_note = fields.Text()
+    risk_reviewed_by_id = fields.Many2one("res.users", readonly=True, copy=False)
+    risk_reviewed_on = fields.Datetime(readonly=True, copy=False)
 
     _run_artifact_stage_unique = models.Constraint(
         "UNIQUE(run_id, artifact_master_id, stage_id, mould_id)",
@@ -1680,16 +1791,24 @@ class HjigProgrammeRunArtifact(models.Model):
 
     @api.depends(
         "project_document_id", "project_document_id.status",
-        "sor_id", "sor_id.state", "mould_plan_id", "mould_plan_id.x_workflow_state",
+        "sor_id", "sor_id.state", "bop_id", "bop_id.state",
+        "mould_plan_id", "mould_plan_id.x_workflow_state", "risk_reviewed", "risk_count",
     )
     def _compute_status(self):
         for requirement in self:
             document = requirement.project_document_id
             if requirement.sor_id:
                 requirement.status = "approved" if requirement.sor_id.state == "frozen" else "available"
+            elif requirement.bop_id:
+                requirement.status = "approved" if requirement.bop_id.state == "frozen" else "available"
             elif requirement.mould_plan_id:
                 requirement.status = (
                     "approved" if requirement.mould_plan_id.x_workflow_state == "approved" else "available"
+                )
+            elif requirement.artifact_code == "FRM-006":
+                requirement.status = (
+                    "approved" if requirement.risk_reviewed and requirement.risk_count
+                    else "available" if requirement.risk_count else "required"
                 )
             else:
                 requirement.status = (
@@ -1715,19 +1834,41 @@ class HjigProgrammeRunArtifact(models.Model):
             if duplicate:
                 raise ValidationError(_("A programme SOP/Form requirement can appear only once in the same scope."))
 
-    @api.constrains("project_document_id", "sor_id", "mould_plan_id")
+    @api.depends("project_id")
+    def _compute_risk_checkpoint(self):
+        Risk = self.env["hjig.project.risk"]
+        for requirement in self:
+            domain = [("project_id", "=", requirement.project_id.id)]
+            requirement.risk_count = Risk.search_count(domain) if requirement.project_id else 0
+            requirement.unresolved_escalated_risk_count = Risk.search_count(
+                domain + [("status", "!=", "resolved"), ("risk_score", ">=", 16)]
+            ) if requirement.project_id else 0
+
+    @api.constrains("project_document_id", "sor_id", "bop_id", "mould_plan_id")
     def _check_controlled_record(self):
         for requirement in self:
             linked = [
-                bool(requirement.project_document_id), bool(requirement.sor_id), bool(requirement.mould_plan_id)
+                bool(requirement.project_document_id), bool(requirement.sor_id),
+                bool(requirement.bop_id), bool(requirement.mould_plan_id)
             ]
             if sum(linked) > 1:
                 raise ValidationError(_("Link only one authoritative controlled record; duplicate evidence is not allowed."))
+            if requirement.project_document_id and requirement.artifact_code in {
+                "FRM-003", "FRM-004", "FRM-005", "FRM-006",
+            }:
+                raise ValidationError(
+                    _("This requirement is completed directly in its native Odoo form; do not link a Drive document.")
+                )
             if requirement.sor_id:
                 if requirement.artifact_code != "FRM-003":
                     raise ValidationError(_("A native SOR record may satisfy only FRM-003."))
                 if requirement.sor_id.project_id != requirement.run_id.project_id:
                     raise ValidationError(_("The native SOR record must belong to the programme-run project."))
+            if requirement.bop_id:
+                if requirement.artifact_code != "FRM-004":
+                    raise ValidationError(_("A native BOP register may satisfy only FRM-004."))
+                if requirement.bop_id.project_id != requirement.run_id.project_id:
+                    raise ValidationError(_("The native BOP register must belong to the programme-run project."))
             if requirement.mould_plan_id:
                 if requirement.artifact_code != "FRM-005":
                     raise ValidationError(_("A native Mould Planning record may satisfy only FRM-005."))
@@ -1746,16 +1887,86 @@ class HjigProgrammeRunArtifact(models.Model):
             if document.mould_id != requirement.mould_id:
                 raise ValidationError(_("The controlled document uses a different mould scope."))
 
+    def action_open_authoritative_record(self):
+        self.ensure_one()
+        code = self.artifact_code
+        linked = self.sor_id or self.bop_id or self.mould_plan_id or self.project_document_id
+        if linked:
+            return {
+                "type": "ir.actions.act_window",
+                "name": linked.display_name,
+                "res_model": linked._name,
+                "view_mode": "form",
+                "res_id": linked.id,
+            }
+        action_xmlid = {
+            "FRM-003": "new_hongyijig_custom.action_hjig_sor",
+            "FRM-004": "new_hongyijig_custom.action_hjig_bop",
+            "FRM-005": "new_hongyijig_custom.action_hjig_mould_plan",
+            "FRM-006": "new_hongyijig_custom.action_hjig_project_risk",
+        }.get(code)
+        if action_xmlid:
+            action = self.env["ir.actions.actions"]._for_xml_id(action_xmlid)
+            project_field = "x_project_id" if code == "FRM-005" else "project_id"
+            action["domain"] = [(project_field, "=", self.project_id.id)]
+            action["context"] = {
+                "default_%s" % project_field: self.project_id.id,
+                "hjig_programme_artifact_requirement_id": self.id,
+            }
+            return action
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Controlled Project Documents"),
+            "res_model": "hjig.project.document",
+            "view_mode": "list,form",
+            "domain": [
+                ("project_id", "=", self.project_id.id),
+                ("artifact_master_id", "=", self.artifact_master_id.id),
+                ("stage_id", "=", self.stage_id.id),
+            ],
+            "context": {
+                "default_project_id": self.project_id.id,
+                "default_artifact_master_id": self.artifact_master_id.id,
+                "default_stage_id": self.stage_id.id,
+            },
+        }
+
+    def action_confirm_risk_review(self):
+        for requirement in self:
+            if requirement.artifact_code != "FRM-006":
+                raise UserError(_("Risk review confirmation is available only for FRM-006."))
+            if not requirement.risk_count:
+                raise ValidationError(_("Create at least one project risk before confirming the review."))
+            if requirement.unresolved_escalated_risk_count:
+                raise ValidationError(_("Resolve or formally control every risk scoring 16 or higher first."))
+            if not (requirement.risk_review_note or "").strip():
+                raise ValidationError(_("Record a short gate-specific risk review note."))
+            requirement.with_context(hjig_risk_review_workflow=True).write({
+                "risk_reviewed": True,
+                "risk_reviewed_by_id": self.env.user.id,
+                "risk_reviewed_on": fields.Datetime.now(),
+            })
+        return True
+
     def write(self, vals):
         frozen = {
             "run_id", "run_gate_id", "artifact_master_id", "stage_id", "mould_id", "mandatory"
         }
         if frozen.intersection(vals):
             raise ValidationError(_("Generated SOP/Form requirement identity is immutable."))
-        if {"project_document_id", "sor_id", "mould_plan_id"}.intersection(vals) and self.filtered(
+        evidence_fields = {
+            "project_document_id", "sor_id", "bop_id", "mould_plan_id",
+            "risk_reviewed", "risk_review_note", "risk_reviewed_by_id", "risk_reviewed_on",
+        }
+        if evidence_fields.intersection(vals) and self.filtered(
             lambda item: item.run_gate_id.state == "approved"
         ):
             raise ValidationError(_("Approved gate evidence cannot be replaced."))
+        risk_control_fields = {"risk_reviewed", "risk_reviewed_by_id", "risk_reviewed_on"}
+        if risk_control_fields.intersection(vals) and not self.env.context.get(
+            "hjig_risk_review_workflow"
+        ):
+            raise ValidationError(_("Use the governed risk-review action to confirm the checkpoint."))
         return super().write(vals)
 
     def unlink(self):

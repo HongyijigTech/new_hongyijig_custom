@@ -287,6 +287,53 @@
                     <button name="action_sync_mould_execution" type="object" string="Sync Approved Moulds"
                             invisible="state != 'generated' or execution_mode == 'advisory_sessions'"/>
                     <notebook>
+                        <page string="Employee Workbench" invisible="execution_mode == 'advisory_sessions'">
+                            <group>
+                                <group string="Where We Are Now">
+                                    <field name="current_gate_count" readonly="1"/><field name="current_activity_count" readonly="1"/>
+                                    <field name="blocked_activity_count" readonly="1"/><field name="missing_evidence_count" readonly="1"/>
+                                </group>
+                                <group string="Work Now">
+                                    <button name="action_open_current_activities" type="object" string="Open Current Activities" class="btn-primary"/>
+                                    <button name="action_open_current_forms" type="object" string="Open Current Forms and Evidence" class="btn-primary"/>
+                                </group>
+                            </group>
+                            <separator string="Current Gate / Control"/>
+                            <field name="current_gate_ids"><list create="false" delete="false" edit="false" decoration-danger="state == 'blocked'" decoration-success="state == 'ready'">
+                                <field name="sequence"/><field name="stage_id"/><field name="mould_id"/><field name="state" widget="badge"/>
+                                <field name="block_reason"/><button name="action_refresh_readiness" type="object" string="Refresh Readiness"/>
+                            </list></field>
+                            <separator string="Current Activities"/>
+                            <field name="current_activity_ids"><list create="false" delete="false" decoration-danger="hjig_execution_blocked">
+                                <field name="sequence"/><field name="name"/><field name="hjig_execution_basis"/><field name="hjig_mould_id" optional="show"/>
+                                <field name="hjig_owner_designation_id"/><field name="user_ids" widget="many2many_avatar_user"/>
+                                <field name="stage_id"/><field name="date_deadline"/><field name="hjig_execution_blocked"/>
+                                <field name="hjig_execution_block_reason"/>
+                            </list></field>
+                            <separator string="Forms and Evidence Required Now"/>
+                            <field name="current_form_requirement_ids"><list create="false" delete="false" edit="false"
+                                  decoration-danger="mandatory and status != 'approved'" decoration-success="status == 'approved'">
+                                <field name="artifact_master_id" readonly="1"/><field name="mould_id" readonly="1" optional="show"/>
+                                <field name="status" widget="badge" readonly="1"/>
+                                <field name="risk_count" readonly="1" invisible="artifact_code != 'FRM-006'"/>
+                                <field name="unresolved_escalated_risk_count" readonly="1" invisible="artifact_code != 'FRM-006'"/>
+                                <field name="risk_review_note" invisible="artifact_code != 'FRM-006'"/>
+                                <button name="action_open_authoritative_record" type="object" string="Open / Create Form"/>
+                                <button name="action_confirm_risk_review" type="object" string="Confirm Gate Risk Review"
+                                        invisible="artifact_code != 'FRM-006' or risk_reviewed"/>
+                                <field name="artifact_code" column_invisible="True"/><field name="risk_reviewed" column_invisible="True"/>
+                            </list></field>
+                            <separator string="Operating Instructions for This Gate"/>
+                            <field name="current_instruction_requirement_ids"><list create="false" delete="false" edit="false">
+                                <field name="artifact_master_id"/><field name="employee_quick_guide"/>
+                                <field name="entry_control_summary" optional="hide"/><field name="hard_stop_summary" optional="show"/>
+                                <field name="exit_control_summary" optional="hide"/>
+                            </list></field>
+                            <separator string="What Comes Next"/>
+                            <field name="upcoming_gate_ids"><list create="false" delete="false" edit="false">
+                                <field name="sequence"/><field name="stage_id"/><field name="mould_id"/><field name="state" widget="badge"/>
+                            </list></field>
+                        </page>
                         <page string="Conditional Scope" invisible="execution_mode == 'advisory_sessions' or not scope_decision_ids">
                             <field name="scope_decision_ids" readonly="state != 'draft'">
                                 <list create="false" delete="false" editable="bottom"
@@ -314,6 +361,7 @@
                                     <field name="state" widget="badge"/>
                                     <field name="approved_by_id"/>
                                     <field name="approved_on"/>
+                                    <field name="block_reason" optional="show"/>
                                     <button name="action_refresh_readiness" type="object" string="Check"/>
                                     <button name="action_approve_gate" type="object" string="Approve Gate"
                                             invisible="stage_type == 'milestone'"
@@ -341,7 +389,9 @@
                                 </list>
                             </field>
                         </page>
-                        <page string="Required SOPs and Forms" invisible="execution_mode == 'advisory_sessions'">
+                        <page string="Controlled Evidence Matrix (Admin)"
+                              invisible="execution_mode == 'advisory_sessions'"
+                              groups="project.group_project_manager,new_hongyijig_custom.group_hjig_document_controller">
                             <field name="artifact_requirement_ids">
                                 <list create="false" delete="false">
                                     <field name="stage_id"/>
@@ -350,6 +400,7 @@
                                     <field name="status"/>
                                     <field name="artifact_code" optional="hide"/>
                                     <field name="sor_id" optional="show"/>
+                                    <field name="bop_id" optional="show"/>
                                     <field name="mould_plan_id" optional="show"/>
                                     <field name="project_document_id" optional="show"/>
                                 </list>
@@ -757,8 +808,10 @@
                 <field name="mandatory"/>
                 <field name="status" widget="badge"/>
                 <field name="sor_id" optional="show"/>
+                <field name="bop_id" optional="show"/>
                 <field name="mould_plan_id" optional="show"/>
                 <field name="project_document_id"/>
+                <button name="action_open_authoritative_record" type="object" string="Open / Create Form"/>
             </list>
         </field>
     </record>
@@ -786,8 +839,20 @@
                     </group>
                     <group string="Authoritative Controlled Record">
                         <field name="sor_id" invisible="artifact_code != 'FRM-003'" domain="[('project_id', '=', project_id)]"/>
+                        <field name="bop_id" invisible="artifact_code != 'FRM-004'" domain="[('project_id', '=', project_id)]"/>
                         <field name="mould_plan_id" invisible="artifact_code != 'FRM-005'" domain="[('x_project_id', '=', project_id)]"/>
-                        <field name="project_document_id" invisible="artifact_code in ['FRM-003', 'FRM-005']"/>
+                        <field name="project_document_id" invisible="artifact_code in ['FRM-003', 'FRM-004', 'FRM-005', 'FRM-006']"/>
+                        <button name="action_open_authoritative_record" type="object" string="Open / Create Form" class="btn-primary"/>
+                    </group>
+                    <group string="Risk Register Gate Review" invisible="artifact_code != 'FRM-006'">
+                        <field name="risk_count" readonly="1"/>
+                        <field name="unresolved_escalated_risk_count" readonly="1"/>
+                        <field name="risk_review_note" readonly="risk_reviewed"/>
+                        <field name="risk_reviewed"/>
+                        <field name="risk_reviewed_by_id"/>
+                        <field name="risk_reviewed_on"/>
+                        <button name="action_confirm_risk_review" type="object" string="Confirm Gate Risk Review"
+                                class="btn-primary" invisible="risk_reviewed"/>
                     </group>
                 </sheet>
             </form>
