@@ -1304,7 +1304,9 @@ class HjigProgrammeRun(models.Model):
                     ]
                     if predecessor_deadlines:
                         latest = fields.Datetime.to_datetime(max(predecessor_deadlines))
-                        dependency_start = run._add_working_days(latest.date(), 1).replace(hour=9)
+                        dependency_start = fields.Datetime.to_datetime(
+                            run._add_working_days(latest.date(), 1)
+                        ).replace(hour=9)
                         planned_start = max(planned_start, dependency_start)
                     deadline = run._add_working_days(
                         planned_start, max(activity.duration_days - 1, 0)
