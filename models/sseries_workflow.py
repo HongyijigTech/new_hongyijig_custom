@@ -33,6 +33,22 @@ ROUTE_PROPOSAL_SEQUENCE = {
     "sourcebridge_only": "hjig.sseries.proposal.sbg",
 }
 
+ROUTE_PROGRAMME_TEMPLATE = {
+    "launchguard_complete": "LGC",
+    "launchguard_design": "LGD",
+    "launchguard_development": "LGV",
+    "toollock_control": "TLC",
+    "toollock_lite": "TLL",
+}
+
+ROUTE_PROJECT_SEQUENCE = {
+    "launchguard_complete": "hjig.sseries.project.lgc",
+    "launchguard_design": "hjig.sseries.project.lgd",
+    "launchguard_development": "hjig.sseries.project.lgv",
+    "toollock_control": "hjig.sseries.project.tlc",
+    "toollock_lite": "hjig.sseries.project.tll",
+}
+
 
 class HjigSSeriesDocumentTemplate(models.Model):
     _name = "hjig.sseries.document.template"
@@ -608,6 +624,7 @@ class HjigSSeriesCase(models.Model):
                     "origin": case.name,
                     "client_order_ref": case.proposal_number,
                     "note": case.payment_terms_summary,
+                    "hjig_sseries_case_id": case.id,
                 })
                 self.env["sale.order.line"].sudo().create({
                     "order_id": order.id,
@@ -661,11 +678,11 @@ class HjigSSeriesCase(models.Model):
                 raise ValidationError(_("Finance-approved Proforma Invoice evidence is required."))
             if not case.payment_received or not (case.payment_evidence_reference or "").strip():
                 raise ValidationError(_("Payment receipt and bank-evidence reference are required."))
-            if not (case.tax_invoice_reference or "").strip():
-                raise ValidationError(_("Tax/Final Invoice reference is required after payment receipt."))
             order_punch = case.artifact_ids.filtered(lambda item: item.code == "S5-ORDER-PUNCH")[:1]
             if not order_punch or order_punch.state != "approved":
                 raise ValidationError(_("Approved Order Punch document is required."))
+            if case.sale_order_id.state not in ("sale", "done"):
+                case.sale_order_id.sudo().action_confirm()
             case._ensure_artifact_codes(["S6-TEAM-HANDOVER"])
             next_stage = "s5_sourcing" if case.sourcebridge_required else "s6_handover"
             if case.sourcebridge_required:
@@ -696,6 +713,51 @@ class HjigSSeriesCase(models.Model):
             })
         return True
 
+    def _activate_bseries_programme_run(self):
+        """Create the governed B-Series execution records immediately before B0 release."""
+        self.ensure_one()
+        if self.programme_route == "sourcebridge_only":
+            raise ValidationError(_(
+                "Standalone SourceBridge execution is not a B-Series programme. "
+                "Use the controlled SourceBridge handover route before B0 release."
+            ))
+        template_code = ROUTE_PROGRAMME_TEMPLATE.get(self.programme_route)
+        sequence_code = ROUTE_PROJECT_SEQUENCE.get(self.programme_route)
+        if not template_code or not sequence_code:
+            raise ValidationError(_("The selected programme route has no controlled B-Series mapping."))
+        version = self.env["hjig.programme.template.version"].search([
+            ("template_id.code", "=", template_code),
+            ("state", "=", "approved"),
+            ("is_current", "=", True),
+        ], limit=1)
+        if not version:
+            raise ValidationError(_(
+                "No current approved %s programme version exists. Approve the B-Series master before B0 release."
+            ) % template_code)
+        order = self.sale_order_id.sudo()
+        run = order.hjig_programme_run_id
+        if run:
+            if run.template_version_id != version:
+                raise ValidationError(_("The existing programme run does not match the current approved route."))
+        else:
+            project_code = self.env["ir.sequence"].next_by_code(sequence_code)
+            if not project_code:
+                raise ValidationError(_("The governed project-code sequence is unavailable."))
+            order.with_context(hjig_programme_activation=True).write({
+                "hjig_programme_version_id": version.id,
+                "hjig_project_code": project_code,
+            })
+            order.with_context(hjig_sseries_activation=True).action_activate_hjig_programme()
+            order.invalidate_recordset(["hjig_project_id", "hjig_programme_run_id"])
+            run = order.hjig_programme_run_id
+        if not run or not order.hjig_project_id:
+            raise ValidationError(_("B-Series project and programme run creation did not complete."))
+        self.with_context(hjig_sseries_workflow=True).write({
+            "project_id": order.hjig_project_id.id,
+            "programme_run_id": run.id,
+        })
+        return run
+
     def action_release_b0(self):
         self._assert_manager()
         for case in self:
@@ -706,6 +768,7 @@ class HjigSSeriesCase(models.Model):
                 raise ValidationError(_("Approved Team Handover, responsible owner and acceptance are required."))
             if not case.order_punch_approved or not case.payment_received or not case.sale_order_id:
                 raise ValidationError(_("Commercial acceptance, Order Punch and payment gates are incomplete."))
+            case._activate_bseries_programme_run()
             manifest = self.env["hjig.sseries.b0.handover"].with_context(
                 hjig_sseries_workflow=True
             ).create_from_case(case)
@@ -754,6 +817,8 @@ class HjigSSeriesB0Handover(models.Model):
             "proposal_version": case.proposal_version,
             "order_number": case.order_number,
             "sale_order": case.sale_order_id.name,
+            "project_code": case.project_id.x_project_code,
+            "programme_run": case.programme_run_id.name,
             "payment_evidence_reference": case.payment_evidence_reference,
             "tax_invoice_reference": case.tax_invoice_reference,
             "sourcebridge_required": case.sourcebridge_required,

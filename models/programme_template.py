@@ -1944,6 +1944,10 @@ class SaleOrder(models.Model):
     )
     hjig_project_id = fields.Many2one("project.project", copy=False, readonly=True, tracking=True)
     hjig_programme_run_id = fields.Many2one("hjig.programme.run", copy=False, readonly=True)
+    hjig_sseries_case_id = fields.Many2one(
+        "hjig.sseries.case", string="S-Series Commercial Case", copy=False, readonly=True,
+        ondelete="restrict", index=True,
+    )
     hjig_order_punch_pdf_url = fields.Char(string="Approved Order Punch PDF", copy=False, tracking=True)
     hjig_commercial_pdf_url = fields.Char(string="Approved Commercial PDF", copy=False, tracking=True)
 
@@ -1951,6 +1955,7 @@ class SaleOrder(models.Model):
         governed = {
             "hjig_programme_version_id", "hjig_project_code", "hjig_project_id", "hjig_programme_run_id",
             "hjig_order_punch_pdf_url", "hjig_commercial_pdf_url",
+            "hjig_sseries_case_id",
         }
         if governed.intersection(vals) and self.filtered("hjig_programme_run_id"):
             if not self.env.context.get("hjig_programme_activation"):
@@ -2007,11 +2012,34 @@ class SaleOrder(models.Model):
                 _("The Project Code programme segment must match the selected programme template (%s).")
                 % version.template_id.code
             )
-        drive_pdf_pattern = re.compile(r"^https://drive\.google\.com/(?:file/d/|open\?id=)[A-Za-z0-9_-]+")
-        if not drive_pdf_pattern.match((self.hjig_order_punch_pdf_url or "").strip()):
-            raise ValidationError(_("Link the approved Order Punch PDF before programme activation."))
-        if not drive_pdf_pattern.match((self.hjig_commercial_pdf_url or "").strip()):
-            raise ValidationError(_("Link the approved Commercial PDF before programme activation."))
+        sseries_case = self.hjig_sseries_case_id
+        if sseries_case:
+            if sseries_case.sale_order_id != self or sseries_case.stage not in ("s6_handover", "b0_released"):
+                raise ValidationError(_("The linked S-Series case has not reached governed S6 handover."))
+            order_punch = sseries_case.artifact_ids.filtered(
+                lambda item: item.code == "S5-ORDER-PUNCH" and item.state == "approved"
+            )[:1]
+            proposal_codes = {
+                "launchguard_complete": "LGC-03", "launchguard_design": "LGD-03",
+                "launchguard_development": "LGV-03", "toollock_control": "TLC-03",
+                "toollock_lite": "TLL-03", "sourcebridge_only": "SB-03",
+            }
+            proposal_code = "PG-03" if sseries_case.form_type == "portfolio_guard" else proposal_codes.get(
+                sseries_case.programme_route
+            )
+            proposal = sseries_case.artifact_ids.filtered(
+                lambda item: item.code == proposal_code
+                and item.state in ("approved", "issued")
+                and item.customer_issue_allowed
+            )[:1]
+            if not order_punch or not proposal or not sseries_case.order_punch_approved:
+                raise ValidationError(_("Approved S-Series proposal and Order Punch evidence are required."))
+        else:
+            drive_pdf_pattern = re.compile(r"^https://drive\.google\.com/(?:file/d/|open\?id=)[A-Za-z0-9_-]+")
+            if not drive_pdf_pattern.match((self.hjig_order_punch_pdf_url or "").strip()):
+                raise ValidationError(_("Link the approved Order Punch PDF before programme activation."))
+            if not drive_pdf_pattern.match((self.hjig_commercial_pdf_url or "").strip()):
+                raise ValidationError(_("Link the approved Commercial PDF before programme activation."))
         if not project:
             project_values = {
                 "name": "%s - %s" % (self.partner_id.name, version.template_id.name),

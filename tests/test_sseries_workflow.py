@@ -30,6 +30,22 @@ class TestSSeriesWorkflow(TransactionCase):
                 "new_hongyijig_custom.group_hjig_sseries_manager"
             ).id])],
         })
+        template = cls.env.ref("new_hongyijig_custom.programme_launchguard_complete")
+        cls.lgc_version = cls.env["hjig.programme.template.version"].search([
+            ("template_id", "=", template.id),
+            ("state", "=", "approved"),
+            ("is_current", "=", True),
+        ], limit=1)
+        if not cls.lgc_version:
+            cls.lgc_version = cls.env["hjig.programme.template.version"].with_context(
+                hjig_programme_lifecycle=True
+            ).create({
+                "template_id": template.id,
+                "version": "S-UAT-1.0",
+                "state": "approved",
+                "is_current": True,
+                "effective_from": "2026-08-30",
+            })
 
     def _payload(self, suffix="WORKFLOW-0001"):
         return {
@@ -126,6 +142,7 @@ class TestSSeriesWorkflow(TransactionCase):
         case.with_user(self.manager).action_complete_activation()
         self.assertEqual(case.stage, "s6_handover")
         self.assertTrue(case.order_number.startswith("HJIG-ORD-"))
+        self.assertEqual(case.sale_order_id.state, "sale")
 
         team_handover = case.artifact_ids.filtered(lambda item: item.code == "S6-TEAM-HANDOVER")
         self._prepare_and_approve(team_handover, "team-handover")
@@ -135,6 +152,10 @@ class TestSSeriesWorkflow(TransactionCase):
         })
         case.with_user(self.manager).action_release_b0()
         self.assertEqual(case.stage, "b0_released")
+        self.assertTrue(case.project_id.x_project_code.startswith("HJ-LGC-"))
+        self.assertEqual(case.programme_run_id.sale_order_id, case.sale_order_id)
+        self.assertEqual(case.b0_manifest_id.project_id, case.project_id)
+        self.assertEqual(case.b0_manifest_id.programme_run_id, case.programme_run_id)
         self.assertTrue(case.b0_manifest_id.snapshot_sha256)
         with self.assertRaises(UserError):
             case.b0_manifest_id.write({"name": "Changed"})
