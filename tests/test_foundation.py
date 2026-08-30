@@ -202,6 +202,36 @@ class TestHongyiFoundation(TransactionCase):
         evidence.with_user(second_approver).action_accept()
         self.assertEqual(evidence.verifier_id, second_approver)
 
+    def test_explicit_staging_demo_override_allows_audited_same_user_decisions(self):
+        parameters = self.env["ir.config_parameter"].sudo()
+        parameters.set_param("new_hongyijig_custom.staging_self_approval_demo", "1")
+        parameters.set_param(
+            "new_hongyijig_custom.staging_self_approval_database", self.env.cr.dbname
+        )
+        evidence = self.env["hjig.evidence.link"].with_user(self.approver).create({
+            "project_id": self.project.id,
+            "target_ref": self._target(),
+            "evidence_type": "Staging training override",
+            "source_party": "hongyi",
+            "source_url": "https://example.com/staging-training-only",
+        })
+        evidence.with_user(self.approver).action_accept()
+        self.assertEqual(evidence.verification_state, "accepted")
+
+        approval = self.env["hjig.approval"].create({
+            "project_id": self.project.id,
+            "target_ref": self._target(),
+            "approval_type": "engineering",
+            "authority_designation_id": self.designation.id,
+            "requested_by_id": self.approver.id,
+        })
+        approval.with_user(self.approver).action_approve()
+        self.assertEqual(approval.state, "approved")
+        reasons = self.env["hjig.transition.log"].search([
+            ("target_ref", "=", "%s,%s" % (approval._name, approval.id)),
+        ]).mapped("reason")
+        self.assertTrue(any("STAGING TRAINING OVERRIDE" in reason for reason in reasons if reason))
+
     def test_transition_log_is_append_only(self):
         transition = self.env["hjig.transition.log"].create({
             "project_id": self.project.id,
