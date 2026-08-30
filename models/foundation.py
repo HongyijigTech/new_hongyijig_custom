@@ -8,6 +8,18 @@ from odoo.exceptions import UserError, ValidationError
 
 from .workflow_guard import is_workflow_context, workflow_context
 
+
+def staging_self_approval_demo_enabled(env):
+    """Allow a fully audited same-user demo only on the explicitly named database."""
+    parameters = env["ir.config_parameter"].sudo()
+    enabled = parameters.get_param(
+        "new_hongyijig_custom.staging_self_approval_demo", "0"
+    ) == "1"
+    configured_database = parameters.get_param(
+        "new_hongyijig_custom.staging_self_approval_database", ""
+    )
+    return enabled and configured_database == env.cr.dbname
+
 HJIG_PROGRAMME_SELECTION = [
     ("launchguard_complete", "LaunchGuard Complete"),
     ("launchguard_design", "LaunchGuard Design"),
@@ -655,12 +667,17 @@ class HjigEvidenceLink(models.Model):
         return super().write(vals)
 
     def _record_verification(self, state):
-        if not self.env.user.has_group("new_hongyijig_custom.group_hjig_governance_approver"):
+        demo_override = staging_self_approval_demo_enabled(self.env)
+        if (
+            not demo_override
+            and not self.env.user.has_group("new_hongyijig_custom.group_hjig_governance_approver")
+        ):
             raise UserError(_("Only authorised Governance Approvers may verify evidence."))
         for evidence in self:
             if evidence.verification_state != "unverified":
                 raise UserError(_("Only Unverified evidence can be accepted or rejected."))
-            if evidence.create_uid == self.env.user:
+            same_user_override = demo_override and evidence.create_uid == self.env.user
+            if evidence.create_uid == self.env.user and not same_user_override:
                 raise ValidationError(_("The person who created or uploaded evidence cannot verify it."))
             evidence.with_context(**workflow_context()).write({
                 "verification_state": state,
@@ -674,6 +691,10 @@ class HjigEvidenceLink(models.Model):
                 "to_state": state,
                 "decision": state,
                 "actor_id": self.env.user.id,
+                "reason": (
+                    "STAGING TRAINING OVERRIDE: evidence creator performed the demonstration verification."
+                    if same_user_override else False
+                ),
             })
 
     def action_accept(self):
@@ -786,7 +807,11 @@ class HjigApproval(models.Model):
         return super().write(vals)
 
     def _check_decision_authority(self):
-        if not self.env.user.has_group("new_hongyijig_custom.group_hjig_governance_approver"):
+        demo_override = staging_self_approval_demo_enabled(self.env)
+        if (
+            not demo_override
+            and not self.env.user.has_group("new_hongyijig_custom.group_hjig_governance_approver")
+        ):
             raise UserError(_("Only authorised Hongyi Governance Approvers may decide this request."))
         for approval in self:
             target = approval.sudo().target_ref
@@ -799,9 +824,13 @@ class HjigApproval(models.Model):
                 raise UserError(_(
                     "Commercial decisions require Hongyi Commercial Records access so the approver can inspect the immutable submission snapshot."
                 ))
-            if approval.authority_designation_id and self.env.user not in approval.authority_designation_id.holder_ids:
+            if (
+                not demo_override
+                and approval.authority_designation_id
+                and self.env.user not in approval.authority_designation_id.holder_ids
+            ):
                 raise UserError(_("You do not hold the required approval designation."))
-            if approval.requested_by_id == self.env.user:
+            if approval.requested_by_id == self.env.user and not demo_override:
                 raise ValidationError(_("The requester cannot approve or reject their own request."))
 
     def _lock_transition(self):
@@ -825,6 +854,7 @@ class HjigApproval(models.Model):
 
     def _record_decision(self, state):
         self._check_decision_authority()
+        demo_override = staging_self_approval_demo_enabled(self.env)
         for approval in self:
             approval._lock_transition()
             if approval.state != "pending":
@@ -853,7 +883,11 @@ class HjigApproval(models.Model):
                 "decision": state,
                 "actor_id": self.env.user.id,
                 "approval_id": approval.id,
-                "reason": approval.decision_reason,
+                "reason": (
+                    "STAGING TRAINING OVERRIDE: requester performed the demonstration decision."
+                    if demo_override and approval.requested_by_id == self.env.user
+                    else approval.decision_reason
+                ),
             })
 
     def action_approve(self):

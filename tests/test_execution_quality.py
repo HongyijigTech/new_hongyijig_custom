@@ -141,6 +141,19 @@ class TestExecutionQuality(TransactionCase):
                 "state": "complete", "progress_percent": 100,
             })
 
+    def test_manufacturing_plan_line_has_employee_readable_display_name(self):
+        execution = self.env["hjig.tooling.execution"].create({
+            "project_id": self.project.id, "supplier_id": self.supplier.id,
+            "mould_plan_reference": "MP-2026-DISPLAY", "start_date": "2026-08-01",
+            "baseline_trial_date": "2026-09-15", "current_forecast_trial_date": "2026-09-15",
+            "coordinator_id": self.owner.id,
+        })
+        line = self.env["hjig.tooling.plan.line"].create({
+            "execution_id": execution.id, "code": "MFG-030", "operation": "Polishing",
+            "owner_id": self.owner.id, "planned_start": "2026-08-15", "planned_end": "2026-08-17",
+        })
+        self.assertEqual(line.display_name, "MFG-030 — Polishing")
+
     def test_dimensional_result_must_match_limits(self):
         inspection = self.env["hjig.inspection"].create({
             "project_id": self.project.id, "inspection_type": "dimensional",

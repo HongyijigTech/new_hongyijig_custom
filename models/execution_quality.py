@@ -253,6 +253,11 @@ class HjigToolingPlanLine(models.Model):
     _description = "Hongyi Tool Manufacturing Plan Line"
     _order = "execution_id, sequence, id"
 
+    @api.depends("code", "operation")
+    def _compute_display_name(self):
+        for line in self:
+            line.display_name = "%s — %s" % (line.code, line.operation)
+
     execution_id = fields.Many2one("hjig.tooling.execution", required=True, ondelete="cascade", index=True)
     project_id = fields.Many2one(related="execution_id.project_id", store=True, readonly=True, index=True)
     company_id = fields.Many2one(related="execution_id.company_id", store=True, readonly=True, index=True)
