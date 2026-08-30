@@ -89,6 +89,26 @@ class HjigProjectDesignationAssignment(models.Model):
                 else "missing"
             )
 
+    def _sync_authorised_project_team(self):
+        """A role assignment is the source of truth for governed project access.
+
+        Adding the same person again on the project form was duplicate setup work and
+        made a valid role assignment look incomplete.  We only add current holders;
+        we never remove an existing project-team member because that user may hold a
+        different role or have separately approved project access.
+        """
+        for assignment in self.filtered(lambda item: item.active and item.holder_ids):
+            missing = assignment.holder_ids - assignment.project_id.hjig_authorized_user_ids
+            if missing:
+                assignment.project_id.hjig_authorized_user_ids = [(4, user.id) for user in missing]
+        return True
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        assignments = super().create(vals_list)
+        assignments._sync_authorised_project_team()
+        return assignments
+
     @api.constrains("active", "holder_ids", "planned_resource_ids", "effective_from", "effective_to")
     def _check_assignment_control(self):
         for assignment in self:
@@ -108,7 +128,10 @@ class HjigProjectDesignationAssignment(models.Model):
         }
         if governed.intersection(vals) and not self.env.user.has_group("project.group_project_manager"):
             raise ValidationError(_("Only a Project Administrator may change project designation authority."))
-        return super().write(vals)
+        result = super().write(vals)
+        if governed.intersection(vals):
+            self._sync_authorised_project_team()
+        return result
 
     def unlink(self):
         if not self.env.user.has_group("project.group_project_manager"):

@@ -615,6 +615,7 @@
             <xpath expr="//sheet/notebook" position="inside">
                 <page string="Programme Run" name="hjig_programme_run">
                     <field name="hjig_programme_run_count" invisible="1"/>
+                    <field name="hjig_programme_activation_state" readonly="1" widget="badge"/>
                     <field name="hjig_programme_run_ids">
                         <list create="false" delete="false">
                             <field name="name"/>

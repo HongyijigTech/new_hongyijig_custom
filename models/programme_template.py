@@ -1076,6 +1076,13 @@ class HjigProgrammeRun(models.Model):
         "A project can have only one programme run.",
     )
 
+    _EXECUTION_STAGE_DEFINITIONS = (
+        ("01 — To Do", 10, False),
+        ("02 — In Progress", 20, False),
+        ("03 — Waiting for Evidence Approval", 30, False),
+        ("04 — Done", 40, True),
+    )
+
     def write(self, vals):
         frozen = {
             "name", "sale_order_id", "project_id", "template_version_id", "activated_on",
@@ -1138,11 +1145,33 @@ class HjigProgrammeRun(models.Model):
                 required_users |= designation._holders_for_project(run.project_id)
             missing_team_users = required_users - run.project_id.hjig_authorized_user_ids
             if missing_team_users:
-                raise ValidationError(
-                    _("Add every designation holder to the Hongyi Project Team before execution: %s")
-                    % ", ".join(missing_team_users.mapped("display_name"))
-                )
+                run.project_id.hjig_authorized_user_ids = [
+                    (4, user.id) for user in missing_team_users
+                ]
         return True
+
+    def _ensure_project_execution_stages(self):
+        """Create one predictable employee board for each governed project."""
+        self.ensure_one()
+        Stage = self.env["project.task.type"]
+        project_stages = Stage.search([("project_ids", "in", self.project_id.id)])
+        stage_by_name = {stage.name: stage for stage in project_stages}
+        first_stage = Stage
+        for name, sequence, folded in self._EXECUTION_STAGE_DEFINITIONS:
+            stage = stage_by_name.get(name)
+            if not stage:
+                stage = Stage.create({
+                    "name": name,
+                    "sequence": sequence,
+                    "fold": folded,
+                    "project_ids": [(4, self.project_id.id)],
+                })
+                stage_by_name[name] = stage
+            elif stage.fold != folded:
+                stage.fold = folded
+            if name == self._EXECUTION_STAGE_DEFINITIONS[0][0]:
+                first_stage = stage
+        return first_stage
 
     def _activity_scope_values(self, activity):
         self.ensure_one()
@@ -1179,6 +1208,7 @@ class HjigProgrammeRun(models.Model):
     def _sync_activity_tasks(self):
         Task = self.env["project.task"]
         for run in self:
+            start_stage = run._ensure_project_execution_stages()
             included = run._included_activities()
             for activity in included.sorted(lambda line: (line.sequence, line.id)):
                 for mould, part in run._activity_scope_values(activity):
@@ -1195,6 +1225,7 @@ class HjigProgrammeRun(models.Model):
                     task_values = {
                         "name": "%s%s" % (activity.name, " — %s" % scope_label if scope_label else ""),
                         "project_id": run.project_id.id,
+                        "stage_id": start_stage.id,
                         "sequence": activity.sequence,
                         "user_ids": [(6, 0, activity.owner_designation_id._holders_for_project(run.project_id).ids)],
                         "hjig_programme_run_id": run.id,
@@ -1890,6 +1921,14 @@ class HjigSourcebridgeComponent(models.Model):
 class SaleOrder(models.Model):
     _inherit = "sale.order"
 
+    _HJIG_TEMPLATE_PROGRAMME_KEYS = {
+        "LGC": "launchguard_complete",
+        "LGD": "launchguard_design",
+        "LGV": "launchguard_development",
+        "TLC": "toollock_control",
+        "TLL": "toollock_lite",
+    }
+
     hjig_programme_version_id = fields.Many2one(
         "hjig.programme.template.version",
         string="Approved Programme Version",
@@ -1954,6 +1993,11 @@ class SaleOrder(models.Model):
         if not version or version.state != "approved" or not version.is_current:
             raise ValidationError(_("Select the current approved programme version before activation."))
         project = self._hjig_resolve_activation_project()
+        programme_key = self._HJIG_TEMPLATE_PROGRAMME_KEYS.get(version.template_id.code)
+        if programme_key and project and project.hjig_programme != programme_key:
+            raise ValidationError(
+                _("The adopted project's configured programme route does not match the selected template.")
+            )
         project_code = (self.hjig_project_code or project.x_project_code or "").strip().upper()
         if not project_code:
             raise ValidationError(_("Enter the approved governed project code before activation."))
@@ -1976,6 +2020,8 @@ class SaleOrder(models.Model):
                 "hjig_project_record_type": "customer",
                 "x_project_code": project_code,
             }
+            if programme_key:
+                project_values["hjig_programme"] = programme_key
             project_fields = self.env["project.project"]._fields
             if "x_order_reference_id" in project_fields:
                 project_values["x_order_reference_id"] = self.id
@@ -2014,6 +2060,16 @@ class ProjectProject(models.Model):
 
     hjig_programme_run_ids = fields.One2many("hjig.programme.run", "project_id")
     hjig_programme_run_count = fields.Integer(compute="_compute_hjig_programme_run_count")
+    hjig_programme_activation_state = fields.Selection(
+        [
+            ("none", "Not Activated"),
+            ("draft", "Setup Required"),
+            ("generated", "Active Programme Run"),
+            ("closed", "Closed"),
+        ],
+        compute="_compute_hjig_programme_activation_state",
+        string="Programme Activation Status",
+    )
     sourcebridge_engagement_ids = fields.One2many(
         "hjig.sourcebridge.engagement", "project_id", string="SourceBridge Engagements"
     )
@@ -2022,6 +2078,12 @@ class ProjectProject(models.Model):
     def _compute_hjig_programme_run_count(self):
         for project in self:
             project.hjig_programme_run_count = len(project.hjig_programme_run_ids)
+
+    @api.depends("hjig_programme_run_ids.state")
+    def _compute_hjig_programme_activation_state(self):
+        for project in self:
+            run = project.hjig_programme_run_ids[:1]
+            project.hjig_programme_activation_state = run.state if run else "none"
 
 
 class ProjectTask(models.Model):
