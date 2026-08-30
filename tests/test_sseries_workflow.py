@@ -1,4 +1,5 @@
 import base64
+from copy import deepcopy
 
 from odoo.exceptions import UserError, ValidationError
 from odoo.tests.common import TransactionCase
@@ -106,6 +107,39 @@ class TestSSeriesWorkflow(TransactionCase):
         })
         return payload
 
+    def _portfolio_payload(self):
+        project = {
+            "client_project_id": "PG-WORKFLOW-001",
+            "project_name": "Portfolio Child One",
+            "current_project_stage": "Concept",
+            "expected_start_window": "Within 30 Days",
+            "product_category": "Industrial",
+            "duration_months": 8,
+            "mould_count": 1,
+            "tooling_value_status": "Not Known Yet",
+            "engagement_model": "PROGRAMME_GOVERNANCE",
+            "services": {"product_design": True},
+        }
+        second = deepcopy(project)
+        second.update({
+            "client_project_id": "PG-WORKFLOW-002",
+            "project_name": "Portfolio Child Two",
+        })
+        return {
+            "form_type": "PORTFOLIOGUARD",
+            "client_submission_id": "PG-WORKFLOW-UMBRELLA-0001",
+            "frontend_spec_version": "PortfolioGuard-v1.7",
+            "submitted_at": "2026-08-30T05:00:00Z",
+            "customer": {
+                "company_name": "Portfolio Workflow Private Limited",
+                "customer_contact_name": "Portfolio Workflow Contact",
+                "customer_email": "portfolio-workflow@example.com",
+            },
+            "portfolio": {"projects_defined_count": 2},
+            "projects": [project, second],
+            "consent_given": True,
+        }
+
     def _prepare_and_approve(self, artifact, label):
         artifact.with_user(self.reviewer).write({
             "document_data": self._pdf(label),
@@ -158,6 +192,8 @@ class TestSSeriesWorkflow(TransactionCase):
         proposal.with_user(self.manager).action_allow_customer_issue()
         case.with_user(self.manager).write({
             "acceptance_basis": "signed_proposal",
+            "customer_signature_received": True,
+            "hongyi_countersigned": True,
             "acceptance_reference": "SIGNED-LGC-UAT-001",
             "acceptance_date": "2026-08-30",
         })
@@ -240,6 +276,8 @@ class TestSSeriesWorkflow(TransactionCase):
         proposal.with_user(self.manager).action_allow_customer_issue()
         case.with_user(self.manager).write({
             "acceptance_basis": "signed_proposal",
+            "customer_signature_received": True,
+            "hongyi_countersigned": True,
             "acceptance_reference": "SIGNED-SBG-UAT-001",
             "acceptance_date": "2026-08-30",
         })
@@ -279,6 +317,94 @@ class TestSSeriesWorkflow(TransactionCase):
         self.assertEqual(engagement.sale_order_id, case.sale_order_id)
         self.assertEqual(len(engagement.component_ids), 2)
         self.assertEqual(case.b0_manifest_id.sourcebridge_engagement_id, engagement)
+
+    def test_portfolioguard_uses_one_umbrella_order_and_child_b0_runs(self):
+        submission = self.Intake.ingest_payload(self._portfolio_payload())["submission"]
+        cases = submission.case_ids.sorted("id")
+        lead = cases[0]
+        self.assertTrue(lead.portfolio_commercial_lead)
+        self.assertFalse(cases[1].portfolio_commercial_lead)
+
+        for child in cases:
+            child.action_start_internal_review()
+            child.write({
+                "reviewer_id": self.reviewer.id,
+                "programme_route": "launchguard_complete",
+                "scope_confirmed": True,
+                "internal_review_summary": "Portfolio child identity, scope and route confirmed.",
+            })
+            child.with_user(self.manager).action_approve_internal_review()
+            child.write({
+                "governance_decision": "go",
+                "risk_level": "medium",
+                "governance_summary": "GO under one PortfolioGuard umbrella commercial record.",
+            })
+            child.with_user(self.manager).action_approve_governance()
+
+        proposals = cases.mapped("artifact_ids").filtered(lambda item: item.code == "PG-03")
+        self.assertEqual(len(proposals), 1)
+        cases[0].with_user(self.manager).write({
+            "approved_governance_fee": 300000,
+            "payment_terms_summary": "60% on acceptance and 40% before final controlled release.",
+        })
+        cases[1].with_user(self.manager).write({"approved_governance_fee": 200000})
+        lead.with_user(self.manager).action_prepare_quotation()
+
+        self.assertEqual(len(cases.mapped("sale_order_id")), 1)
+        self.assertEqual(len(lead.sale_order_id.order_line), 2)
+        self.assertEqual(lead.sale_order_id.amount_untaxed, 500000)
+        self.assertEqual(len(set(cases.mapped("proposal_number"))), 1)
+        with self.assertRaises(UserError):
+            cases[1].with_user(self.manager).action_prepare_quotation()
+
+        proposal = proposals
+        self._prepare_and_approve(proposal, "portfolio-umbrella-proposal")
+        proposal.with_user(self.manager).user_final_approval = True
+        proposal.with_user(self.manager).action_allow_customer_issue()
+        lead.with_user(self.manager).write({
+            "acceptance_basis": "signed_proposal",
+            "customer_signature_received": True,
+            "acceptance_reference": "SIGNED-PG-UAT-001",
+            "acceptance_date": "2026-08-30",
+        })
+        with self.assertRaises(ValidationError):
+            lead.with_user(self.manager).action_record_customer_acceptance()
+        lead.with_user(self.manager).hongyi_countersigned = True
+        lead.with_user(self.manager).action_record_customer_acceptance()
+        self.assertEqual(set(cases.mapped("stage")), {"s4_activation"})
+
+        self._prepare_and_approve(
+            lead.artifact_ids.filtered(lambda item: item.code == "S5-ORDER-PUNCH"),
+            "portfolio-order-punch",
+        )
+        lead.with_user(self.manager).write({
+            "proforma_reference": "PI-PG-UAT-001",
+            "finance_approved": True,
+            "payment_received": True,
+            "payment_evidence_reference": "BANK-PG-UAT-001",
+        })
+        lead.with_user(self.manager).action_complete_activation()
+        self.assertEqual(set(cases.mapped("stage")), {"s6_handover"})
+        self.assertEqual(len(set(cases.mapped("order_number"))), 1)
+
+        for child in cases:
+            self._prepare_and_approve(
+                child.artifact_ids.filtered(lambda item: item.code == "S6-TEAM-HANDOVER"),
+                "portfolio-team-handover-%s" % child.id,
+            )
+            child.with_user(self.manager).write({
+                "handover_owner_id": self.reviewer.id,
+                "handover_accepted": True,
+            })
+            child.with_user(self.manager).action_release_b0()
+
+        self.assertEqual(set(cases.mapped("stage")), {"b0_released"})
+        self.assertEqual(len(cases.mapped("project_id")), 2)
+        self.assertEqual(len(cases.mapped("programme_run_id")), 2)
+        self.assertEqual(len(cases.mapped("b0_manifest_id")), 2)
+        self.assertEqual(len(cases.mapped("portfolio_guard_id")), 1)
+        self.assertEqual(cases.mapped("programme_run_id.portfolio_guard_id"), lead.portfolio_guard_id)
+        self.assertEqual(len(set(cases.mapped("programme_run_id.sale_order_id"))), 1)
 
     def test_external_issue_cannot_skip_independent_gates(self):
         submission = self.Intake.ingest_payload(self._payload("WORKFLOW-0003"))["submission"]

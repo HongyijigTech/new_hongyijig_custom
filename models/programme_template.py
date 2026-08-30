@@ -1067,14 +1067,30 @@ class HjigProgrammeRun(models.Model):
         "hjig.portfolio.guard", ondelete="restrict", index=True, tracking=True
     )
 
-    _sale_order_unique = models.Constraint(
-        "UNIQUE(sale_order_id)",
-        "An Order Punch can activate only one programme run.",
-    )
     _project_unique = models.Constraint(
         "UNIQUE(project_id)",
         "A project can have only one programme run.",
     )
+
+    @api.constrains("sale_order_id", "portfolio_guard_id")
+    def _check_sale_order_run_scope(self):
+        """One order normally has one run; PortfolioGuard is the governed exception."""
+        for run in self:
+            siblings = self.search([
+                ("sale_order_id", "=", run.sale_order_id.id),
+                ("id", "!=", run.id),
+            ])
+            if not siblings:
+                continue
+            portfolio = run.portfolio_guard_id
+            if (
+                not portfolio
+                or portfolio.sale_order_id != run.sale_order_id
+                or siblings.filtered(lambda item: item.portfolio_guard_id != portfolio)
+            ):
+                raise ValidationError(_(
+                    "An Order Punch can activate multiple programme runs only inside one PortfolioGuard umbrella."
+                ))
 
     _EXECUTION_STAGE_DEFINITIONS = (
         ("01 — To Do", 10, False),
@@ -2050,7 +2066,11 @@ class SaleOrder(models.Model):
 
     def action_activate_hjig_programme(self):
         self.ensure_one()
-        existing = self.env["hjig.programme.run"].search([("sale_order_id", "=", self.id)], limit=1)
+        existing = self.env["hjig.programme.run"].search([("sale_order_id", "=", self.id)])
+        if len(existing) > 1:
+            raise ValidationError(_(
+                "This is a PortfolioGuard umbrella order. Open its child programme runs from PortfolioGuard."
+            ))
         if existing:
             return self._hjig_run_action(existing)
         if self.state not in ("sale", "done"):

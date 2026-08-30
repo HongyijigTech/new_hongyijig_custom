@@ -408,6 +408,9 @@ class HjigSSeriesCase(models.Model):
     acceptance_basis = fields.Selection(
         [("signed_proposal", "Signed Proposal"), ("purchase_order", "Purchase Order")], tracking=True
     )
+    customer_signature_received = fields.Boolean(tracking=True)
+    hongyi_countersigned = fields.Boolean(tracking=True)
+    purchase_order_received = fields.Boolean(tracking=True)
     acceptance_reference = fields.Char(tracking=True)
     acceptance_date = fields.Date(tracking=True)
     order_number = fields.Char(readonly=True, copy=False, index=True)
@@ -429,6 +432,11 @@ class HjigSSeriesCase(models.Model):
     handover_accepted = fields.Boolean(tracking=True)
     artifact_ids = fields.One2many("hjig.sseries.artifact", "case_id", readonly=True)
     b0_manifest_id = fields.Many2one("hjig.sseries.b0.handover", readonly=True, copy=False)
+    portfolio_guard_id = fields.Many2one(
+        "hjig.portfolio.guard", readonly=True, copy=False, ondelete="restrict"
+    )
+    portfolio_commercial_lead = fields.Boolean(compute="_compute_portfolio_summary")
+    portfolio_case_count = fields.Integer(compute="_compute_portfolio_summary")
     sourcebridge_engagement_id = fields.Many2one(
         "hjig.sourcebridge.engagement", readonly=True, copy=False, ondelete="restrict"
     )
@@ -440,6 +448,34 @@ class HjigSSeriesCase(models.Model):
         if not self.env.user.has_group("new_hongyijig_custom.group_hjig_sseries_manager"):
             raise UserError(_("S-Series Manager authority is required."))
 
+    @api.depends("submission_id", "form_type")
+    def _compute_portfolio_summary(self):
+        for case in self:
+            cases = case.submission_id.case_ids.filtered(lambda item: item.stage != "cancelled").sorted("id")
+            case.portfolio_case_count = len(cases) if case.form_type == "portfolio_guard" else 1
+            case.portfolio_commercial_lead = bool(
+                case.form_type != "portfolio_guard" or (cases and cases[0] == case)
+            )
+
+    def _portfolio_cases(self):
+        self.ensure_one()
+        if self.form_type != "portfolio_guard":
+            return self
+        return self.submission_id.case_ids.filtered(lambda item: item.stage != "cancelled").sorted("id")
+
+    def _commercial_authority_case(self):
+        self.ensure_one()
+        return self._portfolio_cases()[:1]
+
+    def _assert_commercial_authority(self):
+        self.ensure_one()
+        authority = self._commercial_authority_case()
+        if authority != self:
+            raise UserError(_(
+                "PortfolioGuard has one umbrella commercial record. Open %s to run commercial and activation actions."
+            ) % authority.display_name)
+        return authority
+
     def write(self, vals):
         if not self.env.context.get("hjig_sseries_workflow"):
             workflow_fields = {
@@ -447,7 +483,7 @@ class HjigSSeriesCase(models.Model):
                 "governance_approved_by_id", "governance_approved_on",
                 "pricing_snapshot_json", "commercial_approved_by_id", "commercial_approved_on",
                 "proposal_number", "proposal_version", "order_number", "order_punch_approved",
-                "b0_manifest_id", "sourcebridge_engagement_id",
+                "b0_manifest_id", "sourcebridge_engagement_id", "portfolio_guard_id",
             }
             if workflow_fields.intersection(vals):
                 raise ValidationError(_("Governed workflow evidence can be written only by S-Series actions."))
@@ -456,6 +492,7 @@ class HjigSSeriesCase(models.Model):
             commercial_fields = {"approved_governance_fee", "target_margin", "payment_terms_summary"}
             acceptance_fields = {
                 "nda_required", "nda_completed", "acceptance_basis", "acceptance_reference", "acceptance_date",
+                "customer_signature_received", "hongyi_countersigned", "purchase_order_received",
             }
             activation_fields = {
                 "proforma_reference", "finance_approved", "payment_received",
@@ -584,7 +621,12 @@ class HjigSSeriesCase(models.Model):
                 codes = [proposal_code]
                 if case.sourcebridge_required and case.programme_route != "sourcebridge_only":
                     codes.append("PB-SB-03")
-                case._ensure_artifact_codes(codes)
+                # PortfolioGuard issues one umbrella commercial proposal.  Project-level
+                # SourceBridge supplements remain attached to the relevant child case.
+                commercial_case = case._commercial_authority_case()
+                commercial_case._ensure_artifact_codes([proposal_code])
+                if len(codes) > 1:
+                    case._ensure_artifact_codes(codes[1:])
                 common.update({
                     "stage": "s3_proposal",
                     "next_action": _("Approve fee and prepare the controlled commercial proposal"),
@@ -598,10 +640,22 @@ class HjigSSeriesCase(models.Model):
         self._assert_manager()
         product = self.env.ref("new_hongyijig_custom.product_hjig_sseries_fee").product_variant_id
         for case in self:
+            case._assert_commercial_authority()
             if case.stage != "s3_proposal":
                 raise UserError(_("Quotation preparation is available only at S3."))
-            if case.approved_governance_fee <= 0 or not (0.30 <= case.target_margin <= 0.40):
-                raise ValidationError(_("Approved fee must be positive and target margin must remain between 30% and 40%."))
+            commercial_cases = case._portfolio_cases()
+            if commercial_cases.filtered(lambda item: item.stage != "s3_proposal" or item.governance_decision != "go"):
+                raise ValidationError(_(
+                    "Every active PortfolioGuard child must have a GO decision and reach S3 before the umbrella quotation."
+                ))
+            invalid_pricing = commercial_cases.filtered(
+                lambda item: item.approved_governance_fee <= 0
+                or not (0.30 <= item.target_margin <= 0.40)
+            )
+            if invalid_pricing:
+                raise ValidationError(_(
+                    "Each project fee must be positive and each target margin must remain between 30% and 40%."
+                ))
             if not (case.payment_terms_summary or "").strip():
                 raise ValidationError(_("Controlled payment terms are required before quotation preparation."))
             if not case.proposal_number:
@@ -609,15 +663,24 @@ class HjigSSeriesCase(models.Model):
                 case.with_context(hjig_sseries_workflow=True).write({
                     "proposal_number": self.env["ir.sequence"].next_by_code(sequence),
                 })
-            snapshot = {
-                "case": case.name,
+            portfolio_total = sum(commercial_cases.mapped("approved_governance_fee"))
+            umbrella_snapshot = {
+                "commercial_authority_case": case.name,
                 "proposal_number": case.proposal_number,
                 "proposal_version": case.proposal_version,
-                "programme_route": case.programme_route,
-                "approved_governance_fee": case.approved_governance_fee,
-                "target_margin": case.target_margin,
+                "portfolio_submission": case.client_submission_id,
+                "project_count": len(commercial_cases),
+                "portfolio_total": portfolio_total,
                 "costing_rule_version": case.costing_rule_version,
-                "sourcebridge_required": case.sourcebridge_required,
+                "projects": [{
+                    "case": child.name,
+                    "client_project_id": child.client_project_id,
+                    "project_name": child.project_name,
+                    "programme_route": child.programme_route,
+                    "approved_governance_fee": child.approved_governance_fee,
+                    "target_margin": child.target_margin,
+                    "sourcebridge_required": child.sourcebridge_required,
+                } for child in commercial_cases],
                 "approved_by": self.env.user.login,
                 "approved_on": fields.Datetime.now().isoformat(),
             }
@@ -625,55 +688,95 @@ class HjigSSeriesCase(models.Model):
                 order = self.env["sale.order"].sudo().create({
                     "partner_id": case.partner_id.id,
                     "company_id": case.company_id.id,
-                    "origin": case.name,
+                    "origin": case.client_submission_id,
                     "client_order_ref": case.proposal_number,
                     "note": case.payment_terms_summary,
                     "hjig_sseries_case_id": case.id,
                 })
-                self.env["sale.order.line"].sudo().create({
-                    "order_id": order.id,
-                    "product_id": product.id,
-                    "name": "%s - %s" % (dict(PROGRAMME_ROUTES).get(case.programme_route), case.project_name),
-                    "product_uom_qty": 1.0,
-                    "price_unit": case.approved_governance_fee,
+                for child in commercial_cases:
+                    self.env["sale.order.line"].sudo().create({
+                        "order_id": order.id,
+                        "product_id": product.id,
+                        "name": "%s - %s" % (
+                            dict(PROGRAMME_ROUTES).get(child.programme_route), child.project_name
+                        ),
+                        "product_uom_qty": 1.0,
+                        "price_unit": child.approved_governance_fee,
+                    })
+            else:
+                order = case.sale_order_id
+            approved_on = fields.Datetime.now()
+            for child in commercial_cases:
+                child_snapshot = dict(umbrella_snapshot, child_case=child.name)
+                child.with_context(hjig_sseries_workflow=True).write({
+                    "proposal_number": case.proposal_number,
+                    "proposal_version": case.proposal_version,
+                    "sale_order_id": order.id,
+                    "pricing_snapshot_json": child_snapshot,
+                    "commercial_approved_by_id": self.env.user.id,
+                    "commercial_approved_on": approved_on,
+                    "payment_terms_summary": case.payment_terms_summary,
+                    "next_action": (
+                        _("Attach and approve the umbrella commercial PDF; then record customer acceptance")
+                        if child == case else _("Covered by umbrella proposal %s") % case.proposal_number
+                    ),
                 })
-                case.sale_order_id = order.id
-            case.with_context(hjig_sseries_workflow=True).write({
-                "pricing_snapshot_json": snapshot,
-                "commercial_approved_by_id": self.env.user.id,
-                "commercial_approved_on": fields.Datetime.now(),
-                "next_action": _("Attach and approve the exact-master commercial PDF; then record customer acceptance"),
-            })
         return True
 
     def action_record_customer_acceptance(self):
         self._assert_manager()
         for case in self:
+            case._assert_commercial_authority()
             if case.stage != "s3_proposal" or not case.sale_order_id:
                 raise UserError(_("A prepared S3 quotation is required."))
+            commercial_cases = case._portfolio_cases()
+            if commercial_cases.filtered(lambda item: item.stage != "s3_proposal"):
+                raise ValidationError(_("All PortfolioGuard children must remain at S3 until umbrella acceptance."))
             proposal_code = "PG-03" if case.form_type == "portfolio_guard" else ROUTE_PROPOSAL_TEMPLATE[case.programme_route]
             proposal = case.artifact_ids.filtered(lambda item: item.code == proposal_code)[:1]
             if not proposal or proposal.state not in ("approved", "issued") or not proposal.customer_issue_allowed:
                 raise ValidationError(_("The exact-master commercial proposal requires approval and customer issue permission."))
             if not case.acceptance_basis or not (case.acceptance_reference or "").strip() or not case.acceptance_date:
                 raise ValidationError(_("Signed proposal or PO acceptance evidence and date are required."))
-            if case.nda_required and not case.nda_completed:
+            if case.acceptance_basis == "signed_proposal" and not (
+                case.customer_signature_received and case.hongyi_countersigned
+            ):
+                raise ValidationError(_(
+                    "A signed-proposal acceptance needs both customer signature and Hongyi countersignature."
+                ))
+            if case.acceptance_basis == "purchase_order" and not case.purchase_order_received:
+                raise ValidationError(_("Purchase Order receipt evidence is required for PO acceptance."))
+            if commercial_cases.filtered(lambda item: item.nda_required and not item.nda_completed):
                 raise ValidationError(_("The required NDA must be completed before activation."))
             case._ensure_artifact_codes([
                 "S4-ACCEPTANCE", "S5-ORDER-PUNCH", "S5-PROFORMA",
-                "S5-PAYMENT-EVIDENCE", "S5-TAX-INVOICE",
+                "S5-PAYMENT-EVIDENCE",
             ] + (["S4-NDA"] if case.nda_required else []))
-            case.with_context(hjig_sseries_workflow=True).write({
-                "stage": "s4_activation",
-                "next_action": _("Complete Order Punch, Finance, payment and tax-invoice evidence"),
-            })
+            for child in commercial_cases:
+                child.with_context(hjig_sseries_workflow=True).write({
+                    "stage": "s4_activation",
+                    "acceptance_basis": case.acceptance_basis,
+                    "acceptance_reference": case.acceptance_reference,
+                    "acceptance_date": case.acceptance_date,
+                    "customer_signature_received": case.customer_signature_received,
+                    "hongyi_countersigned": case.hongyi_countersigned,
+                    "purchase_order_received": case.purchase_order_received,
+                    "next_action": (
+                        _("Complete umbrella Order Punch, Finance and payment evidence")
+                        if child == case else _("Umbrella acceptance recorded; activation is controlled by %s") % case.name
+                    ),
+                })
         return True
 
     def action_complete_activation(self):
         self._assert_manager()
         for case in self:
+            case._assert_commercial_authority()
             if case.stage != "s4_activation":
                 raise UserError(_("Activation can be completed only at S4."))
+            commercial_cases = case._portfolio_cases()
+            if commercial_cases.filtered(lambda item: item.stage != "s4_activation"):
+                raise ValidationError(_("All PortfolioGuard children must be at S4 before umbrella activation."))
             if not case.order_number:
                 case.with_context(hjig_sseries_workflow=True).write({
                     "order_number": self.env["ir.sequence"].next_by_code("hjig.sseries.order"),
@@ -687,18 +790,24 @@ class HjigSSeriesCase(models.Model):
                 raise ValidationError(_("Approved Order Punch document is required."))
             if case.sale_order_id.state not in ("sale", "done"):
                 case.sale_order_id.sudo().action_confirm()
-            case._ensure_artifact_codes(["S6-TEAM-HANDOVER"])
-            next_stage = "s5_sourcing" if case.sourcebridge_required else "s6_handover"
-            if case.sourcebridge_required:
-                case._ensure_artifact_codes([
-                    "S6-CHINA-HANDOVER", "S6-SUPPLIER-RFQ-EN", "S6-SUPPLIER-RFQ-ZH",
-                ])
-            case.with_context(hjig_sseries_workflow=True).write({
-                "stage": next_stage,
-                "order_punch_approved": True,
-                "next_action": _("Approve the conditional sourcing pack") if case.sourcebridge_required
-                               else _("Complete team handover and release B0"),
-            })
+            for child in commercial_cases:
+                child._ensure_artifact_codes(["S6-TEAM-HANDOVER"])
+                next_stage = "s5_sourcing" if child.sourcebridge_required else "s6_handover"
+                if child.sourcebridge_required:
+                    child._ensure_artifact_codes([
+                        "S6-CHINA-HANDOVER", "S6-SUPPLIER-RFQ-EN", "S6-SUPPLIER-RFQ-ZH",
+                    ])
+                child.with_context(hjig_sseries_workflow=True).write({
+                    "stage": next_stage,
+                    "order_number": case.order_number,
+                    "order_punch_approved": True,
+                    "proforma_reference": case.proforma_reference,
+                    "finance_approved": case.finance_approved,
+                    "payment_received": case.payment_received,
+                    "payment_evidence_reference": case.payment_evidence_reference,
+                    "next_action": _("Approve the conditional sourcing pack") if child.sourcebridge_required
+                                   else _("Complete team handover and release B0"),
+                })
         return True
 
     def action_complete_sourcing_pack(self):
@@ -716,6 +825,83 @@ class HjigSSeriesCase(models.Model):
                 "next_action": _("Complete team handover and release B0"),
             })
         return True
+
+    def _ensure_portfolio_guard(self):
+        self.ensure_one()
+        if self.form_type != "portfolio_guard":
+            return self.env["hjig.portfolio.guard"]
+        authority = self._commercial_authority_case()
+        portfolio = authority.portfolio_guard_id or self.env["hjig.portfolio.guard"].search([
+            ("sale_order_id", "=", authority.sale_order_id.id),
+        ], limit=1)
+        if not portfolio:
+            portfolio = self.env["hjig.portfolio.guard"].sudo().create({
+                "name": "%s / %s" % (authority.proposal_number, authority.customer_name),
+                "partner_id": authority.partner_id.id,
+                "sale_order_id": authority.sale_order_id.id,
+                "owner_designation_id": self.env.ref(
+                    "new_hongyijig_custom.designation_project_manager"
+                ).id,
+                "approver_designation_id": self.env.ref(
+                    "new_hongyijig_custom.designation_pmo_document_controller"
+                ).id,
+            })
+        for child in authority._portfolio_cases():
+            if child.portfolio_guard_id != portfolio:
+                child.with_context(hjig_sseries_workflow=True).write({
+                    "portfolio_guard_id": portfolio.id,
+                })
+        return portfolio
+
+    def _activate_portfolio_bseries_programme_run(self):
+        """Activate one child project/run under the shared PortfolioGuard commercial order."""
+        self.ensure_one()
+        portfolio = self._ensure_portfolio_guard()
+        if self.programme_run_id:
+            if self.programme_run_id.portfolio_guard_id != portfolio:
+                raise ValidationError(_("The existing programme run is outside the PortfolioGuard umbrella."))
+            return self.programme_run_id
+        template_code = ROUTE_PROGRAMME_TEMPLATE.get(self.programme_route)
+        sequence_code = ROUTE_PROJECT_SEQUENCE.get(self.programme_route)
+        if not template_code or not sequence_code:
+            raise ValidationError(_("The selected child route has no controlled B-Series mapping."))
+        version = self.env["hjig.programme.template.version"].search([
+            ("template_id.code", "=", template_code),
+            ("state", "=", "approved"),
+            ("is_current", "=", True),
+        ], limit=1)
+        if not version:
+            raise ValidationError(_(
+                "No current approved %s programme version exists. Approve the B-Series master before B0 release."
+            ) % template_code)
+        project_code = self.env["ir.sequence"].next_by_code(sequence_code)
+        if not project_code:
+            raise ValidationError(_("The governed project-code sequence is unavailable."))
+        authorised_users = (self.env.user | self.handover_owner_id).ids
+        project = self.env["project.project"].sudo().with_context(
+            hjig_sseries_activation=True
+        ).create({
+            "name": self.project_name,
+            "partner_id": self.partner_id.id,
+            "company_id": self.company_id.id,
+            "hjig_project_record_type": "customer",
+            "hjig_programme": self.programme_route,
+            "hjig_authorized_user_ids": [(6, 0, authorised_users)],
+            "x_project_code": project_code,
+        })
+        run = self.env["hjig.programme.run"].sudo().create({
+            "name": "%s / %s" % (project_code, version.name),
+            "sale_order_id": self.sale_order_id.id,
+            "project_id": project.id,
+            "template_version_id": version.id,
+            "portfolio_guard_id": portfolio.id,
+        })
+        run._ensure_scope_decisions()
+        self.with_context(hjig_sseries_workflow=True).write({
+            "project_id": project.id,
+            "programme_run_id": run.id,
+        })
+        return run
 
     def _activate_bseries_programme_run(self):
         """Create the governed B-Series execution records immediately before B0 release."""
@@ -837,6 +1023,10 @@ class HjigSSeriesCase(models.Model):
 
     def _activate_execution_handover(self):
         self.ensure_one()
+        if self.form_type == "portfolio_guard":
+            self._ensure_portfolio_guard()
+            if self.programme_route != "sourcebridge_only":
+                return self._activate_portfolio_bseries_programme_run()
         if self.programme_route == "sourcebridge_only":
             return self._activate_sourcebridge_handover()
         return self._activate_bseries_programme_run()
@@ -880,6 +1070,9 @@ class HjigSSeriesB0Handover(models.Model):
     sourcebridge_engagement_id = fields.Many2one(
         "hjig.sourcebridge.engagement", readonly=True, ondelete="restrict"
     )
+    portfolio_guard_id = fields.Many2one(
+        "hjig.portfolio.guard", readonly=True, ondelete="restrict"
+    )
     sourcebridge_required = fields.Boolean(readonly=True)
     snapshot_json = fields.Json(required=True, readonly=True, copy=False)
     snapshot_sha256 = fields.Char(required=True, readonly=True, copy=False, index=True)
@@ -906,6 +1099,7 @@ class HjigSSeriesB0Handover(models.Model):
             "project_code": case.project_id.x_project_code,
             "programme_run": case.programme_run_id.name,
             "sourcebridge_engagement": case.sourcebridge_engagement_id.code,
+            "portfolio_guard": case.portfolio_guard_id.name,
             "payment_evidence_reference": case.payment_evidence_reference,
             "tax_invoice_reference": case.tax_invoice_reference,
             "sourcebridge_required": case.sourcebridge_required,
@@ -922,6 +1116,7 @@ class HjigSSeriesB0Handover(models.Model):
             "project_id": case.project_id.id,
             "programme_run_id": case.programme_run_id.id,
             "sourcebridge_engagement_id": case.sourcebridge_engagement_id.id,
+            "portfolio_guard_id": case.portfolio_guard_id.id,
             "sourcebridge_required": case.sourcebridge_required,
             "snapshot_json": snapshot,
             "snapshot_sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
