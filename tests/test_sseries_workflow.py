@@ -48,6 +48,16 @@ class TestSSeriesWorkflow(TransactionCase):
                 "new_hongyijig_custom.group_hjig_sseries_manager"
             ).id])],
         })
+        cls.document_preparer = get_or_create_user({
+            "name": "S-Series UAT Document Preparer",
+            "login": "sseries-uat-document-preparer@example.com",
+            "email": "sseries-uat-document-preparer@example.com",
+            "company_id": cls.env.company.id,
+            "company_ids": [(6, 0, [cls.env.company.id])],
+            "group_ids": [(6, 0, [cls.env.ref(
+                "new_hongyijig_custom.group_hjig_sseries_manager"
+            ).id])],
+        })
         cls.intake_owner = get_or_create_user({
             "name": "Intake Accountability",
             "login": "intake@thehongyijig.com",
@@ -186,7 +196,7 @@ class TestSSeriesWorkflow(TransactionCase):
         self.assertTrue(artifact.document_sha256)
 
     def _generate_and_approve(self, artifact):
-        artifact.with_user(self.manager).action_generate_controlled_draft()
+        artifact.with_user(self.document_preparer).action_generate_controlled_draft()
         self.assertEqual(artifact.state, "draft")
         self.assertEqual(
             artifact.rendered_page_count,
