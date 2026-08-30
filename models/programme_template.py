@@ -7,7 +7,7 @@ from datetime import timedelta
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
-from .workflow_guard import workflow_context
+from .workflow_guard import is_workflow_context, workflow_context
 
 
 class HjigProgrammeTemplate(models.Model):
@@ -1278,7 +1278,7 @@ class HjigProgrammeRun(models.Model):
                 predecessors = self.env["project.task"]
                 for predecessor in task.hjig_template_activity_id.predecessor_ids & included:
                     predecessors |= run._scoped_predecessor_tasks(task, predecessor)
-                task.depend_on_ids = [(6, 0, predecessors.ids)]
+                task.with_context(**workflow_context()).depend_on_ids = [(6, 0, predecessors.ids)]
         return True
 
     def action_generate_execution(self):
@@ -2271,7 +2271,7 @@ class ProjectTask(models.Model):
             "hjig_execution_basis", "hjig_execution_scope_key", "hjig_mould_id", "hjig_part_id",
             "depend_on_ids",
         }
-        if frozen.intersection(vals) and self.filtered(
+        if frozen.intersection(vals) and not is_workflow_context(self.env) and self.filtered(
             lambda task: task.hjig_programme_run_id.state in ("generated", "closed")
         ):
             raise ValidationError(_("Generated task governance fields are frozen by the programme snapshot."))
