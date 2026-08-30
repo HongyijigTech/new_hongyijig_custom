@@ -218,11 +218,12 @@ class TestHongyiFoundation(TransactionCase):
         evidence.with_user(self.approver).action_accept()
         self.assertEqual(evidence.verification_state, "accepted")
 
-        approval = self.env["hjig.approval"].with_user(self.approver).create({
+        approval = self.env["hjig.approval"].create({
             "project_id": self.project.id,
             "target_ref": self._target(),
             "approval_type": "engineering",
             "authority_designation_id": self.designation.id,
+            "requested_by_id": self.approver.id,
         })
         approval.with_user(self.approver).action_approve()
         self.assertEqual(approval.state, "approved")
