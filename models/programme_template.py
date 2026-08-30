@@ -1759,6 +1759,7 @@ class HjigProgrammeRunArtifact(models.Model):
     _order = "stage_id, artifact_master_id"
 
     run_id = fields.Many2one("hjig.programme.run", required=True, ondelete="cascade", index=True)
+    project_id = fields.Many2one(related="run_id.project_id", store=True, readonly=True, index=True)
     run_gate_id = fields.Many2one(
         "hjig.programme.run.gate", required=True, ondelete="cascade", index=True, readonly=True
     )
