@@ -228,9 +228,15 @@ class HjigSSeriesIntakeSubmission(models.Model):
             duration = payload.get("customer_expected_duration_months")
         duration_range = str(payload.get("customer_expected_duration_range") or "")
         if duration in (None, ""):
-            if submission.form_type == "portfolio_guard" or not duration_range:
+            if submission.form_type == "portfolio_guard":
+                # PortfolioGuard's governed customer form does not require a
+                # project-duration estimate. Preserve unknown as zero so that
+                # internal review can establish it without inventing a value.
+                duration = 0
+            elif not duration_range:
                 raise ValidationError(_("Expected duration is required."))
-            duration = 0
+            else:
+                duration = 0
         elif not isinstance(duration, int) or isinstance(duration, bool) or duration <= 0:
             raise ValidationError(_("Expected duration must be a positive whole number of months."))
         mould_count = payload.get("mould_count")

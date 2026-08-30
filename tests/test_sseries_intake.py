@@ -107,6 +107,15 @@ class TestSSeriesIntake(TransactionCase):
             "PG-PROJECT-001", "PG-PROJECT-002",
         })
 
+    def test_portfolio_guard_accepts_unknown_project_duration_for_internal_review(self):
+        payload = self._portfolio_guard_payload()
+        for project in payload["projects"]:
+            project.pop("duration_months")
+            project["customer_expected_duration_months"] = None
+        submission = self.Intake.ingest_payload(payload)["submission"]
+        self.assertEqual(set(submission.project_ids.mapped("expected_duration_months")), {0})
+        self.assertEqual(set(submission.case_ids.mapped("stage")), {"s0_received"})
+
     def test_duplicate_portfolio_project_id_is_blocked(self):
         payload = self._portfolio_guard_payload()
         payload["projects"][1]["client_project_id"] = payload["projects"][0]["client_project_id"]
@@ -126,4 +135,3 @@ class TestSSeriesIntake(TransactionCase):
         case.action_start_internal_review()
         self.assertEqual(case.stage, "s1_review")
         self.assertEqual(case.reviewer_id, self.env.user)
-
