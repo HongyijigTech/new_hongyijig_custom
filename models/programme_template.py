@@ -1482,6 +1482,7 @@ class HjigProgrammeRunGate(models.Model):
     _order = "run_id, sequence, id"
 
     run_id = fields.Many2one("hjig.programme.run", required=True, ondelete="cascade", index=True)
+    project_id = fields.Many2one(related="run_id.project_id", store=True, readonly=True, index=True)
     name = fields.Char(compute="_compute_name", store=True)
     template_gate_id = fields.Many2one(
         "hjig.programme.template.gate", required=True, readonly=True, ondelete="restrict"
@@ -1650,12 +1651,14 @@ class HjigProgrammeRunArtifact(models.Model):
     _order = "stage_id, artifact_master_id"
 
     run_id = fields.Many2one("hjig.programme.run", required=True, ondelete="cascade", index=True)
+    project_id = fields.Many2one(related="run_id.project_id", store=True, readonly=True, index=True)
     run_gate_id = fields.Many2one(
         "hjig.programme.run.gate", required=True, ondelete="cascade", index=True, readonly=True
     )
     artifact_master_id = fields.Many2one(
         "hjig.governance.artifact.master", required=True, ondelete="restrict", index=True
     )
+    artifact_code = fields.Char(related="artifact_master_id.code", store=True, readonly=True)
     stage_id = fields.Many2one(
         "hjig.launchguard.stage", required=True, ondelete="restrict", index=True
     )
@@ -1667,20 +1670,32 @@ class HjigProgrammeRunArtifact(models.Model):
         store=True,
     )
     project_document_id = fields.Many2one("hjig.project.document", ondelete="restrict")
+    sor_id = fields.Many2one("hjig.sor", string="Native SOR Record", ondelete="restrict")
+    mould_plan_id = fields.Many2one("x_mould", string="Native Mould Planning Record", ondelete="restrict")
 
     _run_artifact_stage_unique = models.Constraint(
         "UNIQUE(run_id, artifact_master_id, stage_id, mould_id)",
         "A programme-run SOP/Form requirement may appear only once per gate scope.",
     )
 
-    @api.depends("project_document_id", "project_document_id.status")
+    @api.depends(
+        "project_document_id", "project_document_id.status",
+        "sor_id", "sor_id.state", "mould_plan_id", "mould_plan_id.x_workflow_state",
+    )
     def _compute_status(self):
         for requirement in self:
             document = requirement.project_document_id
-            requirement.status = (
-                "approved" if document and document.status == "approved"
-                else "available" if document else "required"
-            )
+            if requirement.sor_id:
+                requirement.status = "approved" if requirement.sor_id.state == "frozen" else "available"
+            elif requirement.mould_plan_id:
+                requirement.status = (
+                    "approved" if requirement.mould_plan_id.x_workflow_state == "approved" else "available"
+                )
+            else:
+                requirement.status = (
+                    "approved" if document and document.status == "approved"
+                    else "available" if document else "required"
+                )
 
     @api.constrains("run_id", "run_gate_id", "stage_id", "mould_id")
     def _check_gate_scope(self):
@@ -1700,8 +1715,26 @@ class HjigProgrammeRunArtifact(models.Model):
             if duplicate:
                 raise ValidationError(_("A programme SOP/Form requirement can appear only once in the same scope."))
 
-    @api.constrains("project_document_id")
-    def _check_project_document(self):
+    @api.constrains("project_document_id", "sor_id", "mould_plan_id")
+    def _check_controlled_record(self):
+        for requirement in self:
+            linked = [
+                bool(requirement.project_document_id), bool(requirement.sor_id), bool(requirement.mould_plan_id)
+            ]
+            if sum(linked) > 1:
+                raise ValidationError(_("Link only one authoritative controlled record; duplicate evidence is not allowed."))
+            if requirement.sor_id:
+                if requirement.artifact_code != "FRM-003":
+                    raise ValidationError(_("A native SOR record may satisfy only FRM-003."))
+                if requirement.sor_id.project_id != requirement.run_id.project_id:
+                    raise ValidationError(_("The native SOR record must belong to the programme-run project."))
+            if requirement.mould_plan_id:
+                if requirement.artifact_code != "FRM-005":
+                    raise ValidationError(_("A native Mould Planning record may satisfy only FRM-005."))
+                if requirement.mould_plan_id.x_project_id != requirement.run_id.project_id:
+                    raise ValidationError(_("The native Mould Planning record must belong to the programme-run project."))
+                if requirement.mould_id and requirement.mould_plan_id != requirement.mould_id:
+                    raise ValidationError(_("The native Mould Planning record must match the requirement's mould scope."))
         for requirement in self.filtered("project_document_id"):
             document = requirement.project_document_id
             if document.project_id != requirement.run_id.project_id:
@@ -1719,7 +1752,7 @@ class HjigProgrammeRunArtifact(models.Model):
         }
         if frozen.intersection(vals):
             raise ValidationError(_("Generated SOP/Form requirement identity is immutable."))
-        if "project_document_id" in vals and self.filtered(
+        if {"project_document_id", "sor_id", "mould_plan_id"}.intersection(vals) and self.filtered(
             lambda item: item.run_gate_id.state == "approved"
         ):
             raise ValidationError(_("Approved gate evidence cannot be replaced."))

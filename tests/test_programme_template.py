@@ -7,6 +7,7 @@ from ..models.programme_gate_checklists import (
     _checklist_evidence_artifact_code,
     _explicit_evidence_artifact_code,
 )
+from ..models.workflow_guard import workflow_context
 
 
 @tagged("post_install", "-at_install")
@@ -406,6 +407,53 @@ class TestProgrammeTemplateGovernance(TransactionCase):
         self.assertFalse(dependent.hjig_open_predecessor_ids)
         dependent.stage_id = done_stage
         self.assertTrue(dependent.stage_id.fold)
+
+    def test_native_sor_and_mould_records_satisfy_their_programme_form_requirements(self):
+        run = self._activate_order(self._sale_order(hjig_project_code="HJ-PGT-2026-0015"))
+        gate = run.gate_ids
+        sor_requirement = self.env["hjig.programme.run.artifact"].create({
+            "run_id": run.id,
+            "run_gate_id": gate.id,
+            "artifact_master_id": self.env.ref("new_hongyijig_custom.artifact_frm_003").id,
+            "stage_id": gate.stage_id.id,
+            "mandatory": True,
+        })
+        sor = self.env["hjig.sor"].create({
+            "project_id": run.project_id.id,
+            "industry": "automotive",
+            "intake_route": "customer_sor",
+            "title": "Native programme-linked SOR",
+            "revision": "R00",
+            "source_reference": "Customer SOR R00",
+            "source_url": "https://drive.google.com/native-sor-test",
+            "owner_id": self.owner_user.id,
+            "approval_authority_designation_id": self.approver_designation.id,
+            "effective_date": "2026-08-30",
+        })
+        sor_requirement.sor_id = sor
+        self.assertEqual(sor_requirement.status, "available")
+        sor.with_context(**workflow_context()).write({"state": "frozen"})
+        self.assertEqual(sor_requirement.status, "approved")
+
+        mould_requirement = self.env["hjig.programme.run.artifact"].create({
+            "run_id": run.id,
+            "run_gate_id": gate.id,
+            "artifact_master_id": self.env.ref("new_hongyijig_custom.artifact_frm_005").id,
+            "stage_id": gate.stage_id.id,
+            "mandatory": True,
+        })
+        mould = self.env["x_mould"].create({
+            "x_name": "Native programme-linked mould plan",
+            "x_project_id": run.project_id.id,
+            "x_mould_number": "NATIVE-LINK-001",
+            "x_planning_assumption": "One captured component per mould pending engineering confirmation.",
+        })
+        mould_requirement.mould_plan_id = mould
+        self.assertEqual(mould_requirement.status, "available")
+        mould.with_context(allow_native_form_workflow=True).write({"x_workflow_state": "approved"})
+        self.assertEqual(mould_requirement.status, "approved")
+        with self.assertRaisesRegex(ValidationError, "duplicate evidence"):
+            mould_requirement.sor_id = sor
 
     def test_designation_holders_are_added_to_authorised_project_team(self):
         order = self._sale_order(hjig_project_code="HJ-PGT-2026-0005")

@@ -68,6 +68,11 @@
                                     <field name="sequence" widget="handle"/><field name="requirement_id"/>
                                     <field name="section_code" optional="show"/><field name="section_title" optional="show"/>
                                     <field name="category"/><field name="requirement_text"/>
+                                    <field name="original_customer_wording" optional="show"/>
+                                    <field name="interpretation_confidence" optional="show"/>
+                                    <field name="critical_review" optional="show"/>
+                                    <field name="conflict_detected" optional="show"/>
+                                    <field name="confirmation_party" optional="show"/>
                                     <field name="response_options" optional="hide"/>
                                     <field name="customer_declaration" optional="show"/>
                                     <field name="declaration_state"/><field name="priority"/>
@@ -93,9 +98,25 @@
                     <div class="oe_title"><h1><field name="requirement_id"/></h1></div>
                     <group>
                         <group><field name="sor_id"/><field name="template_key" invisible="not template_key"/><field name="section_code"/><field name="section_title"/><field name="category"/><field name="declaration_state"/><field name="priority"/><field name="owner_id"/><field name="clarification_due_date"/></group>
-                        <group><field name="source_reference"/><field name="requirement_text"/><field name="response_options" invisible="not response_options"/><field name="customer_declaration"/><field name="acceptance_criteria"/></group>
+                        <group><field name="source_reference"/><field name="interpretation_confidence"/><field name="critical_review"/><field name="conflict_detected"/><field name="confirmation_party"/></group>
                     </group>
                     <notebook>
+                        <page string="Customer Source and Interpretation">
+                            <group>
+                                <field name="original_customer_wording"/>
+                                <field name="requirement_text"/>
+                                <field name="response_options" invisible="not response_options"/>
+                                <field name="customer_declaration"/>
+                                <field name="acceptance_criteria"/>
+                            </group>
+                        </page>
+                        <page string="Exception Review">
+                            <group>
+                                <field name="review_flag"/>
+                                <field name="clarification_question" invisible="declaration_state not in ['unknown_recommendation', 'pending']"/>
+                                <field name="conflict_resolution" invisible="not conflict_detected"/>
+                            </group>
+                        </page>
                         <page string="Phase Verification">
                             <field name="verification_ids">
                                 <list editable="bottom">

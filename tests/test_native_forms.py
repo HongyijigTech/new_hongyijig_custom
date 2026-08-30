@@ -94,6 +94,7 @@ class TestNativeProjectForms(TransactionCase):
             "x_owner_designation_id": self.owner_designation.id,
             "x_approver_designation_id": self.approver_designation.id,
             "x_effective_date": "2026-08-27",
+            "x_planning_assumption": "One mould per captured component unless engineering review changes the plan.",
         })
         part_values = {
             "x_mould_id": mould.id,
@@ -292,34 +293,14 @@ class TestNativeProjectForms(TransactionCase):
         with self.assertRaises(ValidationError):
             single.x_cavitation = "1*2"
 
-        family = self.env["x_mould"].create({
-            "x_name": "Family Mould",
-            "x_project_id": self.project.id,
-            "x_mould_number": "TM-FAMILY",
-            "x_mould_configuration": "family",
-            "x_template_id": self.mould_template.id,
-        })
-        part_1 = self.env["x_mould_part"].create({
-            "x_mould_id": family.id,
-            "x_name": "First",
-            "x_part_number": "F-001",
-            "x_sequence": 10,
-            "x_cavity_plan": 1,
-        })
-        part_2 = self.env["x_mould_part"].create({
-            "x_mould_id": family.id,
-            "x_name": "Second",
-            "x_part_number": "F-002",
-            "x_sequence": 20,
-            "x_cavity_plan": 4,
-        })
-        self.assertEqual(family.x_cavitation, "1+4")
-        part_2.x_cavity_plan = 2
-        self.assertEqual(family.x_cavitation, "1+2")
         with self.assertRaises(ValidationError):
-            family.x_cavitation = "9+9"
-        part_1.unlink()
-        self.assertEqual(family.x_cavitation, "2")
+            self.env["x_mould"].create({
+                "x_name": "Family Mould",
+                "x_project_id": self.project.id,
+                "x_mould_number": "TM-FAMILY",
+                "x_mould_configuration": "family",
+                "x_template_id": self.mould_template.id,
+            })
 
         multi = self.env["x_mould"].create({
             "x_name": "Multi Mould",
@@ -328,6 +309,7 @@ class TestNativeProjectForms(TransactionCase):
             "x_mould_configuration": "multi",
             "x_cavitation": "1*2",
             "x_template_id": self.mould_template.id,
+            "x_planning_assumption": "Multi-cavity plan subject to engineering capacity confirmation.",
         })
         self.assertEqual(multi.x_cavitation, "1*2")
         multi.x_cavitation = "1*4"

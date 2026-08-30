@@ -53,13 +53,13 @@ class TestProjectRegisters(TransactionCase):
             "x_owner_designation_id": self.owner_designation.id,
             "x_approver_designation_id": self.approver_designation.id,
             "x_effective_date": "2026-08-27",
+            "x_planning_assumption": "Initial one-part mould allocation approved for final planning.",
         })
         part = self.env["x_mould_part"].create({
             "x_mould_id": mould.id, "x_name": "Housing", "x_part_number": "REG-P-001",
             "x_part_category": "appearance", "x_surface_finish_type": "spi",
             "x_surface_grade_code": "A2", "x_part_material": "ABS",
             "x_customer_shrinkage": 0.5, "x_part_weight_grams": 120.0, "x_qps": 1,
-            "x_mould_configuration": "single", "x_cavitation": "1*1",
             "x_visual_inspection_applicability": "required_critical",
             "x_dimensional_inspection_applicability": "required",
             "x_mould_base_steel_grade": "P20", "x_runner_type": "cold", "x_gate_type": "Edge Gate",
