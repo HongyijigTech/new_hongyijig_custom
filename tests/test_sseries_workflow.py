@@ -186,7 +186,7 @@ class TestSSeriesWorkflow(TransactionCase):
         self.assertTrue(artifact.document_sha256)
 
     def _generate_and_approve(self, artifact):
-        artifact.with_user(self.reviewer).action_generate_controlled_draft()
+        artifact.with_user(self.manager).action_generate_controlled_draft()
         self.assertEqual(artifact.state, "draft")
         self.assertEqual(
             artifact.rendered_page_count,

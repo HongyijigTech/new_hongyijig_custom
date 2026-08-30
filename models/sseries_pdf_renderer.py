@@ -76,11 +76,8 @@ class HjigSSeriesArtifact(models.Model):
     render_manifest_json = fields.Json(readonly=True, copy=False)
 
     def _assert_renderer_user(self):
-        if not (
-            self.env.user.has_group("new_hongyijig_custom.group_hjig_sseries_user")
-            or self.env.user.has_group("new_hongyijig_custom.group_hjig_sseries_manager")
-        ):
-            raise UserError(_("S-Series document-preparer authority is required."))
+        if not self.env.user.has_group("new_hongyijig_custom.group_hjig_sseries_manager"):
+            raise UserError(_("S-Series manager authority is required to render commercial documents."))
 
     def action_generate_controlled_draft(self):
         self._assert_renderer_user()
