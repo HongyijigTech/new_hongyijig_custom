@@ -18,7 +18,7 @@ class TestBopRegister(TransactionCase):
             "group_ids": [(6, 0, [project_user.id])],
         })
         cls.project = cls.env["project.project"].create({
-            "name": "BOP Native Form Test", "x_project_code": "HJ-BOP-TEST-0001",
+            "name": "BOP Native Form Test", "x_project_code": "HJ-BOP-2026-0001",
             "hjig_authorized_user_ids": [(6, 0, [cls.owner.id, cls.approver.id])],
         })
         cls.owner_designation = cls.env.ref("new_hongyijig_custom.designation_project_engineer")
