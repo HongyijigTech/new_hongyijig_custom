@@ -1105,11 +1105,12 @@ class HjigSSeriesCase(models.Model):
                 "exception_state": "clear",
                 "blocker_summary": False,
             })
-            lead_cases = case.lead_id.hjig_sseries_case_ids.filtered(
+            lead = case.lead_id.sudo()
+            lead_cases = lead.hjig_sseries_case_ids.filtered(
                 lambda item: item.stage != "cancelled"
             )
             if lead_cases and all(item.stage == "b0_released" for item in lead_cases):
-                case.lead_id._hjig_move_on_spine("b_handover")
+                lead._hjig_move_on_spine("b_handover")
         return True
 
 
