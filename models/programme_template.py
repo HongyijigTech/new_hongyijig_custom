@@ -2269,6 +2269,7 @@ class ProjectTask(models.Model):
             "hjig_owner_designation_id", "hjig_approver_designation_id",
             "hjig_coordinator_designation_id", "hjig_support_designation_ids",
             "hjig_execution_basis", "hjig_execution_scope_key", "hjig_mould_id", "hjig_part_id",
+            "depend_on_ids",
         }
         if frozen.intersection(vals) and self.filtered(
             lambda task: task.hjig_programme_run_id.state in ("generated", "closed")

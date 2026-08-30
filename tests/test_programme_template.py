@@ -382,6 +382,8 @@ class TestProgrammeTemplateGovernance(TransactionCase):
         self.assertTrue(first.hjig_execution_blocked)
         self.assertEqual(first.hjig_missing_artifact_requirement_ids, run.artifact_requirement_ids)
         self.assertEqual(dependent.hjig_open_predecessor_ids, first)
+        with self.assertRaisesRegex(ValidationError, "governance fields are frozen"):
+            dependent.depend_on_ids = False
         with self.assertRaisesRegex(ValidationError, "predecessors are complete"):
             dependent.stage_id = done_stage
         with self.assertRaisesRegex(ValidationError, "required evidence is approved"):
