@@ -40,6 +40,7 @@ class TestNativeProjectForms(TransactionCase):
             "name": "Native Form Test Project",
             "hjig_project_record_type": "customer",
             "x_project_code": "HJ-NAT-2026-0001",
+            "hjig_authorized_user_ids": [(6, 0, [cls.owner.id, cls.approver.id])],
         })
         for designation, holder in (
             (cls.owner_designation, cls.owner),

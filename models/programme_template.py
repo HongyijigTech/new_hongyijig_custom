@@ -1133,6 +1133,15 @@ class HjigProgrammeRun(models.Model):
                     _("Assign project-specific holders before execution: %s")
                     % ", ".join(missing.mapped("code"))
                 )
+            required_users = self.env["res.users"]
+            for designation in designations:
+                required_users |= designation._holders_for_project(run.project_id)
+            missing_team_users = required_users - run.project_id.hjig_authorized_user_ids
+            if missing_team_users:
+                raise ValidationError(
+                    _("Add every designation holder to the Hongyi Project Team before execution: %s")
+                    % ", ".join(missing_team_users.mapped("display_name"))
+                )
         return True
 
     def _activity_scope_values(self, activity):
@@ -2056,11 +2065,118 @@ class ProjectTask(models.Model):
     hjig_part_id = fields.Many2one(
         "x_mould_part", readonly=True, ondelete="restrict", index=True, copy=False
     )
+    hjig_required_artifact_ids = fields.Many2many(
+        related="hjig_template_activity_id.required_artifact_ids",
+        string="Required SOPs / Forms",
+        readonly=True,
+    )
+    hjig_open_predecessor_ids = fields.Many2many(
+        "project.task",
+        compute="_compute_hjig_execution_readiness",
+        string="Open Predecessors",
+    )
+    hjig_missing_artifact_requirement_ids = fields.Many2many(
+        "hjig.programme.run.artifact",
+        compute="_compute_hjig_execution_readiness",
+        string="Missing Approved Evidence",
+    )
+    hjig_execution_blocked = fields.Boolean(
+        compute="_compute_hjig_execution_readiness",
+        string="Execution Blocked",
+    )
+    hjig_execution_block_reason = fields.Text(
+        compute="_compute_hjig_execution_readiness",
+        string="Block Reason",
+    )
 
     _programme_activity_unique = models.Constraint(
         "UNIQUE(hjig_programme_run_id, hjig_template_activity_id, hjig_execution_scope_key)",
         "A programme activity can generate only one task in the same governed execution scope.",
     )
+
+    def _hjig_matching_artifact_requirements(self):
+        """Return this activity's controlled evidence requirements in the same execution scope."""
+        self.ensure_one()
+        if not self.hjig_programme_run_id or not self.hjig_template_activity_id:
+            return self.env["hjig.programme.run.artifact"]
+        artifact_ids = self.hjig_required_artifact_ids.ids
+        if not artifact_ids:
+            return self.env["hjig.programme.run.artifact"]
+        requirements = self.hjig_programme_run_id.artifact_requirement_ids.filtered(
+            lambda item: item.stage_id == self.hjig_governance_stage_id
+            and item.artifact_master_id.id in artifact_ids
+        )
+        if self.hjig_execution_basis in ("mould", "component"):
+            return requirements.filtered(lambda item: item.mould_id == self.hjig_mould_id)
+        return requirements.filtered(lambda item: not item.mould_id)
+
+    @api.depends(
+        "depend_on_ids.stage_id.fold",
+        "hjig_programme_run_id.artifact_requirement_ids.status",
+        "hjig_programme_run_id.artifact_requirement_ids.mould_id",
+        "hjig_template_activity_id.required_artifact_ids",
+        "hjig_governance_stage_id",
+        "hjig_mould_id",
+    )
+    def _compute_hjig_execution_readiness(self):
+        for task in self:
+            if not task.hjig_programme_run_id:
+                task.hjig_open_predecessor_ids = False
+                task.hjig_missing_artifact_requirement_ids = False
+                task.hjig_execution_blocked = False
+                task.hjig_execution_block_reason = False
+                continue
+            open_predecessors = task.depend_on_ids.filtered(lambda item: not item.stage_id.fold)
+            missing_evidence = task._hjig_matching_artifact_requirements().filtered(
+                lambda item: item.mandatory and item.status != "approved"
+            )
+            reasons = []
+            if open_predecessors:
+                reasons.append(
+                    _("Complete predecessor tasks: %s")
+                    % ", ".join(open_predecessors.mapped("display_name"))
+                )
+            if missing_evidence:
+                reasons.append(
+                    _("Approve required evidence: %s")
+                    % ", ".join(missing_evidence.mapped("artifact_master_id.display_name"))
+                )
+            task.hjig_open_predecessor_ids = open_predecessors
+            task.hjig_missing_artifact_requirement_ids = missing_evidence
+            task.hjig_execution_blocked = bool(reasons)
+            task.hjig_execution_block_reason = "\n".join(reasons) or False
+
+    def action_open_hjig_required_evidence(self):
+        self.ensure_one()
+        requirements = self._hjig_matching_artifact_requirements()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Required Evidence — %s") % self.display_name,
+            "res_model": "hjig.programme.run.artifact",
+            "view_mode": "list,form",
+            "domain": [("id", "in", requirements.ids)],
+            "context": {"create": False, "delete": False},
+        }
+
+    def _assert_hjig_stage_transition_ready(self, new_stage):
+        for task in self.filtered("hjig_programme_run_id"):
+            if new_stage == task.stage_id:
+                continue
+            open_predecessors = task.depend_on_ids.filtered(lambda item: not item.stage_id.fold)
+            if open_predecessors:
+                raise ValidationError(
+                    _("This governed activity is locked until these predecessors are complete: %s")
+                    % ", ".join(open_predecessors.mapped("display_name"))
+                )
+            if new_stage.fold:
+                missing_evidence = task._hjig_matching_artifact_requirements().filtered(
+                    lambda item: item.mandatory and item.status != "approved"
+                )
+                if missing_evidence:
+                    raise ValidationError(
+                        _("This activity cannot be completed until required evidence is approved: %s")
+                        % ", ".join(missing_evidence.mapped("artifact_master_id.display_name"))
+                    )
 
     @api.constrains(
         "hjig_programme_run_id", "hjig_template_activity_id", "hjig_execution_basis",
@@ -2083,6 +2199,9 @@ class ProjectTask(models.Model):
                 raise ValidationError(_("Generated task mould scope must belong to the task project."))
 
     def write(self, vals):
+        if "stage_id" in vals:
+            new_stage = self.env["project.task.type"].browse(vals["stage_id"])
+            self._assert_hjig_stage_transition_ready(new_stage)
         frozen = {
             "project_id", "hjig_programme_run_id", "hjig_template_activity_id", "hjig_governance_stage_id",
             "hjig_owner_designation_id", "hjig_approver_designation_id",
