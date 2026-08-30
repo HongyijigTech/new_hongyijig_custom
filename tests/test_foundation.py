@@ -23,7 +23,13 @@ class TestHongyiFoundation(TransactionCase):
         })
         cls.project = cls.env["project.project"].create({
             "name": "Foundation Test Project",
+            "date_start": "2026-08-28",
             "hjig_authorized_user_ids": [(6, 0, [cls.requester.id, cls.approver.id])],
+        })
+        cls.env["project.task"].create({
+            "name": "Foundation governed plan task", "project_id": cls.project.id,
+            "user_ids": [(6, 0, [cls.requester.id])],
+            "planned_date_begin": "2026-08-28 09:00:00", "date_deadline": "2026-08-28 17:00:00",
         })
         cls.designation = cls.env["hjig.governance.designation"].create({
             "code": "FOUNDATION-APPROVER",

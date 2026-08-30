@@ -2,6 +2,7 @@
 import hashlib
 import json
 import re
+from datetime import timedelta
 
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
@@ -1146,6 +1147,26 @@ class HjigProgrammeRun(models.Model):
         ])
         return [(part.x_mould_id, part) for part in parts]
 
+    @staticmethod
+    def _add_working_days(start, days):
+        """Apply the approved template's working-day offset without counting weekends."""
+        result = start
+        remaining = max(days, 0)
+        while remaining:
+            result += timedelta(days=1)
+            if result.weekday() < 5:
+                remaining -= 1
+        return result
+
+    def _activity_plan_values(self, activity):
+        self.ensure_one()
+        if not self.project_id.date_start:
+            return {}
+        project_start = fields.Datetime.to_datetime(self.project_id.date_start).replace(hour=9)
+        planned_start = self._add_working_days(project_start, activity.offset_days)
+        deadline = self._add_working_days(planned_start, max(activity.duration_days - 1, 0)).replace(hour=17)
+        return {"planned_date_begin": planned_start, "date_deadline": deadline}
+
     def _sync_activity_tasks(self):
         Task = self.env["project.task"]
         for run in self:
@@ -1162,7 +1183,7 @@ class HjigProgrammeRun(models.Model):
                     if existing:
                         continue
                     scope_label = part.x_part_number if part else mould.x_mould_number if mould else False
-                    Task.with_context(**workflow_context()).create({
+                    task_values = {
                         "name": "%s%s" % (activity.name, " — %s" % scope_label if scope_label else ""),
                         "project_id": run.project_id.id,
                         "sequence": activity.sequence,
@@ -1185,7 +1206,9 @@ class HjigProgrammeRun(models.Model):
                         "hjig_commercial_control_state": (
                             "draft" if activity.commercial_control_required else "not_required"
                         ),
-                    })
+                    }
+                    task_values.update(run._activity_plan_values(activity))
+                    Task.with_context(**workflow_context()).create(task_values)
             stale = run.task_ids.filtered(
                 lambda task: task.hjig_template_activity_id not in included
             )

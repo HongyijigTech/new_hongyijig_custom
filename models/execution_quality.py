@@ -73,6 +73,7 @@ class HjigTargetMixin(models.AbstractModel):
     def _selection_target_model(self):
         return super()._selection_target_model() + [
             ("hjig.tooling.execution", "Tooling Execution"),
+            ("hjig.tooling.plan.line", "Tool Manufacturing Plan Line"),
             ("hjig.tooling.report", "Tooling Report"),
             ("hjig.tooling.action", "Tooling Action"),
             ("hjig.inspection", "Inspection"),
@@ -111,6 +112,7 @@ class HjigToolingExecution(models.Model):
         default="planned", required=True, copy=False, index=True, tracking=True,
     )
     report_ids = fields.One2many("hjig.tooling.report", "execution_id", string="Execution Reports")
+    plan_line_ids = fields.One2many("hjig.tooling.plan.line", "execution_id", string="Tool Manufacturing Plan")
     action_ids = fields.One2many("hjig.tooling.action", "execution_id", string="Supplier Actions")
     latest_progress_percent = fields.Float(compute="_compute_execution_summary")
     open_action_count = fields.Integer(compute="_compute_execution_summary")
@@ -192,6 +194,10 @@ class HjigToolingExecution(models.Model):
             plan = execution.report_ids.filtered(lambda report: report.report_type == "manufacturing_plan" and report.state == "approved")
             if not kickoff or not plan:
                 raise ValidationError(_("Approved Kick-off and Manufacturing Plan reports are required before tooling starts."))
+            if not execution.plan_line_ids:
+                raise ValidationError(_("At least one structured Tool Manufacturing Plan line is required before tooling starts."))
+            if execution.plan_line_ids.filtered(lambda line: not line.planned_start or not line.planned_end):
+                raise ValidationError(_("Every Tool Manufacturing Plan line requires baseline start and end dates."))
             execution.with_context(**workflow_context()).write({"state": "active"})
             execution._log_transition("planned", "active", "tooling_started")
 
@@ -242,6 +248,80 @@ class HjigToolingExecution(models.Model):
         return super().unlink()
 
 
+class HjigToolingPlanLine(models.Model):
+    _name = "hjig.tooling.plan.line"
+    _description = "Hongyi Tool Manufacturing Plan Line"
+    _order = "execution_id, sequence, id"
+
+    execution_id = fields.Many2one("hjig.tooling.execution", required=True, ondelete="cascade", index=True)
+    project_id = fields.Many2one(related="execution_id.project_id", store=True, readonly=True, index=True)
+    company_id = fields.Many2one(related="execution_id.company_id", store=True, readonly=True, index=True)
+    sequence = fields.Integer(default=10)
+    code = fields.Char(required=True, index=True)
+    operation = fields.Char(required=True)
+    owner_id = fields.Many2one("res.users", required=True, default=lambda self: self.env.user)
+    planned_start = fields.Date(required=True)
+    planned_end = fields.Date(required=True)
+    forecast_end = fields.Date()
+    actual_end = fields.Date()
+    progress_percent = fields.Float(default=0.0)
+    state = fields.Selection(
+        [("pending", "Pending"), ("in_progress", "In Progress"), ("delayed", "Delayed"), ("complete", "Complete")],
+        default="pending", required=True, index=True,
+    )
+    predecessor_ids = fields.Many2many(
+        "hjig.tooling.plan.line", "hjig_tooling_plan_dependency_rel",
+        "line_id", "predecessor_id", string="Predecessors",
+    )
+    evidence_ids = fields.Many2many(
+        "hjig.evidence.link", "hjig_tooling_plan_evidence_rel", "line_id", "evidence_id", string="Evidence"
+    )
+    notes = fields.Text()
+
+    _execution_code_unique = models.Constraint(
+        "UNIQUE(execution_id, code)", "A manufacturing-plan operation code must be unique within the tooling execution."
+    )
+
+    @api.constrains("planned_start", "planned_end", "forecast_end", "actual_end", "progress_percent")
+    def _check_plan_values(self):
+        for line in self:
+            if line.planned_end < line.planned_start:
+                raise ValidationError(_("Planned end cannot precede planned start."))
+            if line.forecast_end and line.forecast_end < line.planned_start:
+                raise ValidationError(_("Forecast end cannot precede planned start."))
+            if line.actual_end and line.actual_end < line.planned_start:
+                raise ValidationError(_("Actual end cannot precede planned start."))
+            if not 0 <= line.progress_percent <= 100:
+                raise ValidationError(_("Plan-line progress must be between 0 and 100."))
+            if line.state == "complete" and (line.progress_percent != 100 or not line.actual_end):
+                raise ValidationError(_("A completed operation requires 100% progress and an actual end date."))
+
+    @api.constrains("predecessor_ids", "execution_id")
+    def _check_predecessors(self):
+        for line in self:
+            if line in line.predecessor_ids:
+                raise ValidationError(_("A manufacturing-plan operation cannot depend on itself."))
+            if line.predecessor_ids.filtered(lambda predecessor: predecessor.execution_id != line.execution_id):
+                raise ValidationError(_("Manufacturing-plan predecessors must belong to the same tooling execution."))
+
+    @api.constrains("evidence_ids", "project_id")
+    def _check_evidence_project(self):
+        for line in self:
+            if any(evidence.project_id != line.project_id for evidence in line.evidence_ids):
+                raise ValidationError(_("Manufacturing-plan evidence must belong to the same project."))
+
+    def write(self, vals):
+        frozen = {"execution_id", "code", "operation", "planned_start", "planned_end", "predecessor_ids"}
+        if frozen.intersection(vals) and self.filtered(lambda line: line.execution_id.state != "planned"):
+            raise ValidationError(_("Baseline manufacturing-plan fields are frozen after tooling starts; update forecast and progress instead."))
+        return super().write(vals)
+
+    def unlink(self):
+        if self.filtered(lambda line: line.execution_id.state != "planned"):
+            raise UserError(_("Manufacturing-plan lines cannot be deleted after tooling starts."))
+        return super().unlink()
+
+
 class HjigToolingReport(models.Model):
     _name = "hjig.tooling.report"
     _description = "Hongyi Tooling Execution Report"
@@ -260,12 +340,20 @@ class HjigToolingReport(models.Model):
     planned_progress_percent = fields.Float(tracking=True)
     actual_progress_percent = fields.Float(tracking=True)
     current_operation = fields.Char(tracking=True)
+    plan_line_ids = fields.Many2many(
+        "hjig.tooling.plan.line", "hjig_tooling_report_plan_rel", "report_id", "plan_line_id",
+        string="Reported Plan Operations", tracking=True,
+    )
     completed_work = fields.Text(tracking=True)
     issues = fields.Text(tracking=True)
     next_plan = fields.Text(tracking=True)
     recovery_action = fields.Text(tracking=True)
     revised_date = fields.Date(tracking=True)
     steel_grade_declared = fields.Char(tracking=True)
+    steel_master_id = fields.Many2one(
+        "hjig.tool.steel.master", string="Approved Steel Reference",
+        domain=[("state", "=", "approved"), ("active", "=", True)], tracking=True,
+    )
     steel_certificate_reference = fields.Char(tracking=True)
     trial_conditions = fields.Text(tracking=True)
     trial_result = fields.Selection([("pass", "Pass"), ("conditional", "Conditional"), ("fail", "Fail")], tracking=True)
@@ -330,14 +418,20 @@ class HjigToolingReport(models.Model):
                 report.evidence_ids._assert_accepted()
             if report.report_type == "weekly_progress" and not report.next_plan:
                 raise ValidationError(_("Weekly progress reports require the next-period plan."))
+            if report.report_type in ("weekly_progress", "milestone") and report.execution_id.plan_line_ids and not report.plan_line_ids:
+                raise ValidationError(_("Weekly and milestone reports must identify the manufacturing-plan operations being reported."))
+            if report.plan_line_ids.filtered(lambda line: line.execution_id != report.execution_id):
+                raise ValidationError(_("Reported plan operations must belong to the same tooling execution."))
             if report.report_type in ("weekly_progress", "milestone", "trial") and not report.reporting_period:
                 raise ValidationError(_("Weekly, milestone, and trial reports require a reporting period or event number."))
             if report.report_type == "delay_recovery" and (not report.recovery_action or not report.revised_date):
                 raise ValidationError(_("Delay and Recovery reports require recovery actions and a revised date."))
             if report.report_type == "steel_verification" and (
-                not report.steel_grade_declared or not report.steel_certificate_reference
+                not report.steel_master_id or not report.steel_grade_declared or not report.steel_certificate_reference
             ):
-                raise ValidationError(_("Steel Verification requires grade and certificate reference."))
+                raise ValidationError(_("Steel Verification requires an approved steel-master reference, declared grade, and certificate reference."))
+            if report.report_type == "steel_verification" and report.steel_master_id.grade.strip().lower() != report.steel_grade_declared.strip().lower():
+                raise ValidationError(_("The declared steel grade must match the approved Steel Master reference."))
 
     def action_submit_review(self):
         self._check_submission()

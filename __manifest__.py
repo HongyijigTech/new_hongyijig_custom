@@ -2,7 +2,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 {
     'name': 'HongyiJigTechNew',
-    'version': '19.0.3.6.0',
+    'version': '19.0.3.7.0',
     'summary': 'Hongyijig Tech New',
     'sequence': 10,
     'description': """
@@ -39,6 +39,7 @@ Hongyijig Tech
              'views/project_register_views.xml',
              'views/engineering_reference_views.xml',
              'views/foundation_views.xml',
+             'views/project_planning_views.xml',
              'views/sor_views.xml',
              'views/checklist_gate_views.xml',
              'views/execution_quality_views.xml',

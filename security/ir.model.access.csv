@@ -115,6 +115,8 @@
 "access_hjig_gate_manager","hjig.gate manager","model_hjig_gate","project.group_project_manager",1,1,1,0
 "access_hjig_tooling_execution_user","hjig.tooling.execution user","model_hjig_tooling_execution","project.group_project_user",1,1,1,0
 "access_hjig_tooling_execution_manager","hjig.tooling.execution manager","model_hjig_tooling_execution","project.group_project_manager",1,1,1,0
+"access_hjig_tooling_plan_line_user","hjig.tooling.plan.line user","model_hjig_tooling_plan_line","project.group_project_user",1,1,1,0
+"access_hjig_tooling_plan_line_manager","hjig.tooling.plan.line manager","model_hjig_tooling_plan_line","project.group_project_manager",1,1,1,1
 "access_hjig_tooling_report_user","hjig.tooling.report user","model_hjig_tooling_report","project.group_project_user",1,1,1,0
 "access_hjig_tooling_report_manager","hjig.tooling.report manager","model_hjig_tooling_report","project.group_project_manager",1,1,1,0
 "access_hjig_tooling_action_user","hjig.tooling.action user","model_hjig_tooling_action","project.group_project_user",1,1,1,0
