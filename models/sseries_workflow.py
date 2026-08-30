@@ -468,12 +468,12 @@ class HjigSSeriesCase(models.Model):
             if not case.partner_id:
                 partner = self.env["res.partner"].search([
                     ("email", "=ilike", case.submission_id.customer_email),
-                    ("company_type", "=", "company"),
+                    ("is_company", "=", True),
                 ], limit=1)
                 if not partner:
                     partner = self.env["res.partner"].create({
                         "name": case.customer_name,
-                        "company_type": "company",
+                        "is_company": True,
                         "email": case.submission_id.customer_email,
                         "phone": case.submission_id.customer_mobile,
                     })

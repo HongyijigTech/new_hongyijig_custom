@@ -15,7 +15,7 @@ class TestSSeriesWorkflow(TransactionCase):
             "email": "sseries-uat-reviewer@example.com",
             "company_id": cls.env.company.id,
             "company_ids": [(6, 0, [cls.env.company.id])],
-            "groups_id": [(6, 0, [cls.env.ref(
+            "group_ids": [(6, 0, [cls.env.ref(
                 "new_hongyijig_custom.group_hjig_sseries_user"
             ).id])],
         })
