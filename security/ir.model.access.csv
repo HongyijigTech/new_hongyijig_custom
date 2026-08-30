@@ -149,3 +149,4 @@
 "access_hjig_sseries_b0_user","hjig.sseries.b0.handover user","model_hjig_sseries_b0_handover","new_hongyijig_custom.group_hjig_sseries_user",1,0,0,0
 "access_hjig_sseries_b0_manager","hjig.sseries.b0.handover manager","model_hjig_sseries_b0_handover","new_hongyijig_custom.group_hjig_sseries_manager",1,0,0,0
 "access_hjig_sseries_gateway_user","hjig.sseries.intake.gateway user","model_hjig_sseries_intake_gateway","new_hongyijig_custom.group_hjig_sseries_user",1,0,1,0
+"access_hjig_sseries_attachment_gateway_user","hjig.sseries.intake.attachment.gateway user","model_hjig_sseries_intake_attachment_gateway","new_hongyijig_custom.group_hjig_sseries_user",1,0,1,0

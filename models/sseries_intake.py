@@ -60,6 +60,9 @@ class HjigSSeriesIntakeSubmission(models.Model):
     customer_country = fields.Char(readonly=True, copy=False)
     project_ids = fields.One2many("hjig.sseries.intake.project", "submission_id", readonly=True)
     case_ids = fields.One2many("hjig.sseries.case", "submission_id", readonly=True)
+    attachment_gateway_ids = fields.One2many(
+        "hjig.sseries.intake.attachment.gateway", "submission_id", readonly=True
+    )
     project_count = fields.Integer(compute="_compute_counts")
     case_count = fields.Integer(compute="_compute_counts")
     company_id = fields.Many2one(
@@ -391,7 +394,12 @@ class HjigSSeriesIntakeSubmission(models.Model):
             )
             project = Project.create(project_vals)
             for component_index, component in enumerate(components, 1):
-                Component.create(self._normalise_component_values(project, component, component_index))
+                component_record = Component.create(
+                    self._normalise_component_values(project, component, component_index)
+                )
+                self.env["hjig.sseries.intake.attachment.gateway"].claim_component_attachments(
+                    component_record, component
+                )
             Case.create({
                 "name": self.env["ir.sequence"].next_by_code("hjig.sseries.case") or "New",
                 "submission_id": submission.id,
@@ -487,6 +495,20 @@ class HjigSSeriesIntakeComponent(models.Model):
         readonly=True,
         groups="new_hongyijig_custom.group_hjig_sseries_manager",
     )
+    reference_image_attachment_id = fields.Many2one(
+        "ir.attachment",
+        readonly=True,
+        copy=False,
+        ondelete="restrict",
+        groups="new_hongyijig_custom.group_hjig_sseries_manager",
+    )
+    technical_file_attachment_id = fields.Many2one(
+        "ir.attachment",
+        readonly=True,
+        copy=False,
+        ondelete="restrict",
+        groups="new_hongyijig_custom.group_hjig_sseries_manager",
+    )
 
     _project_component_unique = models.Constraint(
         "UNIQUE(project_id, component_index)",
@@ -500,6 +522,10 @@ class HjigSSeriesIntakeComponent(models.Model):
         return super().create(vals_list)
 
     def write(self, vals):
+        if self.env.context.get("hjig_sseries_attachment_bind") and set(vals) <= {
+            "reference_image_attachment_id", "technical_file_attachment_id"
+        }:
+            return super().write(vals)
         raise UserError(_("A SourceBridge intake component snapshot is immutable."))
 
     def unlink(self):
