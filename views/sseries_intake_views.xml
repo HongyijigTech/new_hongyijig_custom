@@ -26,27 +26,27 @@
                 <header>
                     <button name="action_assign_to_me" string="Assign to Me" type="object"
                             invisible="owner_id == uid"/>
-                    <button name="action_start_internal_review" string="Start Internal Review" type="object"
+                    <button name="action_start_internal_review" string="Start Review" type="object"
                             class="btn-primary" invisible="stage != 's0_received'"/>
-                    <button name="action_approve_internal_review" string="Approve Internal Review" type="object"
+                    <button name="action_approve_internal_review" string="Confirm Review" type="object"
                             class="btn-primary" invisible="stage != 's1_review'"
                             groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
-                    <button name="action_approve_governance" string="Approve Governance Decision" type="object"
+                    <button name="action_approve_governance" string="Confirm Decision" type="object"
                             class="btn-primary" invisible="stage != 's2_assessment'"
                             groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
-                    <button name="action_prepare_quotation" string="Prepare Odoo Quotation" type="object"
+                    <button name="action_prepare_quotation" string="Create Quotation" type="object"
                             class="btn-primary" invisible="stage != 's3_proposal' or (form_type == 'portfolio_guard' and not portfolio_commercial_lead)"
                             groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
-                    <button name="action_record_customer_acceptance" string="Record Customer Acceptance" type="object"
+                    <button name="action_record_customer_acceptance" string="Record Acceptance" type="object"
                             invisible="stage != 's3_proposal' or (form_type == 'portfolio_guard' and not portfolio_commercial_lead)"
                             groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
-                    <button name="action_complete_activation" string="Complete Activation Pack" type="object"
+                    <button name="action_complete_activation" string="Finish Activation" type="object"
                             class="btn-primary" invisible="stage != 's4_activation' or (form_type == 'portfolio_guard' and not portfolio_commercial_lead)"
                             groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
-                    <button name="action_complete_sourcing_pack" string="Complete Sourcing Pack" type="object"
+                    <button name="action_complete_sourcing_pack" string="Finish Sourcing" type="object"
                             class="btn-primary" invisible="stage != 's5_sourcing'"
                             groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
-                    <button name="action_release_b0" string="Release to B0" type="object"
+                    <button name="action_release_b0" string="Send to B-Series" type="object"
                             class="btn-primary" invisible="stage != 's6_handover'"
                             groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
                     <field name="stage" widget="statusbar"
@@ -73,17 +73,17 @@
                             <field name="portfolio_case_count" readonly="1" invisible="form_type != 'portfolio_guard'"/>
                         </group>
                     </group>
-                    <group string="Work Queue">
-                        <field name="next_action"/>
-                        <field name="exception_state"/>
+                    <group string="Do This Now">
+                        <field name="next_action" readonly="1"/>
+                        <field name="exception_state" readonly="1"/>
                         <field name="blocker_summary" placeholder="No blocker recorded"/>
                     </group>
                     <notebook>
-                        <page string="Intake Snapshot">
+                        <page string="Step 1 — Customer Intake">
                             <field name="intake_project_id" readonly="1"/>
                             <field name="submission_id" readonly="1"/>
                         </page>
-                        <page string="Internal Review">
+                        <page string="Step 2 — Internal Review">
                             <group>
                                 <field name="partner_id"/>
                                 <field name="lead_id"/>
@@ -94,7 +94,7 @@
                                 <field name="internal_review_approved_on" readonly="1"/>
                             </group>
                         </page>
-                        <page string="Governance" invisible="stage in ['s0_received', 's1_review']">
+                        <page string="Step 3 — Governance Decision" invisible="stage in ['s0_received', 's1_review']">
                             <group>
                                 <field name="governance_decision"/>
                                 <field name="risk_level"/>
@@ -103,7 +103,7 @@
                                 <field name="governance_approved_on" readonly="1"/>
                             </group>
                         </page>
-                        <page string="Commercial / Activation">
+                        <page string="Step 4 — Commercial &amp; Handover">
                             <group>
                                 <field name="approved_governance_fee"/>
                                 <field name="target_margin" widget="percentage"/>
@@ -151,17 +151,13 @@
                                 <field name="b0_manifest_id" readonly="1"/>
                             </group>
                         </page>
-                        <page string="Documents">
+                        <page string="Documents &amp; Evidence">
                             <field name="artifact_ids" readonly="1">
-                                <list create="0" delete="0" decoration-danger="state == 'blocked'" decoration-success="state in ['approved', 'evidence_recorded', 'issued']">
-                                    <field name="code"/>
+                                <list string="Controlled Checklist" create="0" delete="0" decoration-danger="state == 'blocked'" decoration-success="state in ['approved', 'evidence_recorded', 'issued']">
                                     <field name="name"/>
-                                    <field name="audience"/>
+                                    <field name="stage" optional="hide"/>
                                     <field name="state"/>
-                                    <field name="visual_qa_verified"/>
-                                    <field name="content_qa_verified"/>
-                                    <field name="customer_issue_allowed"/>
-                                    <field name="supplier_issue_allowed"/>
+                                    <field name="code" optional="hide"/>
                                 </list>
                             </field>
                         </page>
