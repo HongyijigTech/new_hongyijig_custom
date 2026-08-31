@@ -20,6 +20,11 @@ def migrate(cr, version):
             if not reference:
                 continue
             artifact = case.artifact_ids.filtered(lambda item, value=code: item.code == value)[:1]
+            if not artifact:
+                case._ensure_artifact_codes([code])
+                artifact = case.artifact_ids.filtered(
+                    lambda item, value=code: item.code == value
+                )[:1]
             if not artifact or artifact.state in ("approved", "issued"):
                 continue
             artifact.with_context(hjig_sseries_artifact_workflow=True).write({
