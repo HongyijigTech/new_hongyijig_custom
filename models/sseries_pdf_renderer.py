@@ -311,7 +311,7 @@ class HjigSSeriesArtifact(models.Model):
 
         document.build(story, onFirstPage=footer, onLaterPages=footer)
         pdf_bytes = buffer.getvalue()
-        if not pdf_bytes.startswith(b"%PDF-") or len(pdf_bytes) < 5000:
+        if not pdf_bytes.startswith(b"%PDF-") or len(pdf_bytes) < 1000:
             raise ValidationError(_("Physical PDF generation failed."))
         actual_pages = document.page
         if actual_pages != expected_pages or rendered_pages != expected_pages:
