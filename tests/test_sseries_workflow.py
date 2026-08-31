@@ -434,16 +434,19 @@ class TestSSeriesWorkflow(TransactionCase):
         self.assertEqual(nda_artifact.state, "required")
         self.assertFalse(nda_artifact.customer_issue_allowed)
 
-    def test_pending_activation_candidate_cannot_use_odoo_renderer(self):
+    def test_pending_nda_candidate_cannot_use_odoo_renderer(self):
         submission = self.Intake.ingest_payload(self._payload("WORKFLOW-AUTHORITY-0001"))["submission"]
         case = submission.case_ids
-        template = self.env.ref("new_hongyijig_custom.sseries_template_s4_acceptance")
+        template = self.env.ref("new_hongyijig_custom.sseries_template_s4_nda")
         self.assertFalse(template.approved_for_internal_uat_generation)
-        self.assertEqual(template.authority_status, "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING")
+        self.assertEqual(
+            template.authority_status,
+            "REUSABLE_INTERNAL_UAT_USER_AND_LEGAL_APPROVAL_PENDING",
+        )
         artifact = self.env["hjig.sseries.artifact"].with_context(
             hjig_sseries_workflow=True
         ).create({
-            "name": "%s / S4-ACCEPTANCE" % case.name,
+            "name": "%s / S4-NDA" % case.name,
             "case_id": case.id,
             "template_id": template.id,
         })

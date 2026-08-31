@@ -1,3 +1,6 @@
+import hashlib
+from pathlib import Path
+
 from odoo.tests.common import TransactionCase
 
 
@@ -10,12 +13,12 @@ class TestSSeriesDocumentAuthority(TransactionCase):
             "S4-NDA": ("blocked", False, "REUSABLE_INTERNAL_UAT_USER_AND_LEGAL_APPROVAL_PENDING"),
             "S4-INTRODUCED-PARTY-NOTICE": ("blocked", False, "CLAUDE_DESIGN_INTERNAL_UAT_USER_APPROVAL_PENDING"),
             "S4-DIRECT-ENGAGEMENT-CONSENT": ("blocked", False, "CLAUDE_DESIGN_INTERNAL_UAT_USER_APPROVAL_PENDING"),
-            "S4-ACCEPTANCE": ("template_state", False, "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING"),
-            "S5-ORDER-PUNCH": ("template_state", False, "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING"),
+            "S4-ACCEPTANCE": ("ready", True, "APPROVED_INTERNAL_UAT_GENERATOR_TEMPLATE_CUSTOMER_RELEASE_SEPARATE"),
+            "S5-ORDER-PUNCH": ("ready", True, "APPROVED_INTERNAL_UAT_GENERATOR_TEMPLATE_CUSTOMER_RELEASE_SEPARATE"),
             "S5-PROFORMA": ("ready", True, "APPROVED_INTERNAL_UAT_GENERATOR_TEMPLATE_CUSTOMER_RELEASE_SEPARATE"),
             "S5-PAYMENT-EVIDENCE": ("blocked", False, "MISSING_APPROVED_MASTER_FAIL_CLOSED"),
             "S5-TAX-INVOICE": ("blocked", False, "DEFERRED_UNTIL_TALLY_MAPPING_APPROVAL_AND_TESTING"),
-            "S6-TEAM-HANDOVER": ("template_state", False, "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING"),
+            "S6-TEAM-HANDOVER": ("ready", True, "APPROVED_INTERNAL_UAT_GENERATOR_TEMPLATE_CUSTOMER_RELEASE_SEPARATE"),
             "S6-CHINA-HANDOVER": ("template_state", False, "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING"),
             "S6-SUPPLIER-RFQ-EN": ("template_state", False, "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING"),
             "S6-SUPPLIER-RFQ-ZH": ("template_state", False, "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING"),
@@ -33,9 +36,29 @@ class TestSSeriesDocumentAuthority(TransactionCase):
             self.assertFalse(record.supplier_issue_allowed)
 
         approved = records.filtered("approved_for_internal_uat_generation")
-        self.assertEqual(approved.mapped("code"), ["S5-PROFORMA"])
-        self.assertFalse(approved.template_visual_qa_verified)
-        self.assertFalse(approved.template_content_qa_verified)
+        self.assertEqual(
+            set(approved.mapped("code")),
+            {"S4-ACCEPTANCE", "S5-ORDER-PUNCH", "S5-PROFORMA", "S6-TEAM-HANDOVER"},
+        )
+        self.assertFalse(approved.filtered("template_visual_qa_verified"))
+        self.assertFalse(approved.filtered("template_content_qa_verified"))
+
+        resource_root = (
+            Path(__file__).resolve().parents[1]
+            / "resources" / "sseries_internal_uat" / "activation_handover_r1"
+        )
+        governed_sources = {
+            "Hongyi_S4_Acceptance_Record_EXACT_NATIVE_TEMPLATE_R1_SANITIZED.docx":
+                "213e2b3fa7a050b7871445263cf7d828c0416339093f061ec3fffbe4d14cabaf",
+            "Hongyi_S5_Order_Punch_EXACT_NATIVE_TEMPLATE_R1_SANITIZED.docx":
+                "6a97d8d9607409645f72496e66219aaea0e5f5063994975b1e83f43360751a78",
+            "Hongyi_S6_Team_Handover_EXACT_NATIVE_TEMPLATE_R1_SANITIZED.docx":
+                "5f024369c2e8169fa3690d3dcfaca3e66ae9e6052e9efe6fe2a051d6d4daf06e",
+        }
+        for filename, expected_digest in governed_sources.items():
+            source = resource_root / filename
+            self.assertTrue(source.is_file())
+            self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), expected_digest)
 
         nda = records.filtered(lambda item: item.code == "S4-NDA")
         self.assertEqual(nda.master_file_id, "LOCAL-S4-NDA-REUSABLE-ODOO-MASTER-R1")

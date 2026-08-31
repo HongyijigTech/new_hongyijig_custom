@@ -138,7 +138,10 @@ class HjigSSeriesArtifact(models.Model):
 
         filename, expected_pages = TEMPLATE_SPECS[self.code]
         module_root = Path(__file__).resolve().parents[1]
-        template_path = module_root / "static" / "src" / "sseries_templates" / filename
+        template_path = (
+            module_root / "resources" / "sseries_internal_uat"
+            / "activation_handover_r1" / filename
+        )
         logo_path = module_root / "static" / "src" / "img" / "Hongyijig1_APPROVED_TRANSPARENT_MASTER.png"
         if not template_path.is_file() or not logo_path.is_file():
             raise ValidationError(_("Exact-native template or approved transparent logo is missing."))
@@ -494,7 +497,8 @@ class HjigSSeriesArtifact(models.Model):
             return set()
         template_path = (
             Path(__file__).resolve().parents[1]
-            / "static" / "src" / "sseries_templates" / filename
+            / "resources" / "sseries_internal_uat"
+            / "activation_handover_r1" / filename
         )
         _structures, tokens = self._read_docx_structure(template_path)
         return tokens
