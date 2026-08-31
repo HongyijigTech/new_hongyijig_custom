@@ -128,6 +128,8 @@
                                 <field name="finance_approved" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
                                 <field name="payment_received" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
                                 <field name="payment_evidence_reference" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                <field name="tax_invoice_reference" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"
+                                       placeholder="Authorised Tally / accounting-system reference only"/>
                             </group>
                             <group string="B0 Handover" invisible="stage not in ['s5_sourcing', 's6_handover', 'b0_released']">
                                 <field name="handover_owner_id"/>

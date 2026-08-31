@@ -857,7 +857,7 @@ class HjigSSeriesCase(models.Model):
                 raise ValidationError(_("The required NDA must be completed before activation."))
             case._ensure_artifact_codes([
                 "S4-ACCEPTANCE", "S5-ORDER-PUNCH", "S5-PROFORMA",
-                "S5-PAYMENT-EVIDENCE",
+                "S5-PAYMENT-EVIDENCE", "S5-TAX-INVOICE",
             ] + (["S4-NDA"] if case.nda_required else []))
             for child in commercial_cases:
                 child.with_context(hjig_sseries_workflow=True).write({
@@ -890,8 +890,20 @@ class HjigSSeriesCase(models.Model):
                 })
             if not (case.proforma_reference or "").strip() or not case.finance_approved:
                 raise ValidationError(_("Finance-approved Proforma Invoice evidence is required."))
+            proforma = case.artifact_ids.filtered(
+                lambda item: item.code == "S5-PROFORMA"
+            )[:1]
+            if not proforma or proforma.state != "approved":
+                raise ValidationError(_(
+                    "The governed Proforma Invoice artifact must be approved before activation."
+                ))
             if not case.payment_received or not (case.payment_evidence_reference or "").strip():
                 raise ValidationError(_("Payment receipt and bank-evidence reference are required."))
+            if not (case.tax_invoice_reference or "").strip():
+                raise ValidationError(_(
+                    "Final/Tax Invoice reference is required after payment receipt. "
+                    "Record only the authorised accounting-system reference."
+                ))
             order_punch = case.artifact_ids.filtered(lambda item: item.code == "S5-ORDER-PUNCH")[:1]
             if not order_punch or order_punch.state != "approved":
                 raise ValidationError(_("Approved Order Punch document is required."))
@@ -1151,6 +1163,7 @@ class HjigSSeriesCase(models.Model):
                 raise ValidationError(_("Approved Team Handover, responsible owner and acceptance are required."))
             if not case.order_punch_approved or not case.payment_received or not case.sale_order_id:
                 raise ValidationError(_("Commercial acceptance, Order Punch and payment gates are incomplete."))
+            case._ensure_artifact_codes(["B0-HANDOVER-MANIFEST"])
             case._activate_execution_handover()
             manifest = self.env["hjig.sseries.b0.handover"].with_context(
                 hjig_sseries_workflow=True

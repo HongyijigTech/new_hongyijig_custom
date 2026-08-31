@@ -274,6 +274,16 @@ class TestSSeriesWorkflow(TransactionCase):
             "payment_evidence_reference": "BANK-UAT-001",
             "tax_invoice_reference": "TAX-UAT-001",
         })
+        with self.assertRaisesRegex(ValidationError, "Proforma Invoice artifact"):
+            case.with_user(self.manager).action_complete_activation()
+        self._prepare_and_approve(
+            case.artifact_ids.filtered(lambda item: item.code == "S5-PROFORMA"),
+            "proforma-invoice",
+        )
+        case.with_user(self.manager).tax_invoice_reference = False
+        with self.assertRaisesRegex(ValidationError, "Final/Tax Invoice reference"):
+            case.with_user(self.manager).action_complete_activation()
+        case.with_user(self.manager).tax_invoice_reference = "TAX-UAT-001"
         case.with_user(self.manager).action_complete_activation()
         self.assertEqual(case.stage, "s6_handover")
         self.assertTrue(case.order_number.startswith("HJIG-ORD-"))
@@ -292,6 +302,11 @@ class TestSSeriesWorkflow(TransactionCase):
         self.assertEqual(case.b0_manifest_id.project_id, case.project_id)
         self.assertEqual(case.b0_manifest_id.programme_run_id, case.programme_run_id)
         self.assertTrue(case.b0_manifest_id.snapshot_sha256)
+        b0_artifact = case.artifact_ids.filtered(
+            lambda item: item.code == "B0-HANDOVER-MANIFEST"
+        )
+        self.assertEqual(len(b0_artifact), 1)
+        self.assertEqual(b0_artifact.state, "required")
         with self.assertRaises(UserError):
             case.b0_manifest_id.write({"name": "Changed"})
 
@@ -421,11 +436,16 @@ class TestSSeriesWorkflow(TransactionCase):
         self._generate_and_approve(
             case.artifact_ids.filtered(lambda item: item.code == "S5-ORDER-PUNCH")
         )
+        self._prepare_and_approve(
+            case.artifact_ids.filtered(lambda item: item.code == "S5-PROFORMA"),
+            "sourcebridge-proforma-invoice",
+        )
         case.with_user(self.manager).write({
             "proforma_reference": "PI-SBG-UAT-001",
             "finance_approved": True,
             "payment_received": True,
             "payment_evidence_reference": "BANK-SBG-UAT-001",
+            "tax_invoice_reference": "TAX-SBG-UAT-001",
         })
         case.with_user(self.manager).action_complete_activation()
         self.assertEqual(case.stage, "s5_sourcing")
@@ -511,11 +531,16 @@ class TestSSeriesWorkflow(TransactionCase):
             lead.artifact_ids.filtered(lambda item: item.code == "S5-ORDER-PUNCH"),
             "portfolio-order-punch",
         )
+        self._prepare_and_approve(
+            lead.artifact_ids.filtered(lambda item: item.code == "S5-PROFORMA"),
+            "portfolio-proforma-invoice",
+        )
         lead.with_user(self.manager).write({
             "proforma_reference": "PI-PG-UAT-001",
             "finance_approved": True,
             "payment_received": True,
             "payment_evidence_reference": "BANK-PG-UAT-001",
+            "tax_invoice_reference": "TAX-PG-UAT-001",
         })
         lead.with_user(self.manager).action_complete_activation()
         self.assertEqual(set(cases.mapped("stage")), {"s6_handover"})
