@@ -1,0 +1,66 @@
+{
+  "rule_set_id": "HJIG-DOC-GOV-LOCK-v1.1",
+  "document_id": "S4-NDA-REUSABLE-ODOO-MASTER-R1",
+  "audience": "INTERNAL",
+  "lifecycle_status": "INTERNAL_UAT",
+  "master_file_id": "LOCAL-S4-NDA-REUSABLE-ODOO-MASTER-R1",
+  "source_design_master_file_id": "1UphqzbhrtxgCBqAAY_LfmbQjnJIbciFw",
+  "source_reference_sha256": "4aa9cd8a389efd4be1facc141ef233ed80fcd25d2b61aabdb4b597d14b26c3f7",
+  "docx_path": "output/docx/Hongyi_S4_NDA_Reusable_Odoo_Master_R1_INTERNAL_UAT.docx",
+  "docx_sha256": "cdccee7ebe36c160e44a03b38281ead11f180c02284affab9b1bfc2ea1e093a9",
+  "candidate_pdf_path": "output/pdf/Hongyi_S4_NDA_Reusable_Odoo_Master_R1_INTERNAL_UAT.pdf",
+  "candidate_pdf_sha256": "0fb55ea38478875e610b5d76ae152f27a09782b331abfbbf685d8bbcf36ddd38",
+  "page_count": 4,
+  "font_audit": {
+    "status": "PASS",
+    "fonts": [
+      "Helvetica",
+      "Helvetica-Bold"
+    ]
+  },
+  "controlled_renderer_tokens": [
+    "{{AGREEMENT_REFERENCE}}",
+    "{{CUSTOMER_LEGAL_NAME}}",
+    "{{CUSTOMER_NOTICE_EMAIL}}",
+    "{{CUSTOMER_REGISTERED_ADDRESS}}",
+    "{{CUSTOMER_SIGNATORY_DESIGNATION}}",
+    "{{CUSTOMER_SIGNATORY_NAME}}",
+    "{{EFFECTIVE_DATE}}",
+    "{{HONGYI_LEGAL_NAME}}",
+    "{{HONGYI_NOTICE_EMAIL}}",
+    "{{HONGYI_REGISTERED_ADDRESS}}",
+    "{{HONGYI_SIGNATORY_DESIGNATION}}",
+    "{{HONGYI_SIGNATORY_NAME}}",
+    "{{PROGRAMME_NAME}}",
+    "{{PROPOSAL_DATE}}",
+    "{{PROPOSAL_NUMBER}}",
+    "{{PROPOSAL_VERSION}}"
+  ],
+  "visual_qa": {
+    "status": "PASS_INTERNAL_TEMPLATE",
+    "pages_reviewed": [1, 2, 3, 4],
+    "findings": "No clipping, overlap, broken tables, missing headers, orphan footers or incorrect page numbering."
+  },
+  "content_governance_qa": {
+    "status": "PASS_INTERNAL_TEMPLATE",
+    "customer_specific_fact_scan": "PASS",
+    "supplier_identity_scan": "PASS",
+    "legal_scope": "Preserved from reviewed SourceBridge draft; India-qualified legal approval remains pending."
+  },
+  "integration_qa": {
+    "status": "BLOCKED_FAIL_CLOSED",
+    "reason": "Reusable tokens are intentional. Odoo renderer mapping, completed-fact render, user final approval and India-qualified legal approval remain required before customer issue."
+  },
+  "validator_result": {
+    "ok": false,
+    "expected_internal_template_block": true,
+    "errors": [
+      "unresolved placeholder detected"
+    ]
+  },
+  "user_final_approval": false,
+  "india_qualified_legal_approval": false,
+  "customer_issue_allowed": false,
+  "customer_delivery_performed": false,
+  "production_affected": false
+}

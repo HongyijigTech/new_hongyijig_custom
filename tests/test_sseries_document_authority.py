@@ -7,7 +7,7 @@ class TestSSeriesDocumentAuthority(TransactionCase):
         self.assertEqual(Template.search_count([]), 24)
 
         expected = {
-            "S4-NDA": ("blocked", False, "CLAUDE_DESIGN_INTERNAL_UAT_USER_APPROVAL_PENDING"),
+            "S4-NDA": ("blocked", False, "REUSABLE_INTERNAL_UAT_USER_AND_LEGAL_APPROVAL_PENDING"),
             "S4-INTRODUCED-PARTY-NOTICE": ("blocked", False, "CLAUDE_DESIGN_INTERNAL_UAT_USER_APPROVAL_PENDING"),
             "S4-DIRECT-ENGAGEMENT-CONSENT": ("blocked", False, "CLAUDE_DESIGN_INTERNAL_UAT_USER_APPROVAL_PENDING"),
             "S4-ACCEPTANCE": ("template_state", False, "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING"),
@@ -36,6 +36,16 @@ class TestSSeriesDocumentAuthority(TransactionCase):
         self.assertEqual(approved.mapped("code"), ["S5-PROFORMA"])
         self.assertFalse(approved.template_visual_qa_verified)
         self.assertFalse(approved.template_content_qa_verified)
+
+        nda = records.filtered(lambda item: item.code == "S4-NDA")
+        self.assertEqual(nda.master_file_id, "LOCAL-S4-NDA-REUSABLE-ODOO-MASTER-R1")
+        self.assertEqual(
+            nda.source_sha256,
+            "cdccee7ebe36c160e44a03b38281ead11f180c02284affab9b1bfc2ea1e093a9",
+        )
+        self.assertEqual(nda.expected_page_count, 4)
+        self.assertFalse(nda.approved_for_internal_uat_generation)
+        self.assertFalse(nda.customer_issue_allowed)
 
     def test_customer_ready_commercial_masters_have_separate_template_qa(self):
         codes = ["LGC-03", "LGD-03", "LGV-03", "TLC-03", "TLL-03", "SB-03", "PG-03", "PB-SB-03"]
