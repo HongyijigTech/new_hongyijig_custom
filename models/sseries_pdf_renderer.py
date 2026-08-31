@@ -82,6 +82,10 @@ class HjigSSeriesArtifact(models.Model):
     def action_generate_controlled_draft(self):
         self._assert_renderer_user()
         for artifact in self:
+            if not artifact.template_id.approved_for_internal_uat_generation:
+                raise ValidationError(_(
+                    "This exact visual authority is not approved for internal-UAT generation."
+                ))
             if artifact.code not in TEMPLATE_SPECS:
                 raise ValidationError(_(
                     "This document remains attachment-controlled because no exact-native Odoo renderer is approved."

@@ -1,0 +1,47 @@
+from odoo.tests.common import TransactionCase
+
+
+class TestSSeriesDocumentAuthority(TransactionCase):
+    def test_activation_registry_is_fail_closed_and_complete(self):
+        Template = self.env["hjig.sseries.document.template"]
+        self.assertEqual(Template.search_count([]), 24)
+
+        expected = {
+            "S4-NDA": ("blocked", False, "CLAUDE_DESIGN_INTERNAL_UAT_USER_APPROVAL_PENDING"),
+            "S4-INTRODUCED-PARTY-NOTICE": ("blocked", False, "CLAUDE_DESIGN_INTERNAL_UAT_USER_APPROVAL_PENDING"),
+            "S4-DIRECT-ENGAGEMENT-CONSENT": ("blocked", False, "CLAUDE_DESIGN_INTERNAL_UAT_USER_APPROVAL_PENDING"),
+            "S4-ACCEPTANCE": ("template_state", False, "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING"),
+            "S5-ORDER-PUNCH": ("template_state", False, "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING"),
+            "S5-PROFORMA": ("ready", True, "APPROVED_INTERNAL_UAT_GENERATOR_TEMPLATE_CUSTOMER_RELEASE_SEPARATE"),
+            "S5-PAYMENT-EVIDENCE": ("blocked", False, "MISSING_APPROVED_MASTER_FAIL_CLOSED"),
+            "S5-TAX-INVOICE": ("blocked", False, "DEFERRED_UNTIL_TALLY_MAPPING_APPROVAL_AND_TESTING"),
+            "S6-TEAM-HANDOVER": ("template_state", False, "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING"),
+            "S6-CHINA-HANDOVER": ("template_state", False, "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING"),
+            "S6-SUPPLIER-RFQ-EN": ("template_state", False, "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING"),
+            "S6-SUPPLIER-RFQ-ZH": ("template_state", False, "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING"),
+            "B0-HANDOVER-MANIFEST": ("template_state", False, "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING"),
+        }
+        records = Template.search([("code", "in", list(expected))])
+        self.assertEqual(set(records.mapped("code")), set(expected))
+        for record in records:
+            rendering, internal_generation, authority = expected[record.code]
+            self.assertEqual(record.rendering_status, rendering)
+            self.assertEqual(record.approved_for_internal_uat_generation, internal_generation)
+            self.assertEqual(record.authority_status, authority)
+            self.assertFalse(record.user_final_approval)
+            self.assertFalse(record.customer_issue_allowed)
+            self.assertFalse(record.supplier_issue_allowed)
+
+        approved = records.filtered("approved_for_internal_uat_generation")
+        self.assertEqual(approved.mapped("code"), ["S5-PROFORMA"])
+        self.assertFalse(approved.template_visual_qa_verified)
+        self.assertFalse(approved.template_content_qa_verified)
+
+    def test_customer_ready_commercial_masters_have_separate_template_qa(self):
+        codes = ["LGC-03", "LGD-03", "LGV-03", "TLC-03", "TLL-03", "SB-03", "PG-03", "PB-SB-03"]
+        records = self.env["hjig.sseries.document.template"].search([("code", "in", codes)])
+        self.assertEqual(set(records.mapped("code")), set(codes))
+        self.assertFalse(records.filtered(lambda item: item.rendering_status != "ready"))
+        self.assertFalse(records.filtered(lambda item: not item.template_visual_qa_verified))
+        self.assertFalse(records.filtered(lambda item: not item.template_content_qa_verified))
+        self.assertFalse(records.filtered("customer_issue_allowed"))

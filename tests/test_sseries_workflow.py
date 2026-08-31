@@ -190,12 +190,18 @@ class TestSSeriesWorkflow(TransactionCase):
             "document_data": self._pdf(label),
             "document_filename": "%s.pdf" % label,
         })
-        artifact.with_user(self.manager).action_verify_qa()
+        artifact.with_user(self.manager).action_verify_visual_qa()
+        artifact.with_user(self.manager).action_verify_content_qa()
         artifact.with_user(self.manager).action_approve()
         self.assertEqual(artifact.state, "approved")
         self.assertTrue(artifact.document_sha256)
 
     def _generate_and_approve(self, artifact):
+        # Simulate a future versioned authority promotion for renderer lifecycle tests.
+        # Production data keeps these candidates fail-closed until their own approval release.
+        artifact.template_id.with_context(install_mode=True).write({
+            "approved_for_internal_uat_generation": True,
+        })
         artifact.with_user(self.document_preparer).action_generate_controlled_draft()
         self.assertEqual(artifact.state, "draft")
         self.assertEqual(
@@ -204,7 +210,8 @@ class TestSSeriesWorkflow(TransactionCase):
         )
         self.assertEqual(artifact.render_manifest_json["unresolved_placeholder_count"], 0)
         self.assertTrue(base64.b64decode(artifact.document_data).startswith(b"%PDF-"))
-        artifact.with_user(self.manager).action_verify_qa()
+        artifact.with_user(self.manager).action_verify_visual_qa()
+        artifact.with_user(self.manager).action_verify_content_qa()
         artifact.with_user(self.manager).action_approve()
         self.assertEqual(artifact.state, "approved")
 
@@ -359,7 +366,23 @@ class TestSSeriesWorkflow(TransactionCase):
             "document_filename": "nda.pdf",
         })
         with self.assertRaises(ValidationError):
-            artifact.with_user(self.manager).action_verify_qa()
+            artifact.with_user(self.manager).action_verify_visual_qa()
+
+    def test_pending_activation_candidate_cannot_use_odoo_renderer(self):
+        submission = self.Intake.ingest_payload(self._payload("WORKFLOW-AUTHORITY-0001"))["submission"]
+        case = submission.case_ids
+        template = self.env.ref("new_hongyijig_custom.sseries_template_s4_acceptance")
+        self.assertFalse(template.approved_for_internal_uat_generation)
+        self.assertEqual(template.authority_status, "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING")
+        artifact = self.env["hjig.sseries.artifact"].with_context(
+            hjig_sseries_workflow=True
+        ).create({
+            "name": "%s / S4-ACCEPTANCE" % case.name,
+            "case_id": case.id,
+            "template_id": template.id,
+        })
+        with self.assertRaisesRegex(ValidationError, "not approved for internal-UAT generation"):
+            artifact.with_user(self.document_preparer).action_generate_controlled_draft()
 
     def test_sourcebridge_only_releases_standalone_engagement_and_components(self):
         case = self.Intake.ingest_payload(self._sourcebridge_payload())["submission"].case_ids

@@ -86,6 +86,10 @@ class HjigSSeriesDocumentTemplate(models.Model):
     visual_parent_code = fields.Char(readonly=True)
     source_sha256 = fields.Char(readonly=True)
     rule_set_id = fields.Char(required=True, readonly=True, default="HJIG-DOC-GOV-LOCK-v1.1")
+    authority_status = fields.Char(readonly=True)
+    template_type = fields.Char(readonly=True)
+    expected_page_count = fields.Integer(readonly=True)
+    approved_for_internal_uat_generation = fields.Boolean(readonly=True)
     requires_file = fields.Boolean(default=True, readonly=True)
     rendering_status = fields.Selection(
         [
@@ -130,6 +134,18 @@ class HjigSSeriesArtifact(models.Model):
     code = fields.Char(related="template_id.code", store=True, readonly=True, index=True)
     stage = fields.Selection(related="template_id.stage", store=True, readonly=True, index=True)
     audience = fields.Selection(related="template_id.audience", store=True, readonly=True)
+    template_authority_status = fields.Char(
+        related="template_id.authority_status", readonly=True
+    )
+    template_generation_allowed = fields.Boolean(
+        related="template_id.approved_for_internal_uat_generation", readonly=True
+    )
+    template_visual_authority_verified = fields.Boolean(
+        related="template_id.template_visual_qa_verified", readonly=True
+    )
+    template_content_authority_verified = fields.Boolean(
+        related="template_id.template_content_qa_verified", readonly=True
+    )
     version = fields.Integer(default=1, required=True, readonly=True)
     state = fields.Selection(
         [
@@ -201,13 +217,13 @@ class HjigSSeriesArtifact(models.Model):
     def unlink(self):
         raise UserError(_("S-Series document requirements cannot be deleted."))
 
-    def action_verify_qa(self):
+    def action_verify_visual_qa(self):
         self._assert_manager()
         for artifact in self:
             if artifact.template_id.rendering_status == "blocked":
-                raise ValidationError(_("The exact approved master is unresolved; QA must fail closed."))
+                raise ValidationError(_("The exact approved master is unresolved; visual QA must fail closed."))
             if artifact.template_id.requires_file and not artifact.document_data:
-                raise ValidationError(_("Attach the rendered candidate before QA verification."))
+                raise ValidationError(_("Attach the rendered candidate before visual QA verification."))
             if artifact.render_engine_version:
                 manifest = artifact.render_manifest_json or {}
                 if manifest.get("unresolved_placeholder_count") != 0:
@@ -224,14 +240,34 @@ class HjigSSeriesArtifact(models.Model):
                     raise ValidationError(_("The governed candidate must be a physical PDF."))
                 digest = hashlib.sha256(raw).hexdigest()
             artifact.with_context(hjig_sseries_artifact_workflow=True).write({
-                "state": "qa_verified",
+                "state": "draft" if artifact.document_data else "required",
                 "document_sha256": digest,
                 "visual_qa_verified": True,
+                "content_qa_verified": False,
+                "customer_issue_allowed": False,
+                "supplier_issue_allowed": False,
+            })
+        return True
+
+    def action_verify_content_qa(self):
+        self._assert_manager()
+        for artifact in self:
+            if not artifact.visual_qa_verified:
+                raise ValidationError(_("Visual QA must be verified before content and governance QA."))
+            if artifact.template_id.requires_file and not artifact.document_data:
+                raise ValidationError(_("Attach the rendered candidate before content and governance QA."))
+            artifact.with_context(hjig_sseries_artifact_workflow=True).write({
+                "state": "qa_verified",
                 "content_qa_verified": True,
                 "customer_issue_allowed": False,
                 "supplier_issue_allowed": False,
             })
         return True
+
+    def action_verify_qa(self):
+        raise ValidationError(_(
+            "Visual QA and content/governance QA are independent gates; verify them separately."
+        ))
 
     def action_approve(self):
         self._assert_manager()
@@ -256,6 +292,13 @@ class HjigSSeriesArtifact(models.Model):
                 raise ValidationError(_("Approved output and explicit user final approval are required."))
             if artifact.template_id.rendering_status != "ready":
                 raise ValidationError(_("Customer issue is blocked until the exact master renderer is verified."))
+            if not (
+                artifact.template_id.template_visual_qa_verified
+                and artifact.template_id.template_content_qa_verified
+            ):
+                raise ValidationError(_(
+                    "Customer issue is blocked until the exact master visual and content gates are verified."
+                ))
             artifact.with_context(hjig_sseries_artifact_workflow=True).write({
                 "customer_issue_allowed": True,
             })
@@ -270,6 +313,13 @@ class HjigSSeriesArtifact(models.Model):
                 raise ValidationError(_("Approved output and explicit user final approval are required."))
             if artifact.template_id.rendering_status != "ready":
                 raise ValidationError(_("Supplier issue is blocked until the exact master renderer is verified."))
+            if not (
+                artifact.template_id.template_visual_qa_verified
+                and artifact.template_id.template_content_qa_verified
+            ):
+                raise ValidationError(_(
+                    "Supplier issue is blocked until the exact master visual and content gates are verified."
+                ))
             artifact.with_context(hjig_sseries_artifact_workflow=True).write({
                 "supplier_issue_allowed": True,
             })

@@ -17,5 +17,6 @@ from . import test_ui_compatibility
 from . import test_sseries_intake
 from . import test_sseries_gateway
 from . import test_sseries_attachment_gateway
+from . import test_sseries_document_authority
 from . import test_sseries_workflow
 from . import test_staging_seat_guard

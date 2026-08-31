@@ -275,9 +275,10 @@
             <form string="S-Series Document Control" create="0" delete="0">
                 <header>
                     <button name="action_generate_controlled_draft" string="Generate Controlled PDF Draft" type="object" class="btn-primary"
-                            invisible="state in ['approved', 'issued'] or code not in ['S4-ACCEPTANCE', 'S5-ORDER-PUNCH', 'S6-TEAM-HANDOVER', 'S6-CHINA-HANDOVER', 'S6-SUPPLIER-RFQ-EN', 'S6-SUPPLIER-RFQ-ZH']"
+                            invisible="state in ['approved', 'issued'] or not template_generation_allowed or code not in ['S4-ACCEPTANCE', 'S5-ORDER-PUNCH', 'S6-TEAM-HANDOVER', 'S6-CHINA-HANDOVER', 'S6-SUPPLIER-RFQ-EN', 'S6-SUPPLIER-RFQ-ZH']"
                             groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
-                    <button name="action_verify_qa" string="Verify Visual + Content QA" type="object" class="btn-primary" invisible="state not in ['required', 'draft']" groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
+                    <button name="action_verify_visual_qa" string="Verify Visual QA" type="object" class="btn-primary" invisible="state not in ['required', 'draft'] or visual_qa_verified" groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
+                    <button name="action_verify_content_qa" string="Verify Content &amp; Governance QA" type="object" class="btn-primary" invisible="state not in ['required', 'draft'] or not visual_qa_verified or content_qa_verified" groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
                     <button name="action_approve" string="Approve" type="object" class="btn-primary" invisible="state != 'qa_verified'" groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
                     <button name="action_allow_customer_issue" string="Allow Customer Issue" type="object" invisible="state != 'approved' or audience != 'customer' or customer_issue_allowed" groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
                     <button name="action_allow_supplier_issue" string="Allow Supplier Issue" type="object" invisible="state != 'approved' or audience != 'supplier' or supplier_issue_allowed" groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
@@ -292,6 +293,8 @@
                             <field name="template_id" readonly="1"/>
                             <field name="code" readonly="1"/>
                             <field name="audience" readonly="1"/>
+                            <field name="template_authority_status" readonly="1"/>
+                            <field name="template_generation_allowed" readonly="1"/>
                         </group>
                         <group>
                             <field name="document_data" filename="document_filename" readonly="state in ['approved', 'issued']"/>
@@ -301,6 +304,8 @@
                         </group>
                     </group>
                     <group string="Independent Release Gates">
+                        <field name="template_visual_authority_verified" readonly="1"/>
+                        <field name="template_content_authority_verified" readonly="1"/>
                         <field name="visual_qa_verified" readonly="1"/>
                         <field name="content_qa_verified" readonly="1"/>
                         <field name="user_final_approval"/>
