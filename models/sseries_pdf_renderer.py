@@ -124,7 +124,7 @@ class HjigSSeriesArtifact(models.Model):
         self.ensure_one()
         try:
             from reportlab.lib import colors
-            from reportlab.lib.enums import TA_LEFT, TA_RIGHT
+            from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
             from reportlab.lib.pagesizes import A4
             from reportlab.lib.styles import ParagraphStyle
             from reportlab.lib.units import cm
@@ -199,6 +199,10 @@ class HjigSSeriesArtifact(models.Model):
             "HJIGMasthead", parent=body_style, fontSize=9.5, leading=12,
             textColor=ink, alignment=TA_RIGHT,
         )
+        header_style = ParagraphStyle(
+            "HJIGTableHeader", parent=body_style, fontSize=7.0, leading=8.2,
+            textColor=colors.white, alignment=TA_CENTER,
+        )
         cell_style = cjk_style if self.code.endswith("-ZH") else body_style
         story = []
         rendered_pages = 1
@@ -232,7 +236,18 @@ class HjigSSeriesArtifact(models.Model):
 
             rows, grid_widths = payload
             raw_text = " ".join(" ".join(row) for row in rows)
-            is_masthead = "Page " in raw_text and len(rows) == 1 and len(rows[0]) == 2
+            masthead_markers = (
+                "COMMERCIAL ACCEPTANCE", "ORDER PUNCH", "TEAM HANDOVER",
+                "CHINA HANDOVER", "SUPPLIER RFQ",
+            )
+            is_masthead = (
+                len(rows) == 1
+                and len(rows[0]) == 2
+                and (
+                    "Page " in raw_text
+                    or any(marker in raw_text.upper() for marker in masthead_markers)
+                )
+            )
             if is_masthead:
                 right_text = substitute(rows[0][1])
                 lines = [line.strip() for line in right_text.split("\n") if line.strip()]
@@ -272,9 +287,12 @@ class HjigSSeriesArtifact(models.Model):
                 formatted = []
                 for cell_index, text in enumerate(row):
                     is_header_cell = has_header and row_index == 0
-                    formatted.append(paragraph(
-                        text, cell_style, bold=is_header_cell or (column_count == 2 and cell_index == 0)
-                    ))
+                    if is_header_cell:
+                        formatted.append(paragraph(text, header_style, bold=True))
+                    else:
+                        formatted.append(paragraph(
+                            text, cell_style, bold=column_count == 2 and cell_index == 0
+                        ))
                 table_rows.append(formatted)
             table = Table(table_rows, colWidths=widths, repeatRows=1 if has_header else 0)
             style_commands = [
