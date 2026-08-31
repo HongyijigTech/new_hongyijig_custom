@@ -383,6 +383,57 @@ class TestSSeriesWorkflow(TransactionCase):
         with self.assertRaises(ValidationError):
             artifact.with_user(self.manager).action_verify_visual_qa()
 
+    def test_nda_checkbox_cannot_replace_execution_and_controlled_artifact_evidence(self):
+        case = self.Intake.ingest_payload(self._payload("NDA-GATE-0001"))["submission"].case_ids
+        case.action_start_internal_review()
+        case.write({
+            "reviewer_id": self.reviewer.id,
+            "programme_route": "launchguard_complete",
+            "scope_confirmed": True,
+            "internal_review_summary": "NDA evidence-gate regression scope confirmed.",
+        })
+        case.with_user(self.manager).action_approve_internal_review()
+        case.write({
+            "governance_decision": "go",
+            "risk_level": "medium",
+            "governance_summary": "GO subject to executed NDA evidence.",
+        })
+        case.with_user(self.manager).action_approve_governance()
+        case.with_user(self.manager).write({
+            "approved_governance_fee": 350000,
+            "payment_terms_summary": "60% on acceptance and 40% before final controlled release.",
+        })
+        case.with_user(self.manager).action_prepare_quotation()
+        proposal = case.artifact_ids.filtered(lambda item: item.code == "LGC-03")
+        self._prepare_and_approve(proposal, "nda-gate-proposal")
+        proposal.with_user(self.manager).user_final_approval = True
+        proposal.with_user(self.manager).action_allow_customer_issue()
+        case.with_user(self.manager).write({
+            "nda_required": True,
+            "nda_completed": True,
+            "acceptance_basis": "signed_proposal",
+            "customer_signature_received": True,
+            "hongyi_countersigned": True,
+            "acceptance_reference": "SIGNED-NDA-GATE-UAT-001",
+            "acceptance_date": "2026-08-31",
+        })
+
+        with self.assertRaisesRegex(ValidationError, "reference and effective date"):
+            case.with_user(self.manager).action_record_customer_acceptance()
+
+        case.with_user(self.manager).write({
+            "nda_reference": "NDA-NDA-GATE-UAT-001",
+            "nda_effective_date": "2026-08-31",
+            "nda_customer_signed": True,
+            "nda_hongyi_signed": True,
+        })
+        with self.assertRaisesRegex(ValidationError, "exact-master NDA artifact"):
+            case.with_user(self.manager).action_record_customer_acceptance()
+        nda_artifact = case.artifact_ids.filtered(lambda item: item.code == "S4-NDA")
+        self.assertEqual(len(nda_artifact), 1)
+        self.assertEqual(nda_artifact.state, "required")
+        self.assertFalse(nda_artifact.customer_issue_allowed)
+
     def test_pending_activation_candidate_cannot_use_odoo_renderer(self):
         submission = self.Intake.ingest_payload(self._payload("WORKFLOW-AUTHORITY-0001"))["submission"]
         case = submission.case_ids

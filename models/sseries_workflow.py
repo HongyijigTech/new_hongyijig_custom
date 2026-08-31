@@ -524,6 +524,10 @@ class HjigSSeriesCase(models.Model):
     )
     nda_required = fields.Boolean(tracking=True)
     nda_completed = fields.Boolean(tracking=True)
+    nda_reference = fields.Char(tracking=True)
+    nda_effective_date = fields.Date(tracking=True)
+    nda_customer_signed = fields.Boolean(tracking=True)
+    nda_hongyi_signed = fields.Boolean(tracking=True)
     acceptance_basis = fields.Selection(
         [("signed_proposal", "Signed Proposal"), ("purchase_order", "Purchase Order")], tracking=True
     )
@@ -610,7 +614,9 @@ class HjigSSeriesCase(models.Model):
             governance_fields = {"governance_decision", "risk_level", "governance_summary"}
             commercial_fields = {"approved_governance_fee", "target_margin", "payment_terms_summary"}
             acceptance_fields = {
-                "nda_required", "nda_completed", "acceptance_basis", "acceptance_reference", "acceptance_date",
+                "nda_required", "nda_completed", "nda_reference", "nda_effective_date",
+                "nda_customer_signed", "nda_hongyi_signed",
+                "acceptance_basis", "acceptance_reference", "acceptance_date",
                 "customer_signature_received", "hongyi_countersigned", "purchase_order_received",
             }
             activation_fields = {
@@ -853,8 +859,26 @@ class HjigSSeriesCase(models.Model):
                 ))
             if case.acceptance_basis == "purchase_order" and not case.purchase_order_received:
                 raise ValidationError(_("Purchase Order receipt evidence is required for PO acceptance."))
-            if commercial_cases.filtered(lambda item: item.nda_required and not item.nda_completed):
-                raise ValidationError(_("The required NDA must be completed before activation."))
+            for nda_case in commercial_cases.filtered("nda_required"):
+                nda_case._ensure_artifact_codes(["S4-NDA"])
+                if not nda_case.nda_completed:
+                    raise ValidationError(_("The required NDA must be completed before activation."))
+                if not (nda_case.nda_reference or "").strip() or not nda_case.nda_effective_date:
+                    raise ValidationError(_(
+                        "The executed NDA reference and effective date are required before activation."
+                    ))
+                if not (nda_case.nda_customer_signed and nda_case.nda_hongyi_signed):
+                    raise ValidationError(_(
+                        "The NDA needs both customer signature and Hongyi signature evidence."
+                    ))
+                nda_artifact = nda_case.artifact_ids.filtered(
+                    lambda item: item.code == "S4-NDA"
+                )[:1]
+                if not nda_artifact or nda_artifact.state not in ("approved", "issued") \
+                        or not nda_artifact.customer_issue_allowed:
+                    raise ValidationError(_(
+                        "The exact-master NDA artifact must be approved and authorised for customer issue."
+                    ))
             case._ensure_artifact_codes([
                 "S4-ACCEPTANCE", "S5-ORDER-PUNCH", "S5-PROFORMA",
                 "S5-PAYMENT-EVIDENCE", "S5-TAX-INVOICE",

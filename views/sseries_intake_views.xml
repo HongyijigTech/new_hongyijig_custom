@@ -116,6 +116,16 @@
                             <group string="Acceptance and Activation" invisible="stage in ['s0_received', 's1_review', 's2_assessment']">
                                 <field name="nda_required" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
                                 <field name="nda_completed" invisible="not nda_required" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                <group string="NDA Evidence" invisible="not nda_required">
+                                    <field name="nda_reference" placeholder="Executed agreement reference"
+                                           readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                    <field name="nda_effective_date"
+                                           readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                    <field name="nda_customer_signed"
+                                           readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                    <field name="nda_hongyi_signed"
+                                           readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                </group>
                                 <field name="acceptance_basis" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
                                 <field name="customer_signature_received" invisible="acceptance_basis != 'signed_proposal'" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
                                 <field name="hongyi_countersigned" invisible="acceptance_basis != 'signed_proposal'" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
