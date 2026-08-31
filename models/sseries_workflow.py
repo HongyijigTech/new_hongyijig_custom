@@ -153,6 +153,7 @@ class HjigSSeriesArtifact(models.Model):
             ("draft", "Draft Attached"),
             ("qa_verified", "QA Verified"),
             ("approved", "Approved"),
+            ("evidence_recorded", "External Evidence Recorded"),
             ("issued", "Issued"),
             ("blocked", "Blocked"),
         ],
@@ -921,6 +922,13 @@ class HjigSSeriesCase(models.Model):
                 raise ValidationError(_(
                     "The governed Proforma Invoice artifact must be approved before activation."
                 ))
+            acceptance = case.artifact_ids.filtered(
+                lambda item: item.code == "S4-ACCEPTANCE"
+            )[:1]
+            if not acceptance or acceptance.state != "approved":
+                raise ValidationError(_(
+                    "The internal Acceptance Record must be generated, reviewed and approved before activation."
+                ))
             if not case.payment_received or not (case.payment_evidence_reference or "").strip():
                 raise ValidationError(_("Payment receipt and bank-evidence reference are required."))
             if not (case.tax_invoice_reference or "").strip():
@@ -931,6 +939,20 @@ class HjigSSeriesCase(models.Model):
             order_punch = case.artifact_ids.filtered(lambda item: item.code == "S5-ORDER-PUNCH")[:1]
             if not order_punch or order_punch.state != "approved":
                 raise ValidationError(_("Approved Order Punch document is required."))
+            for evidence_code, evidence_reference in (
+                ("S5-PAYMENT-EVIDENCE", case.payment_evidence_reference),
+                ("S5-TAX-INVOICE", case.tax_invoice_reference),
+            ):
+                evidence_artifact = case.artifact_ids.filtered(
+                    lambda item, code=evidence_code: item.code == code
+                )[:1]
+                if evidence_artifact:
+                    evidence_artifact.with_context(hjig_sseries_artifact_workflow=True).write({
+                        "state": "evidence_recorded",
+                        "issue_reference": evidence_reference,
+                        "customer_issue_allowed": False,
+                        "supplier_issue_allowed": False,
+                    })
             order = case.sale_order_id.sudo()
             if order.state not in ("sale", "done"):
                 order.action_confirm()
@@ -1192,6 +1214,15 @@ class HjigSSeriesCase(models.Model):
             manifest = self.env["hjig.sseries.b0.handover"].with_context(
                 hjig_sseries_workflow=True
             ).create_from_case(case)
+            b0_artifact = case.artifact_ids.filtered(
+                lambda item: item.code == "B0-HANDOVER-MANIFEST"
+            )[:1]
+            b0_artifact.with_context(hjig_sseries_artifact_workflow=True).write({
+                "state": "evidence_recorded",
+                "issue_reference": manifest.name,
+                "customer_issue_allowed": False,
+                "supplier_issue_allowed": False,
+            })
             case.with_context(hjig_sseries_workflow=True).write({
                 "stage": "b0_released",
                 "b0_manifest_id": manifest.id,

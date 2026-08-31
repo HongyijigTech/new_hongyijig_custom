@@ -280,12 +280,25 @@ class TestSSeriesWorkflow(TransactionCase):
             case.artifact_ids.filtered(lambda item: item.code == "S5-PROFORMA"),
             "proforma-invoice",
         )
+        with self.assertRaisesRegex(ValidationError, "Acceptance Record"):
+            case.with_user(self.manager).action_complete_activation()
+        self._generate_and_approve(
+            case.artifact_ids.filtered(lambda item: item.code == "S4-ACCEPTANCE")
+        )
         case.with_user(self.manager).tax_invoice_reference = False
         with self.assertRaisesRegex(ValidationError, "Final/Tax Invoice reference"):
             case.with_user(self.manager).action_complete_activation()
         case.with_user(self.manager).tax_invoice_reference = "TAX-UAT-001"
         case.with_user(self.manager).action_complete_activation()
         self.assertEqual(case.stage, "s6_handover")
+        self.assertEqual(
+            case.artifact_ids.filtered(lambda item: item.code == "S5-PAYMENT-EVIDENCE").state,
+            "evidence_recorded",
+        )
+        self.assertEqual(
+            case.artifact_ids.filtered(lambda item: item.code == "S5-TAX-INVOICE").state,
+            "evidence_recorded",
+        )
         self.assertTrue(case.order_number.startswith("HJIG-ORD-"))
         self.assertEqual(case.sale_order_id.state, "sale")
 
@@ -306,7 +319,7 @@ class TestSSeriesWorkflow(TransactionCase):
             lambda item: item.code == "B0-HANDOVER-MANIFEST"
         )
         self.assertEqual(len(b0_artifact), 1)
-        self.assertEqual(b0_artifact.state, "required")
+        self.assertEqual(b0_artifact.state, "evidence_recorded")
         with self.assertRaises(UserError):
             case.b0_manifest_id.write({"name": "Changed"})
 
@@ -488,6 +501,9 @@ class TestSSeriesWorkflow(TransactionCase):
         })
         case.with_user(self.manager).action_record_customer_acceptance()
         self._generate_and_approve(
+            case.artifact_ids.filtered(lambda item: item.code == "S4-ACCEPTANCE")
+        )
+        self._generate_and_approve(
             case.artifact_ids.filtered(lambda item: item.code == "S5-ORDER-PUNCH")
         )
         self._prepare_and_approve(
@@ -580,6 +596,10 @@ class TestSSeriesWorkflow(TransactionCase):
         lead.with_user(self.manager).hongyi_countersigned = True
         lead.with_user(self.manager).action_record_customer_acceptance()
         self.assertEqual(set(cases.mapped("stage")), {"s4_activation"})
+
+        self._generate_and_approve(
+            lead.artifact_ids.filtered(lambda item: item.code == "S4-ACCEPTANCE")
+        )
 
         self._prepare_and_approve(
             lead.artifact_ids.filtered(lambda item: item.code == "S5-ORDER-PUNCH"),
