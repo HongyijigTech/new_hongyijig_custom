@@ -210,7 +210,11 @@ class HjigSSeriesArtifact(models.Model):
         def substitute(text):
             def replacement(match):
                 return _safe(values[match.group(0)])
-            return TOKEN_RE.sub(replacement, text or "")
+            rendered = TOKEN_RE.sub(replacement, text or "")
+            return rendered.replace(
+                "SYSTEM-GENERATED FROM GOVERNED SHEET RECORD",
+                "SYSTEM-GENERATED FROM GOVERNED ODOO RECORD",
+            )
 
         def paragraph(text, style=cell_style, bold=False, align=None):
             value = html.escape(substitute(text)).replace("\n", "<br/>")
