@@ -259,7 +259,7 @@ class HjigMouldLifecycle(models.Model):
             mould.x_machine_check_details = "\n".join(f"{label}: {state.upper()} - {detail}" for label, state, detail in checks)
 
     @api.depends(
-        "x_lifecycle_stage", "x_part_ids", "x_part_ids.x_missing_fields", "x_part_ids.x_colour",
+        "x_lifecycle_stage", "x_part_ids", "x_part_ids.x_missing_fields", "x_part_ids.x_part_material", "x_part_ids.x_colour",
         "x_part_ids.x_geometry_id", "x_geometry_ids", "x_geometry_ids.cavity_quantity",
         "x_planning_assumption", "x_grouping_basis", "x_risk_flag", "x_risk_note", "x_baseline_confirmed",
         "x_cavitation_confirmed", "x_mould_length_mm", "x_mould_width_mm", "x_mould_height_mm",
@@ -288,6 +288,31 @@ class HjigMouldLifecycle(models.Model):
                     blockers.append(_("A family mould requires at least two controlled geometry groups."))
                 if active_parts.filtered(lambda part: not part.x_geometry_id):
                     blockers.append(_("Assign every active family-mould part to a controlled geometry group."))
+                # The approved planning prototype makes material and colour a
+                # mould-wide family rule.  It is unsafe to approve separate
+                # geometry groups that silently use different inputs.
+                missing_material = active_parts.filtered(
+                    lambda part: not (part.x_part_material or "").strip()
+                )
+                missing_colour = active_parts.filtered(
+                    lambda part: not (part.x_colour or "").strip()
+                )
+                materials = {
+                    (part.x_part_material or "").strip().casefold()
+                    for part in active_parts if (part.x_part_material or "").strip()
+                }
+                colours = {
+                    (part.x_colour or "").strip().casefold()
+                    for part in active_parts if (part.x_colour or "").strip()
+                }
+                if missing_material:
+                    blockers.append(_("Every active family-mould part requires a confirmed material."))
+                if missing_colour:
+                    blockers.append(_("Every active family-mould part requires a confirmed colour."))
+                if len(materials) > 1:
+                    blockers.append(_("All active family-mould parts must use one common material."))
+                if len(colours) > 1:
+                    blockers.append(_("All active family-mould parts must use one common colour."))
                 for group in groups:
                     parts = group.part_ids.filtered("x_active")
                     if not parts:
