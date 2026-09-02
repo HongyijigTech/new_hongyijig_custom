@@ -1,0 +1,51 @@
+.o_hjig_employee_risk_form {
+    --hjig-field-border: rgba(163, 180, 201, 0.55);
+    --hjig-field-focus: #55d7cf;
+
+    .o_hjig_risk_intro {
+        margin-bottom: 1rem;
+        border-left: 4px solid var(--hjig-field-focus);
+    }
+
+    .o_hjig_step_help {
+        margin: 0.25rem 0 1rem;
+        padding: 0.75rem 1rem;
+        border-radius: 0.4rem;
+        background: rgba(85, 215, 207, 0.09);
+        border: 1px solid rgba(85, 215, 207, 0.25);
+    }
+
+    .o_field_widget:not(.o_field_progressbar):not(.o_field_badge):not(.o_field_boolean) .o_input,
+    .o_field_widget.o_field_many2one .o_input,
+    textarea.o_input {
+        border: 1px solid var(--hjig-field-border) !important;
+        border-radius: 0.35rem !important;
+        padding: 0.45rem 0.6rem !important;
+        min-height: 2.35rem;
+        background: rgba(255, 255, 255, 0.04) !important;
+    }
+
+    textarea.o_input {
+        min-height: 5.5rem;
+        resize: vertical;
+    }
+
+    .o_field_widget .o_input:focus {
+        border-color: var(--hjig-field-focus) !important;
+        box-shadow: 0 0 0 2px rgba(85, 215, 207, 0.16);
+    }
+
+    .o_hjig_required_field .o_input {
+        border-left: 4px solid #f0ad4e !important;
+    }
+
+    .nav-tabs .nav-link {
+        min-height: 2.9rem;
+        padding: 0.75rem 1.1rem;
+        font-weight: 600;
+    }
+
+    .nav-tabs .nav-link.active {
+        border-top: 3px solid var(--hjig-field-focus);
+    }
+}

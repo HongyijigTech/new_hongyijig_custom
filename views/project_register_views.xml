@@ -55,14 +55,19 @@
     </record>
     <record id="view_hjig_project_risk_form" model="ir.ui.view">
         <field name="name">hjig.project.risk.form</field><field name="model">hjig.project.risk</field>
-        <field name="arch" type="xml"><form string="Project Risk">
-            <header><button name="action_start_mitigation" type="object" string="Start Mitigation" class="btn-primary" invisible="status != 'open'"/>
-                <button name="action_accept" type="object" string="Accept Risk" class="btn-secondary" invisible="status not in ('open','mitigating')"/>
-                <button name="action_resolve" type="object" string="Resolve Risk" class="btn-primary" invisible="status == 'resolved'"/>
+        <field name="arch" type="xml"><form string="Project Risk" class="o_hjig_employee_risk_form">
+            <header><button name="action_start_mitigation" type="object" string="Start Mitigation" class="btn-primary" invisible="not id or status != 'open'"/>
+                <button name="action_accept" type="object" string="Accept Risk" class="btn-secondary" invisible="not id or status not in ('open','mitigating')"/>
+                <button name="action_resolve" type="object" string="Resolve Risk" class="btn-primary" invisible="not id or status == 'resolved'"/>
                 <field name="status" widget="statusbar" statusbar_visible="open,mitigating,accepted,resolved" readonly="1"/></header>
-            <sheet><div class="oe_title"><h1><field name="risk_id"/></h1></div>
+            <sheet>
+                <div class="alert alert-info o_hjig_risk_intro" role="alert">
+                    <strong>Employee Risk Form</strong>
+                    <span> Complete the four steps in order. Save the record before starting mitigation. Acceptance and closure require written evidence.</span>
+                </div>
+                <div class="oe_title"><h1><field name="risk_id"/></h1></div>
                 <group>
-                    <group string="Employee Control Card">
+                    <group string="Start Here — Risk Source">
                         <field name="project_id"/><field name="origin_stage_id"/><field name="source_type"/>
                         <field name="source_reference" placeholder="Example: SOR R00, clause 4.2 / BOP-2026-00006, Motor-01"/>
                     </group>
@@ -75,12 +80,13 @@
                     </group>
                 </group>
                 <notebook>
-                    <page string="1. Identify">
+                    <page string="1. Identify" name="risk_identify">
+                        <div class="o_hjig_step_help"><strong>What can go wrong?</strong> Write one clear Cause → Event → Impact statement and attach the source wherever available.</div>
                         <group>
                             <group string="Cause - Event - Impact">
-                                <field name="cause" placeholder="Because..."/>
-                                <field name="description" string="Risk Event" placeholder="There is a risk that..."/>
-                                <field name="impact_statement" placeholder="This may affect cost, timing, quality, fitment or launch..."/>
+                                <field name="cause" class="o_hjig_required_field" placeholder="Required — Because..."/>
+                                <field name="description" class="o_hjig_required_field" string="Risk Event" placeholder="Required — There is a risk that..."/>
+                                <field name="impact_statement" class="o_hjig_required_field" placeholder="Required — This may affect cost, timing, quality, fitment or launch..."/>
                                 <field name="category"/>
                             </group>
                             <group string="Source Evidence">
@@ -90,25 +96,27 @@
                             </group>
                         </group>
                     </page>
-                    <page string="2. Assess">
+                    <page string="2. Assess" name="risk_assess">
+                        <div class="o_hjig_step_help"><strong>How serious is it?</strong> Score the exposure before controls, then estimate the exposure expected after the controls in Step 3.</div>
                         <group>
                             <group string="Initial Exposure">
                                 <field name="probability"/><field name="impact"/>
                                 <field name="risk_score" readonly="1"/><field name="risk_level" widget="badge" readonly="1"/>
                             </group>
                             <group string="Residual Exposure After Controls">
-                                <field name="residual_probability"/><field name="residual_impact"/>
+                                <field name="residual_probability" class="o_hjig_required_field"/><field name="residual_impact" class="o_hjig_required_field"/>
                                 <field name="residual_score" readonly="1"/><field name="residual_level" widget="badge" readonly="1"/>
                             </group>
                         </group>
                     </page>
-                    <page string="3. Control">
+                    <page string="3. Control" name="risk_control">
+                        <div class="o_hjig_step_help"><strong>What will the team do?</strong> Define immediate, preventive and fallback actions, then assign ownership and dates.</div>
                         <group>
                             <group string="Action Plan">
-                                <field name="mitigation_plan" string="Immediate Mitigation"/>
-                                <field name="preventive_action"/>
-                                <field name="contingency_plan"/>
-                                <field name="trigger_indicator"/>
+                                <field name="mitigation_plan" class="o_hjig_required_field" string="Immediate Mitigation" placeholder="Required — immediate action to reduce the exposure"/>
+                                <field name="preventive_action" class="o_hjig_required_field" placeholder="Required — action that prevents recurrence or design disruption"/>
+                                <field name="contingency_plan" class="o_hjig_required_field" placeholder="Required — fallback if the risk occurs"/>
+                                <field name="trigger_indicator" class="o_hjig_required_field" placeholder="Required — earliest warning signal"/>
                             </group>
                             <group string="Owner and Review">
                                 <field name="owner_designation_id"/><field name="approver_designation_id"/>
@@ -116,7 +124,8 @@
                             </group>
                         </group>
                     </page>
-                    <page string="4. Accept / Close">
+                    <page string="4. Accept / Close" name="risk_accept_close">
+                        <div class="o_hjig_step_help"><strong>Approver-only decision.</strong> Add the written basis and at least one evidence link or attachment before accepting or resolving the risk.</div>
                         <group>
                             <group string="Controlled Decision Evidence">
                                 <field name="acceptance_basis" placeholder="Why the residual risk is acceptable, or what proves closure"/>
