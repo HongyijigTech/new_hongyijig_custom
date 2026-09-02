@@ -29,6 +29,9 @@
                             class="btn-primary" invisible="state not in ['draft', 'rejected']"/>
                     <button name="action_freeze" type="object" string="Freeze BOP"
                             class="btn-primary" invisible="state != 'review'"/>
+                    <button name="action_create_controlled_revision" type="object"
+                            string="Create R01 / ECN Revision" class="btn-secondary"
+                            invisible="state != 'frozen'"/>
                     <field name="state" widget="statusbar" statusbar_visible="draft,review,frozen,rejected,superseded"/>
                 </header>
                 <sheet>
@@ -40,7 +43,7 @@
                     <group string="IG-01 BOP Reference Lock Readiness">
                         <group>
                             <field name="stage_ready" widget="boolean_toggle" readonly="1"/>
-                            <field name="completion_percent" widget="progressbar" readonly="1"/>
+                            <field name="completion_percent" string="Overall Readiness" widget="progressbar" readonly="1"/>
                         </group>
                         <group>
                             <field name="freeze_blockers" readonly="1" nolabel="1"
@@ -61,6 +64,16 @@
                             <field name="ready_line_count" readonly="1"/>
                             <field name="all_physical_samples_received" readonly="1"/>
                             <field name="snapshot_hash" readonly="1" invisible="not snapshot_hash"/>
+                        </group>
+                    </group>
+                    <group string="Employee Readiness — Four Separate Controls">
+                        <group>
+                            <field name="data_completion_percent" string="1. Data &amp; Documents" widget="progressbar" readonly="1"/>
+                            <field name="physical_sample_percent" string="2. Physical Samples" widget="progressbar" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="mapping_completion_percent" string="3. Component Mapping" widget="progressbar" readonly="1"/>
+                            <field name="approval_completion_percent" string="4. Customer Item Freeze" widget="progressbar" readonly="1"/>
                         </group>
                     </group>
                     <group string="Designation Authority">
@@ -88,12 +101,21 @@
                                     <field name="population_unresolved_count"/>
                                     <field name="population_evidence_reference"
                                            placeholder="Customer BOM, SOR, email or reviewed source reference"/>
+                                    <field name="population_evidence_url" widget="url"
+                                           placeholder="Controlled Drive / DMS evidence link"/>
+                                    <field name="population_evidence_attachment"
+                                           filename="population_evidence_filename"/>
+                                    <field name="population_evidence_filename" invisible="1"/>
                                 </group>
                                 <group string="Independent Review &amp; Customer Sign-off">
                                     <field name="population_technical_reviewed" widget="boolean_toggle"/>
                                     <field name="population_technical_reviewer_designation"/>
                                     <field name="population_customer_signed" widget="boolean_toggle"/>
                                     <field name="population_customer_reference"/>
+                                    <field name="population_customer_approval_url" widget="url"/>
+                                    <field name="population_customer_approval_attachment"
+                                           filename="population_customer_approval_filename"/>
+                                    <field name="population_customer_approval_filename" invisible="1"/>
                                     <field name="population_ready" widget="boolean_toggle" readonly="1"/>
                                     <field name="population_signed_at" readonly="1" invisible="not population_signed_at"/>
                                     <field name="population_signed_by_id" readonly="1" invisible="not population_signed_by_id"/>
@@ -240,6 +262,10 @@
                             <group string="Final Design Freeze"><group>
                                 <field name="design_freeze_customer_confirmed" widget="boolean_toggle"/>
                                 <field name="design_freeze_customer_reference"/>
+                                <field name="design_freeze_customer_approval_url" widget="url"/>
+                                <field name="design_freeze_customer_approval_attachment"
+                                       filename="design_freeze_customer_approval_filename"/>
+                                <field name="design_freeze_customer_approval_filename" invisible="1"/>
                                 <field name="design_freeze_internal_approver"/>
                             </group><group><field name="governance_blockers" nolabel="1" readonly="1"/></group></group>
                         </page>
@@ -268,6 +294,15 @@
                         </page>
                         <page string="8. Notes &amp; Freeze Audit">
                             <field name="notes" readonly="state in ['frozen', 'superseded']"/>
+                            <group string="Controlled Revision — Never Reopen a Frozen Baseline">
+                                <field name="revision_reason" readonly="state in ['frozen', 'superseded']"/>
+                                <field name="next_revision_reason" readonly="state != 'frozen'"/>
+                                <field name="revision_change_reason"
+                                       readonly="state != 'frozen'"
+                                       placeholder="Required before creating R01 / ECN revision"/>
+                                <field name="supersedes_id" readonly="1"/>
+                                <field name="superseded_by_id" readonly="1"/>
+                            </group>
                             <group string="Immutable Freeze Evidence" invisible="not snapshot_hash">
                                 <field name="snapshot_hash" readonly="1"/>
                                 <field name="submitted_by_id" readonly="1"/>
@@ -393,6 +428,9 @@
                                 <field name="received_quantity"/><field name="verified_usable_quantity"/>
                                 <field name="required_by_date"/><field name="custody_location"/>
                                 <field name="verification_date"/><field name="verification_evidence"/>
+                                <field name="verification_attachment"
+                                       filename="verification_attachment_filename"/>
+                                <field name="verification_attachment_filename" invisible="1"/>
                                 <field name="notes" readonly="bop_state not in ['draft', 'rejected']"/>
                             </group>
                         </page>
@@ -425,4 +463,18 @@
     </record>
     <menuitem id="menu_hjig_bop" name="BOP Registers" parent="menu_hjig_native_project_forms"
               action="action_hjig_bop" sequence="12"/>
+
+    <record id="view_project_form_hjig_bop" model="ir.ui.view">
+        <field name="name">project.project.form.hjig.bop</field>
+        <field name="model">project.project</field>
+        <field name="inherit_id" ref="project.edit_project"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_open_hjig_bop" type="object" class="oe_stat_button"
+                        icon="fa-cubes">
+                    <field name="hjig_bop_count" widget="statinfo" string="IG-01 BOP"/>
+                </button>
+            </xpath>
+        </field>
+    </record>
 </odoo>

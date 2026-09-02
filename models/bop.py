@@ -15,6 +15,31 @@ from .workflow_guard import (
 CHATTER_FIELDS = {"message_follower_ids", "message_ids", "activity_ids"}
 
 
+class ProjectProject(models.Model):
+    _inherit = "project.project"
+
+    hjig_bop_ids = fields.One2many("hjig.bop", "project_id", string="BOP Registers")
+    hjig_bop_count = fields.Integer(compute="_compute_hjig_bop_count")
+
+    @api.depends("hjig_bop_ids")
+    def _compute_hjig_bop_count(self):
+        for project in self:
+            project.hjig_bop_count = self.env["hjig.bop"].search_count([
+                ("project_id", "=", project.id),
+            ])
+
+    def action_open_hjig_bop(self):
+        self.ensure_one()
+        action = self.env["ir.actions.actions"]._for_xml_id(
+            "new_hongyijig_custom.action_hjig_bop"
+        )
+        action.update({
+            "domain": [("project_id", "=", self.id)],
+            "context": {"default_project_id": self.id},
+        })
+        return action
+
+
 class HjigBop(models.Model):
     _name = "hjig.bop"
     _description = "Bought Out Parts Register"
@@ -72,10 +97,20 @@ class HjigBop(models.Model):
     population_coordinator_designation = fields.Char(string="Coordinator Designation", tracking=True)
     population_unresolved_count = fields.Integer(string="Unresolved BOP Count", default=0, tracking=True)
     population_evidence_reference = fields.Char(string="Source Documents / Evidence", tracking=True)
+    population_evidence_url = fields.Char(string="Population Evidence Link", tracking=True)
+    population_evidence_attachment = fields.Binary(
+        string="Population Evidence File", attachment=True, copy=False
+    )
+    population_evidence_filename = fields.Char(copy=False)
     population_technical_reviewed = fields.Boolean(string="Technical Review Complete", tracking=True)
     population_technical_reviewer_designation = fields.Char(string="Technical Reviewer Designation", tracking=True)
     population_customer_signed = fields.Boolean(string="Customer Population Sign-off", tracking=True)
     population_customer_reference = fields.Char(string="Customer Population Approval Reference", tracking=True)
+    population_customer_approval_url = fields.Char(string="Customer Population Approval Link", tracking=True)
+    population_customer_approval_attachment = fields.Binary(
+        string="Customer Population Approval File", attachment=True, copy=False
+    )
+    population_customer_approval_filename = fields.Char(copy=False)
     population_signed_at = fields.Datetime(readonly=True, copy=False)
     population_signed_by_id = fields.Many2one("res.users", readonly=True, copy=False)
     population_ready = fields.Boolean(compute="_compute_governance_readiness")
@@ -95,11 +130,20 @@ class HjigBop(models.Model):
     # Gate 4: final design freeze acknowledgement.
     design_freeze_customer_confirmed = fields.Boolean(string="Customer Design Freeze Sign-off", tracking=True)
     design_freeze_customer_reference = fields.Char(string="Customer Design Freeze Reference", tracking=True)
+    design_freeze_customer_approval_url = fields.Char(string="Design Freeze Approval Link", tracking=True)
+    design_freeze_customer_approval_attachment = fields.Binary(
+        string="Design Freeze Approval File", attachment=True, copy=False
+    )
+    design_freeze_customer_approval_filename = fields.Char(copy=False)
     design_freeze_internal_approver = fields.Char(string="Internal Approver Designation", tracking=True)
     governance_blockers = fields.Text(compute="_compute_governance_readiness")
     line_count = fields.Integer(compute="_compute_readiness")
     ready_line_count = fields.Integer(compute="_compute_readiness")
     completion_percent = fields.Float(compute="_compute_readiness")
+    data_completion_percent = fields.Float(compute="_compute_readiness")
+    physical_sample_percent = fields.Float(compute="_compute_readiness")
+    mapping_completion_percent = fields.Float(compute="_compute_readiness")
+    approval_completion_percent = fields.Float(compute="_compute_readiness")
     all_physical_samples_received = fields.Boolean(
         string="All Required Physical Quantities Verified", compute="_compute_readiness"
     )
@@ -136,6 +180,18 @@ class HjigBop(models.Model):
         tracking=True,
     )
     snapshot_hash = fields.Char(readonly=True, copy=False, tracking=True)
+    revision_reason = fields.Selection(
+        [("initial", "Initial IG-01 Baseline"), ("post_a011", "Post A-011 Design Revision"),
+         ("ecn", "Engineering Change / ECN")],
+        required=True, default="initial", tracking=True,
+    )
+    revision_change_reason = fields.Text(string="Revision / ECN Reason", tracking=True)
+    next_revision_reason = fields.Selection(
+        [("post_a011", "Post A-011 Design Revision"), ("ecn", "Engineering Change / ECN")],
+        string="New Revision Trigger", default="post_a011", copy=False, tracking=True,
+    )
+    supersedes_id = fields.Many2one("hjig.bop", readonly=True, copy=False, ondelete="restrict")
+    superseded_by_id = fields.Many2one("hjig.bop", readonly=True, copy=False, ondelete="restrict")
     notes = fields.Text()
 
     _project_revision_unique = models.Constraint(
@@ -149,6 +205,8 @@ class HjigBop(models.Model):
         "line_ids.applicability",
         "line_ids.required_quantity",
         "line_ids.verified_usable_quantity",
+        "line_ids.verification_evidence",
+        "line_ids.verification_attachment",
         "line_ids.lock_status",
         "line_ids.quantity",
         "line_ids.datasheet_status",
@@ -189,16 +247,22 @@ class HjigBop(models.Model):
         "population_coordinator_designation",
         "population_unresolved_count",
         "population_evidence_reference",
+        "population_evidence_url",
+        "population_evidence_attachment",
         "population_technical_reviewed",
         "population_technical_reviewer_designation",
         "population_customer_signed",
         "population_customer_reference",
+        "population_customer_approval_url",
+        "population_customer_approval_attachment",
         "design_release_baseline",
         "design_release_recipients",
         "design_release_generated",
         "design_release_valid",
         "design_freeze_customer_confirmed",
         "design_freeze_customer_reference",
+        "design_freeze_customer_approval_url",
+        "design_freeze_customer_approval_attachment",
         "design_freeze_internal_approver",
     )
     def _compute_readiness(self):
@@ -206,13 +270,30 @@ class HjigBop(models.Model):
             bop.line_count = len(bop.line_ids)
             ready = bop.line_ids.filtered("is_ready")
             bop.ready_line_count = len(ready)
-            bop.completion_percent = (
-                100.0 * len(ready) / len(bop.line_ids) if bop.line_ids else 0.0
-            )
             applicable = bop.line_ids.filtered(lambda line: line.applicability == "applicable")
+            total = len(applicable)
+            data_ready = applicable.filtered(lambda line: line._bop_data_ready())
+            sample_ready = applicable.filtered(lambda line: line._bop_sample_ready())
+            approval_ready = applicable.filtered(lambda line: line._bop_approval_ready())
+            active_mappings = bop.mapping_ids.filtered(lambda mapping: mapping.state == "active")
+            covered_line_ids = set(active_mappings.filtered(
+                lambda mapping: mapping.exception_ready if mapping.is_exception else bool(mapping.participant_ids)
+            ).mapped("bop_line_id").ids)
+            bop.data_completion_percent = 100.0 * len(data_ready) / total if total else 0.0
+            bop.physical_sample_percent = 100.0 * len(sample_ready) / total if total else 0.0
+            bop.mapping_completion_percent = (
+                100.0 * len(applicable.filtered(lambda line: line.id in covered_line_ids)) / total
+                if total else 0.0
+            )
+            bop.approval_completion_percent = 100.0 * len(approval_ready) / total if total else 0.0
+            bop.completion_percent = sum((
+                bop.data_completion_percent, bop.physical_sample_percent,
+                bop.mapping_completion_percent, bop.approval_completion_percent,
+            )) / 4.0
             bop.all_physical_samples_received = bool(applicable) and all(
                 line.required_quantity > 0
                 and line.verified_usable_quantity >= line.required_quantity
+                and line._bop_sample_evidence_ready()
                 for line in applicable
             )
             blockers = []
@@ -242,6 +323,15 @@ class HjigBop(models.Model):
                 and bop.customer_signoff_date
             ):
                 blockers.append(_("Complete customer acknowledgement and approval reference."))
+            if not (bop.population_evidence_url or bop.population_evidence_attachment):
+                blockers.append(_("Attach or link the reviewed BOP population evidence."))
+            if not (
+                bop.population_customer_approval_url
+                or bop.population_customer_approval_attachment
+            ):
+                blockers.append(_("Attach or link the customer population approval evidence."))
+            if applicable.filtered(lambda line: not line._bop_sample_evidence_ready()):
+                blockers.append(_("Attach or link physical sample verification evidence for every applicable BOP."))
             if not bop.design_release_generated or not bop.design_release_valid:
                 blockers.append(_("Generate a current Design Input Release package."))
             if not (
@@ -250,6 +340,11 @@ class HjigBop(models.Model):
                 and bop.design_freeze_internal_approver
             ):
                 blockers.append(_("Complete final customer Design Freeze sign-off and internal approver."))
+            if not (
+                bop.design_freeze_customer_approval_url
+                or bop.design_freeze_customer_approval_attachment
+            ):
+                blockers.append(_("Attach or link the final customer Design Freeze approval."))
             bop.stage_ready = not blockers
             bop.freeze_blockers = "\n".join("- %s" % blocker for blocker in blockers)
 
@@ -264,8 +359,10 @@ class HjigBop(models.Model):
         "mapping_ids.participant_ids.component_id",
         "population_declared_complete", "population_coordinator_designation",
         "population_unresolved_count", "population_evidence_reference",
+        "population_evidence_url", "population_evidence_attachment",
         "population_technical_reviewed", "population_technical_reviewer_designation",
         "population_customer_signed", "population_customer_reference",
+        "population_customer_approval_url", "population_customer_approval_attachment",
         "design_release_baseline", "design_release_recipients",
         "design_release_generated", "design_release_valid",
     )
@@ -283,10 +380,12 @@ class HjigBop(models.Model):
                 and bop.population_coordinator_designation
                 and bop.population_unresolved_count == 0
                 and bop.population_evidence_reference
+                and (bop.population_evidence_url or bop.population_evidence_attachment)
                 and bop.population_technical_reviewed
                 and bop.population_technical_reviewer_designation
                 and bop.population_customer_signed
                 and bop.population_customer_reference
+                and (bop.population_customer_approval_url or bop.population_customer_approval_attachment)
             )
             covered_item_ids = set(active_mappings.filtered(
                 lambda m: m.exception_ready if m.is_exception else bool(m.participant_ids)
@@ -384,6 +483,99 @@ class HjigBop(models.Model):
                 ).hexdigest(),
             })
 
+    def action_create_controlled_revision(self):
+        self.ensure_one()
+        if self.state != "frozen":
+            raise UserError(_("A controlled revision can be created only from a Frozen BOP."))
+        if not self.revision_change_reason:
+            raise ValidationError(_("Enter the revision / ECN reason before creating a new revision."))
+        numbers = []
+        for revision in self.search([("project_id", "=", self.project_id.id)]).mapped("revision"):
+            if revision and revision.upper().startswith("R") and revision[1:].isdigit():
+                numbers.append(int(revision[1:]))
+        next_revision = "R%02d" % (max(numbers, default=-1) + 1)
+        new_record = self.copy({
+            "state": "draft",
+            "revision": next_revision,
+            "revision_reason": self.next_revision_reason or "post_a011",
+            "revision_change_reason": self.revision_change_reason,
+            "supersedes_id": self.id,
+            "population_declared_complete": False,
+            "population_technical_reviewed": False,
+            "population_customer_signed": False,
+            "population_signed_at": False,
+            "population_signed_by_id": False,
+            "design_release_generated": False,
+            "design_release_valid": False,
+            "design_release_generated_at": False,
+            "design_release_generated_by_id": False,
+            "design_release_snapshot_json": False,
+            "design_release_snapshot_hash": False,
+            "design_freeze_customer_confirmed": False,
+            "design_freeze_customer_reference": False,
+            "design_freeze_customer_approval_url": False,
+            "design_freeze_customer_approval_attachment": False,
+            "design_freeze_customer_approval_filename": False,
+            "design_freeze_internal_approver": False,
+            "submitted_by_id": False,
+            "frozen_by_id": False,
+            "snapshot_hash": False,
+            "line_ids": False,
+            "product_component_ids": False,
+            "mapping_ids": False,
+        })
+        line_map = {}
+        for line in self.line_ids.sorted(lambda item: (item.sequence, item.id)):
+            copied_line = line.copy({
+                "bop_id": new_record.id,
+                "lock_status": "draft",
+                "locked_by_id": False,
+                "locked_at": False,
+                "changed_after_lock": False,
+                "customer_item_freeze": False,
+                "customer_item_freeze_reference": False,
+                "customer_item_freeze_date": False,
+            })
+            line_map[line.id] = copied_line
+        component_map = {}
+        for component in self.product_component_ids.sorted(lambda item: (item.sequence, item.id)):
+            copied_component = component.copy({
+                "bop_id": new_record.id, "maturity": "tentative",
+            })
+            component_map[component.id] = copied_component
+        for mapping in self.mapping_ids.filtered(lambda item: item.state == "active").sorted(
+            lambda item: (item.sequence, item.id)
+        ):
+            copied_mapping = mapping.copy({
+                "bop_id": new_record.id,
+                "bop_line_id": line_map[mapping.bop_line_id.id].id,
+                "participant_ids": False,
+                "state": "active",
+                "maturity": "tentative",
+                "technical_confirmed": False,
+                "customer_signed": False,
+            })
+            for participant in mapping.participant_ids.sorted(lambda item: (item.sequence, item.id)):
+                participant.copy({
+                    "mapping_id": copied_mapping.id,
+                    "component_id": component_map[participant.component_id.id].id,
+                })
+        self.with_context(hjig_bop_revision_link=True).write({"superseded_by_id": new_record.id})
+        open_requirements = self.env["hjig.programme.run.artifact"].search([
+            ("project_id", "=", self.project_id.id),
+            ("artifact_code", "=", "FRM-004"),
+            ("run_gate_id.state", "!=", "approved"),
+        ])
+        open_requirements.write({"bop_id": new_record.id})
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Controlled BOP Revision"),
+            "res_model": "hjig.bop",
+            "res_id": new_record.id,
+            "view_mode": "form",
+            "target": "current",
+        }
+
     @api.model_create_multi
     def create(self, vals_list):
         artifact = self.env.ref(
@@ -440,10 +632,12 @@ class HjigBop(models.Model):
                 "coordinator_designation": self.population_coordinator_designation,
                 "unresolved_count": self.population_unresolved_count,
                 "evidence_reference": self.population_evidence_reference,
+                "evidence_url": self.population_evidence_url,
                 "technical_reviewed": self.population_technical_reviewed,
                 "technical_reviewer_designation": self.population_technical_reviewer_designation,
                 "customer_signed": self.population_customer_signed,
                 "customer_reference": self.population_customer_reference,
+                "customer_approval_url": self.population_customer_approval_url,
             },
             "design_release": {
                 "baseline": self.design_release_baseline,
@@ -485,6 +679,7 @@ class HjigBop(models.Model):
                     "validator_designation": line.validator_designation,
                     "required_quantity": line.required_quantity,
                     "verified_usable_quantity": line.verified_usable_quantity,
+                    "verification_evidence": line.verification_evidence,
                     "customer_item_freeze_reference": line.customer_item_freeze_reference,
                     "lock_status": line.lock_status,
                 }
@@ -565,7 +760,9 @@ class HjigBop(models.Model):
                 ("state", "=", "frozen"),
                 ("id", "!=", bop.id),
             ])
-            previous.with_context(hjig_bop_workflow=True).write({"state": "superseded"})
+            previous.with_context(hjig_bop_workflow=True).write({
+                "state": "superseded", "superseded_by_id": bop.id,
+            })
             payload = json.dumps(bop._snapshot_payload(), sort_keys=True, separators=(",", ":"))
             bop.with_context(hjig_bop_workflow=True).write({
                 "state": "frozen",
@@ -591,6 +788,8 @@ class HjigBop(models.Model):
         release_fields = {
             "line_ids", "product_component_ids", "mapping_ids",
             "source_route", "source_document_url", "source_document_attachment",
+            "population_evidence_url", "population_evidence_attachment",
+            "population_customer_approval_url", "population_customer_approval_attachment",
             "assembly_environment_reference", "assembly_reference_confirmed",
             "population_declared_complete", "population_coordinator_designation",
             "population_unresolved_count", "population_evidence_reference",
@@ -604,8 +803,19 @@ class HjigBop(models.Model):
         )
         controlled = set(self._fields) - CHATTER_FIELDS
         if controlled.intersection(vals) and self.filtered(lambda rec: rec.state in ("frozen", "superseded")):
-            allowed_supersede = set(vals) == {"state"} and vals.get("state") == "superseded"
-            if not allowed_supersede:
+            allowed_revision_metadata = (
+                set(vals).issubset({"next_revision_reason", "revision_change_reason"})
+                and bool(self)
+                and all(rec.state == "frozen" for rec in self)
+            )
+            allowed_supersede = (
+                set(vals).issubset({"state", "superseded_by_id"})
+                and vals.get("state", "superseded") == "superseded"
+            ) or (
+                set(vals) == {"superseded_by_id"}
+                and self.env.context.get("hjig_bop_revision_link")
+            )
+            if not allowed_supersede and not allowed_revision_metadata:
                 raise ValidationError(_("Frozen or superseded BOP records are read-only."))
         identity = {"project_id", "revision", "owner_designation_id", "approver_designation_id"}
         if identity.intersection(vals) and self.filtered(lambda rec: rec.state not in ("draft", "rejected")):
@@ -635,6 +845,7 @@ class HjigBop(models.Model):
 class HjigBopLine(models.Model):
     _name = "hjig.bop.line"
     _description = "Bought Out Part Line"
+    _rec_name = "component_name"
     _order = "bop_id, sequence, id"
 
     bop_id = fields.Many2one("hjig.bop", required=True, ondelete="cascade", index=True)
@@ -786,6 +997,10 @@ class HjigBopLine(models.Model):
     custody_location = fields.Char(string="Location / Custodian")
     verification_date = fields.Date()
     verification_evidence = fields.Char()
+    verification_attachment = fields.Binary(
+        string="Sample Verification Evidence File", attachment=True, copy=False
+    )
+    verification_attachment_filename = fields.Char(copy=False)
     alternate_ids = fields.One2many("hjig.bop.alternate", "bop_line_id", string="Approved Alternates")
     customer_item_freeze = fields.Boolean(string="Customer Freeze Confirmed on Item")
     customer_item_freeze_reference = fields.Char(string="Customer Freeze Reference")
@@ -802,6 +1017,36 @@ class HjigBopLine(models.Model):
     ecn_reference = fields.Char(copy=False)
     notes = fields.Text()
     is_ready = fields.Boolean(compute="_compute_is_ready", store=True)
+
+    def _bop_data_ready(self):
+        self.ensure_one()
+        if self.applicability == "na_approved":
+            return bool(self.na_reason and self.na_evidence and self.na_approved_by_designation)
+        return bool(
+            self.component_code and self.component_name and self.quantity > 0
+            and self.manufacturer and self.model_part_number and self.item_revision
+            and self.source_ownership and self.technical_validation == "validated"
+            and self.validator_designation and self.drawing_2d_status in ("available", "na")
+            and self.model_3d_status in ("available", "na")
+            and self.datasheet_status in ("available", "received", "na", "not_applicable")
+        )
+
+    def _bop_sample_evidence_ready(self):
+        self.ensure_one()
+        evidence = (self.verification_evidence or "").strip().lower()
+        return bool(self.verification_attachment or evidence.startswith(("http://", "https://")))
+
+    def _bop_sample_ready(self):
+        self.ensure_one()
+        return bool(
+            self.required_quantity > 0
+            and self.verified_usable_quantity >= self.required_quantity
+            and self._bop_sample_evidence_ready()
+        )
+
+    def _bop_approval_ready(self):
+        self.ensure_one()
+        return bool(self.customer_item_freeze and self.customer_item_freeze_reference)
 
     _bop_component_unique = models.Constraint(
         "UNIQUE(bop_id, component_code)", "Component code must be unique within one BOP revision."
@@ -829,7 +1074,8 @@ class HjigBopLine(models.Model):
         "model_3d_status", "model_3d_reference", "model_3d_revision", "model_3d_na_reason",
         "datasheet_reference", "datasheet_revision", "datasheet_na_reason",
         "technical_validation", "validator_designation", "required_quantity",
-        "verified_usable_quantity", "customer_item_freeze", "customer_item_freeze_reference",
+        "verified_usable_quantity", "verification_evidence", "verification_attachment",
+        "customer_item_freeze", "customer_item_freeze_reference",
     )
     def _compute_is_ready(self):
         for line in self:
@@ -871,6 +1117,7 @@ class HjigBopLine(models.Model):
                 and line.validator_designation
                 and line.required_quantity > 0
                 and line.verified_usable_quantity >= line.required_quantity
+                and line._bop_sample_evidence_ready()
                 and line.customer_item_freeze
                 and line.customer_item_freeze_reference
                 and line.source_ownership

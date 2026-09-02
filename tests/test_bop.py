@@ -51,14 +51,17 @@ class TestBopRegister(TransactionCase):
             "population_coordinator_designation": "Project Coordinator",
             "population_unresolved_count": 0,
             "population_evidence_reference": "Customer BOM v3 + SOR R01",
+            "population_evidence_url": "https://drive.google.com/file/d/bop-population-evidence",
             "population_technical_reviewed": True,
             "population_technical_reviewer_designation": "Senior Tool Design Engineer",
             "population_customer_signed": True,
             "population_customer_reference": "Customer email 2026-08-30",
+            "population_customer_approval_url": "https://drive.google.com/file/d/bop-population-approval",
             "design_release_baseline": "BOP-R00 + SOR-R01 + MP-R00",
             "design_release_recipients": "Design Agency; Tooling Agency",
             "design_freeze_customer_confirmed": True,
             "design_freeze_customer_reference": "Customer design-freeze email 2026-08-30",
+            "design_freeze_customer_approval_url": "https://drive.google.com/file/d/bop-design-freeze",
             "design_freeze_internal_approver": "Senior Tool Design Engineer",
             "line_ids": [(0, 0, {
                 "component_code": "BOP-001", "component_name": "Purchased Insert",
@@ -74,6 +77,7 @@ class TestBopRegister(TransactionCase):
                 "validator_designation": "Senior Tool Design Engineer",
                 "required_quantity": 2, "ordered_quantity": 2,
                 "received_quantity": 2, "verified_usable_quantity": 2,
+                "verification_evidence": "https://drive.google.com/file/d/bop-sample-evidence",
                 "customer_item_freeze": True,
                 "customer_item_freeze_reference": "Customer email 2026-08-30",
                 "source_ownership": "customer",
@@ -195,3 +199,29 @@ class TestBopRegister(TransactionCase):
         self.assertTrue(bop.design_release_valid)
         bop.mapping_ids.evidence_reference = "Revised interface evidence"
         self.assertFalse(bop.design_release_valid)
+
+    def test_project_action_opens_only_project_bop_records(self):
+        bop = self._ready_bop()
+        action = self.project.action_open_hjig_bop()
+        self.assertEqual(action["domain"], [("project_id", "=", self.project.id)])
+        self.assertEqual(action["context"]["default_project_id"], self.project.id)
+        self.assertEqual(self.project.hjig_bop_count, 1)
+        self.assertEqual(bop.project_id, self.project)
+
+    def test_frozen_bop_creates_new_controlled_revision_without_reopening_r00(self):
+        bop = self._ready_bop()
+        bop.with_user(self.owner).action_submit_review()
+        bop.with_user(self.approver).action_freeze()
+        bop.write({
+            "next_revision_reason": "post_a011",
+            "revision_change_reason": "A-011 design output requires controlled BOP revalidation",
+        })
+        action = bop.action_create_controlled_revision()
+        revision = self.env["hjig.bop"].browse(action["res_id"])
+        self.assertEqual(bop.state, "frozen")
+        self.assertEqual(revision.state, "draft")
+        self.assertEqual(revision.revision, "R01")
+        self.assertEqual(revision.supersedes_id, bop)
+        self.assertEqual(bop.superseded_by_id, revision)
+        self.assertFalse(revision.design_release_valid)
+        self.assertTrue(all(line.lock_status == "draft" for line in revision.line_ids))
