@@ -2,7 +2,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 {
     'name': 'HongyiJigTechNew',
-    'version': '19.0.3.32.0',
+    'version': '19.0.3.36.0',
     'summary': 'Hongyijig Tech New',
     'sequence': 10,
     'description': """
@@ -56,7 +56,11 @@ Hongyijig Tech
              'views/sseries_intake_views.xml'],
     'installable': True,
     'application': True,
-    'assets': {},
+    'assets': {
+        'web.assets_backend': [
+            'new_hongyijig_custom/static/src/scss/mould_planning.scss',
+        ],
+    },
     'author': 'Odoo S.A.',
     'license': 'LGPL-3',
 }

@@ -210,16 +210,6 @@ class TestProgrammeTemplateGovernance(TransactionCase):
         action = run.action_open_current_forms()
         self.assertEqual(action["domain"], [("id", "in", run.artifact_requirement_ids.ids)])
 
-    def test_task_form_centre_falls_back_to_its_gate_forms_when_activity_map_is_blank(self):
-        run = self._activate_order(self._sale_order())
-        task = run.task_ids.filtered(lambda item: item.hjig_template_activity_id == self.activity_2)
-        self.assertFalse(task.hjig_required_artifact_ids)
-        self.assertEqual(task.hjig_form_centre_requirement_ids, run.artifact_requirement_ids)
-        self.assertIn("Wait for: First Governed Activity", task.hjig_next_employee_action)
-        action = task.action_open_hjig_form_centre()
-        self.assertEqual(action["res_model"], "hjig.programme.run.artifact")
-        self.assertEqual(action["domain"], [("id", "in", run.artifact_requirement_ids.ids)])
-
     def test_review_verification_is_evidenced_authorised_and_invalidated_on_change(self):
         draft = self.env["hjig.programme.template.version"].create({
             "template_id": self.template.id,

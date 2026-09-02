@@ -241,6 +241,10 @@ class HjigSor(models.Model):
             requirement = self.env["hjig.programme.run.artifact"].browse(requirement_id).exists()
             if requirement and requirement.artifact_code == "FRM-003":
                 requirement.sor_id = records.id
+        for record in records:
+            self.env["hjig.programme.run.artifact"]._link_native_record_across_gates(
+                record, "FRM-003", "sor_id"
+            )
         return records
 
     @api.constrains("no_product_warranty")

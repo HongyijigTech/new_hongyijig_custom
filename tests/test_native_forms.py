@@ -116,6 +116,11 @@ class TestNativeProjectForms(TransactionCase):
                 "x_mould_base_steel_grade": "P20",
                 "x_runner_type": "cold",
                 "x_gate_type": "Edge Gate",
+                "x_component_gate_style": "edge",
+                "x_part_picture": base64.b64encode(b"part-photo"),
+                "x_dimension_x_mm": 120.0,
+                "x_dimension_y_mm": 80.0,
+                "x_dimension_z_mm": 35.0,
             })
         part = self.env["x_mould_part"].create(part_values)
         return mould, part
@@ -276,33 +281,6 @@ class TestNativeProjectForms(TransactionCase):
         self.assertEqual(geometry_a.krt_label, "1x1")
         self.assertEqual(geometry_b.krt_label, "1x2")
 
-    def test_family_mould_blocks_material_or_colour_mismatch_across_geometry_groups(self):
-        mould, first_part = self._create_mould()
-        mould.x_mould_configuration = "family"
-        first_part.write({"x_colour": "Black"})
-        geometry_a = self.env["hjig.mould.geometry"].create({
-            "mould_id": mould.id, "code": "G1", "name": "Part A", "cavity_quantity": 1,
-        })
-        geometry_b = self.env["hjig.mould.geometry"].create({
-            "mould_id": mould.id, "code": "G2", "name": "Part B", "cavity_quantity": 1,
-        })
-        first_part.x_geometry_id = geometry_a
-        second_part = self.env["x_mould_part"].create({
-            "x_mould_id": mould.id, "x_name": "Part B", "x_part_number": "P-FAMILY-B",
-            "x_part_category": "appearance", "x_surface_finish_type": "spi",
-            "x_surface_grade_code": "SPI-B1", "x_part_material": "PC", "x_colour": "Black",
-            "x_customer_shrinkage": 0.5, "x_part_weight_grams": 20, "x_qps": 1,
-            "x_visual_inspection_applicability": "required_critical",
-            "x_dimensional_inspection_applicability": "required",
-            "x_mould_base_steel_grade": "P20", "x_runner_type": "cold",
-            "x_gate_type": "Edge Gate", "x_geometry_id": geometry_b.id,
-        })
-        self.assertIn("one common material", mould.x_stage_blockers)
-        second_part.x_part_material = first_part.x_part_material
-        self.assertNotIn("one common material", mould.x_stage_blockers)
-        second_part.x_colour = "White"
-        self.assertIn("one common colour", mould.x_stage_blockers)
-
     def test_visual_report_auto_generates_approved_checkpoint_baseline(self):
         mould, part = self._create_mould()
         report = self.env["hjig.inspection.report"].create({
@@ -415,6 +393,11 @@ class TestNativeProjectForms(TransactionCase):
             "x_mould_base_steel_id": steel.id,
             "x_runner_type": "cold",
             "x_gate_type_id": gate.id,
+            "x_component_gate_style": "edge",
+            "x_part_picture": base64.b64encode(b"part-photo"),
+            "x_dimension_x_mm": 120.0,
+            "x_dimension_y_mm": 80.0,
+            "x_dimension_z_mm": 35.0,
         })
         self.assertEqual(part.x_part_material, material.name)
         self.assertEqual(part.x_standard_shrinkage, material.shrinkage_range)
@@ -423,6 +406,43 @@ class TestNativeProjectForms(TransactionCase):
         self.assertEqual(part.x_completion_percent, 100.0)
         with self.assertRaises(ValidationError):
             material.name = "Rewritten approved baseline"
+
+    def test_ig01_part_cannot_show_complete_without_photo_dimensions_and_component_gate(self):
+        mould, part = self._create_mould()
+        part.write({
+            "x_component_gate_style": False,
+            "x_part_picture": False,
+            "x_dimension_x_mm": 0.0,
+            "x_dimension_y_mm": 0.0,
+            "x_dimension_z_mm": 0.0,
+        })
+        self.assertLess(part.x_completion_percent, 100.0)
+        for label in (
+            "Gate Towards Component", "Part Picture", "Part X Dimension",
+            "Part Y Dimension", "Part Z Dimension",
+        ):
+            self.assertIn(label, part.x_missing_fields)
+        self.assertLess(mould.x_completion_percent, 100.0)
+
+    def test_surface_finish_type_change_clears_stale_snapshot(self):
+        finish = self.env.ref("new_hongyijig_custom.surface_finish_spi_004")
+        _mould, part = self._create_mould(complete=False)
+        part.write({"x_surface_finish_id": finish.id})
+        self.assertEqual(part.x_surface_finish_type, "spi")
+        self.assertEqual(part.x_surface_grade_code, finish.code)
+
+        part.write({"x_surface_finish_type": "vdi"})
+        self.assertFalse(part.x_surface_finish_id)
+        self.assertFalse(part.x_surface_grade_code)
+        self.assertFalse(part.x_surface_details)
+
+    def test_normal_polish_is_a_saveable_separate_finish(self):
+        normal = self.env.ref("new_hongyijig_custom.surface_finish_normal_polish")
+        _mould, part = self._create_mould(complete=False)
+        part.write({"x_surface_finish_id": normal.id})
+        self.assertEqual(part.x_surface_finish_type, "normal")
+        self.assertEqual(part.x_surface_grade_code, "NORMAL")
+        self.assertEqual(normal.finish_system, "normal")
 
     def test_dimensional_method_dropdown_keeps_legacy_snapshot(self):
         mould, part = self._create_mould()

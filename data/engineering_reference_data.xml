@@ -228,4 +228,17 @@ Modified</field><field name="jis_standard">-</field><field name="wn_standard">1.
     <record id="inspection_method_013" model="hjig.inspection.method.master"><field name="name">Tool Maker Microscope</field><field name="method_category">optical</field><field name="state">approved</field><field name="source_tab">Plastic RM Data Base</field><field name="source_row">124</field><field name="effective_date">2026-08-21</field></record>
     <record id="inspection_method_014" model="hjig.inspection.method.master"><field name="name">Blue Ray</field><field name="method_category">optical</field><field name="state">approved</field><field name="source_tab">Plastic RM Data Base</field><field name="source_row">125</field><field name="effective_date">2026-08-21</field></record>
     <record id="inspection_method_015" model="hjig.inspection.method.master"><field name="name">White Light Scan</field><field name="method_category">optical</field><field name="state">approved</field><field name="source_tab">Plastic RM Data Base</field><field name="source_row">126</field><field name="effective_date">2026-08-21</field></record>
+    <record id="surface_finish_normal_polish" model="hjig.surface.finish.master">
+        <field name="finish_system">normal</field>
+        <field name="code">NORMAL</field>
+        <field name="name">Normal Polish</field>
+        <field name="family">General Polish</field>
+        <field name="method">Standard tool-room polishing</field>
+        <field name="appearance">Standard smooth finish</field>
+        <field name="tooling_notes">Use only when no SPI, VDI or special texture code is specified.</field>
+        <field name="state">approved</field>
+        <field name="source_tab">Mould Planning Team Feedback</field>
+        <field name="source_row">10</field>
+        <field name="effective_date">2026-09-01</field>
+    </record>
 </odoo>

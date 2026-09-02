@@ -13,10 +13,14 @@
                 <field name="x_lifecycle_stage" widget="statusbar" statusbar_visible="ig01,tg01,tg02,tg03,closure"/>
             </xpath>
             <xpath expr="//sheet/div[contains(@class, 'oe_title')]" position="before">
-                <div class="oe_button_box" name="lifecycle_button_box"/>
+                <div class="oe_button_box" name="lifecycle_button_box">
+                    <button name="action_open_linked_bop" type="object" class="oe_stat_button" icon="fa-shopping-cart">
+                        <field name="x_bop_count" widget="statinfo" string="Linked BOP"/>
+                    </button>
+                </div>
                 <group>
                     <group>
-                        <field name="x_mould_image" widget="image" class="oe_avatar" options="{'preview_image': 'x_mould_image'}"/>
+                        <field name="x_mould_image" widget="image" class="oe_avatar" invisible="1"/>
                     </group>
                     <group string="Current Stage Readiness">
                         <field name="x_stage_ready" widget="boolean_toggle" readonly="1"/>
@@ -24,10 +28,47 @@
                     </group>
                 </group>
             </xpath>
+            <xpath expr="//field[@name='x_mould_configuration']" position="before">
+                <field name="x_program_variant"/>
+            </xpath>
+            <xpath expr="//field[@name='x_mould_configuration']" position="after">
+                <field name="x_configuration_confirmed" widget="boolean_toggle"/>
+            </xpath>
+            <xpath expr="//field[@name='x_cavitation']" position="attributes">
+                <attribute name="readonly">0</attribute>
+                <attribute name="placeholder">Select configuration, then enter cavitation explicitly</attribute>
+            </xpath>
+            <xpath expr="//field[@name='x_part_ids']" position="replace">
+                <field name="x_part_ids" context="{'default_x_mould_id': id}" mode="list,form"
+                       readonly="x_lifecycle_stage != 'ig01' or x_workflow_state == 'superseded'"
+                       class="o_hjig_mould_grid">
+                    <list string="Components in this Mould (click a row to open full details)">
+                        <control><create string="Add Component &amp; Open Full Details"/></control>
+                        <field name="x_sequence" widget="handle"/>
+                        <field name="x_part_picture" widget="image" options="{'size': [72, 72]}"/>
+                        <button name="action_open_employee_detail" type="object" string="Open Full Details" icon="fa-external-link"/>
+                        <field name="x_part_number"/>
+                        <field name="x_name"/>
+                        <field name="x_part_category"/>
+                        <field name="x_material_master_id"/>
+                        <field name="x_part_weight_grams"/>
+                        <field name="x_qps"/>
+                        <field name="x_cavity_plan"/>
+                        <field name="x_surface_finish_id" optional="show"/>
+                        <field name="x_component_gate_style" optional="show"/>
+                        <field name="x_assumption_status"/>
+                        <field name="x_completion_percent" widget="progressbar"/>
+                    </list>
+                </field>
+            </xpath>
             <xpath expr="//notebook" position="inside">
-                <page string="IG-01 Planning Basis" name="mould_ig01_basis">
+                <page string="2. Mould Plan &amp; IG-01 Readiness" name="mould_ig01_basis">
                     <group>
                         <group string="Architecture">
+                            <div class="alert alert-info" role="alert" colspan="2">
+                                Select the mould type and cavitation yourself. The system will not assume or overwrite them.
+                                Create one Mould Planning record for each physical mould and map only its components here.
+                            </div>
                             <field name="x_special_technology"/>
                             <field name="x_planning_confidence"/>
                             <field name="x_grouping_basis" invisible="x_mould_configuration != 'family'"/>
@@ -48,16 +89,32 @@
                         <group><field name="x_baseline_revision"/><field name="x_baseline_note"/></group>
                     </group>
                     <group string="Controlled Family-Mould KRT Architecture" invisible="x_mould_configuration != 'family'">
+                        <div class="alert alert-warning" role="alert" colspan="2">
+                            One row is one interchangeable geometry/insert group. Select components from the existing component list; do not type their names again.
+                        </div>
                         <field name="x_geometry_ids">
                             <list editable="bottom">
                                 <field name="sequence" widget="handle"/><field name="code"/><field name="name"/>
                                 <field name="cavity_quantity"/><field name="krt_label" readonly="1"/>
+                                <field name="component_ids" widget="many2many_tags"/>
                                 <field name="material_colour_summary" readonly="1"/><field name="active"/>
                             </list>
                         </field>
                     </group>
+                    <group string="Structured Assumptions &amp; Open Questions">
+                        <div class="alert alert-info" role="alert" colspan="2">
+                            Add one assumption per row. Link it to the affected component, record its basis and close it independently after IG-01.
+                        </div>
+                        <field name="x_assumption_ids" class="o_hjig_mould_grid">
+                            <list editable="bottom">
+                                <field name="category"/><field name="part_id"/><field name="subject"/>
+                                <field name="assumption"/><field name="basis"/><field name="owner_designation_id"/>
+                                <field name="due_date"/><field name="status"/><field name="resolution" optional="show"/>
+                            </list>
+                        </field>
+                    </group>
                 </page>
-                <page string="Size &amp; Machine Compatibility" name="mould_machine">
+                <page string="Size &amp; Machine Compatibility" name="mould_machine" invisible="x_lifecycle_stage == 'ig01'">
                     <group string="Mould Size and Tool Life">
                         <group><field name="x_mould_length_mm"/><field name="x_mould_width_mm"/><field name="x_mould_height_mm"/></group>
                         <group><field name="x_estimated_weight_kg"/><field name="x_target_tool_life"/></group>
@@ -79,10 +136,12 @@
                         <group><field name="x_machine_verdict" widget="badge"/><field name="x_machine_check_details" nolabel="1"/></group>
                     </group>
                 </page>
-                <page string="TG-02 Engineering Definition" name="mould_tg02">
+                <page string="TG-02 Engineering Definition" name="mould_tg02" invisible="x_lifecycle_stage in ('ig01', 'tg01')">
                     <group string="Runner, Gate and Material">
                         <group>
-                            <field name="x_runner_brand"/><field name="x_runner_weight_g"/>
+                            <field name="x_hot_runner_brand"/>
+                            <field name="x_hot_runner_brand_other" invisible="x_hot_runner_brand != 'other'"/>
+                            <field name="x_runner_weight_g"/>
                             <field name="x_material_grade"/><field name="x_material_manufacturer"/>
                             <field name="x_material_filler"/><field name="x_material_mfi"/>
                         </group>
@@ -96,7 +155,23 @@
                         <group><field name="x_heat_treatment"/><field name="x_surface_treatment"/></group>
                     </group>
                 </page>
-                <page string="TG-03 Release &amp; Freeze" name="mould_tg03">
+                <page string="ToolLock Start Standards" name="mould_toollock"
+                      invisible="x_program_variant != 'toollock_control'">
+                    <div class="alert alert-info" role="alert">
+                        These ToolLock standards are available at project start. Confirm them before the plan moves beyond IG-01.
+                    </div>
+                    <group>
+                        <group string="Ejection &amp; Nozzle">
+                            <field name="x_ejector_pin_standard"/>
+                            <field name="x_ejection_method"/>
+                            <field name="x_nozzle_length_mm"/>
+                        </group>
+                        <group string="Special Tooling Requirements">
+                            <field name="x_special_tooling_requirements" nolabel="1"/>
+                        </group>
+                    </group>
+                </page>
+                <page string="TG-03 Release &amp; Freeze" name="mould_tg03" invisible="x_lifecycle_stage in ('ig01', 'tg01', 'tg02')">
                     <group>
                         <group string="Release Authority">
                             <field name="x_toolmaker"/><field name="x_tool_design_reference"/>
@@ -127,8 +202,11 @@
                     </group>
                 </page>
                 <page string="Controlled Change History" name="mould_history">
-                    <group><field name="x_change_reason" placeholder="Enter before changing a controlled field from TG-01 onward"/></group>
-                    <field name="x_change_log_ids" readonly="1">
+                    <div class="alert alert-warning" role="alert">
+                        From TG-01 onward, enter the reason first. Odoo records the old value, new value, user, stage and revision automatically.
+                    </div>
+                    <group><field name="x_change_reason" placeholder="Why is the approved baseline being changed?"/></group>
+                    <field name="x_change_log_ids" readonly="1" class="o_hjig_mould_grid">
                         <list create="false" edit="false" delete="false">
                             <field name="change_date"/><field name="part_id"/><field name="field_name"/>
                             <field name="old_value"/><field name="new_value"/><field name="reason"/>
@@ -147,6 +225,33 @@
         <field name="arch" type="xml">
             <xpath expr="//notebook/page[1]//group/group[last()]" position="inside">
                 <field name="x_colour"/><field name="x_remarks"/>
+            </xpath>
+            <xpath expr="//field[@name='x_customer_shrinkage']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='x_customer_shrinkage']" position="after">
+                <field name="x_customer_shrinkage_min" placeholder="e.g. 0.45"/>
+                <field name="x_customer_shrinkage_max" placeholder="e.g. 0.65"/>
+            </xpath>
+            <xpath expr="//field[@name='x_gate_type_id']" position="after">
+                <field name="x_component_gate_style" required="x_runner_type != False"/>
+                <field name="x_component_gate_style_other" invisible="x_component_gate_style != 'other'"/>
+            </xpath>
+            <xpath expr="//field[@name='x_core_steel_usage']" position="after">
+                <field name="x_core_hardening_process"/>
+                <label for="x_core_hardness_min" string="Core Hardness Range"/>
+                <div class="o_row">
+                    <field name="x_core_hardness_min" placeholder="Min"/><span>to</span>
+                    <field name="x_core_hardness_max" placeholder="Max"/><field name="x_hardness_unit"/>
+                </div>
+            </xpath>
+            <xpath expr="//field[@name='x_cavity_steel_usage']" position="after">
+                <field name="x_cavity_hardening_process"/>
+                <label for="x_cavity_hardness_min" string="Cavity Hardness Range"/>
+                <div class="o_row">
+                    <field name="x_cavity_hardness_min" placeholder="Min"/><span>to</span>
+                    <field name="x_cavity_hardness_max" placeholder="Max"/>
+                </div>
             </xpath>
             <xpath expr="//notebook/page[2]//group/group[1]" position="inside">
                 <field name="x_geometry_id" invisible="x_mould_configuration != 'family'"/>

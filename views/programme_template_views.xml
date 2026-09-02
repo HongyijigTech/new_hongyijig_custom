@@ -692,28 +692,11 @@
         <field name="model">project.task</field>
         <field name="inherit_id" ref="project.view_task_form2"/>
         <field name="arch" type="xml">
-            <xpath expr="//header" position="inside">
-                <button name="action_open_hjig_form_centre" type="object"
-                        string="Open Forms &amp; Evidence" class="btn-primary"
-                        invisible="not hjig_programme_run_id"/>
-            </xpath>
             <xpath expr="//sheet/notebook" position="inside">
-                <page string="Do This Next" name="hjig_task_programme_governance">
+                <page string="Programme Governance" name="hjig_task_programme_governance">
                     <button name="action_open_hjig_required_evidence" type="object"
-                            string="Open Forms &amp; Evidence" class="btn-primary"
+                            string="Open Required Evidence" class="btn-primary"
                             invisible="not hjig_programme_run_id"/>
-                    <group string="Employee Workbench">
-                        <field name="hjig_next_employee_action" readonly="1" nolabel="1"/>
-                    </group>
-                    <field name="hjig_form_centre_requirement_ids" readonly="1" nolabel="1">
-                        <list create="false" delete="false">
-                            <field name="artifact_master_id" string="Form / Evidence"/>
-                            <field name="status" widget="badge"/>
-                            <field name="mould_id" optional="hide"/>
-                            <button name="action_open_authoritative_record" type="object"
-                                    string="Open / Create Form" class="btn-primary"/>
-                        </list>
-                    </field>
                     <group>
                         <group>
                             <field name="hjig_programme_run_id" readonly="1"/>
