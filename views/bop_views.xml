@@ -7,7 +7,7 @@
             <list decoration-success="state == 'frozen'" decoration-warning="state == 'review'"
                   decoration-muted="state == 'superseded'">
                 <field name="code"/><field name="project_id"/><field name="revision"/>
-                <field name="line_count"/><field name="completion_percent" widget="percentage"/>
+                <field name="line_count"/><field name="completion_percent" widget="progressbar"/>
                 <field name="stage_ready"/><field name="all_physical_samples_received"/>
                 <field name="state" widget="badge"/>
             </list>

@@ -161,6 +161,7 @@ class TestBopRegister(TransactionCase):
         bop.source_route = "customer_document"
         self.assertFalse(bop.stage_ready)
         bop.source_document_url = "https://drive.google.com/file/d/test-bop-source"
+        bop.action_generate_design_release()
         self.assertTrue(bop.stage_ready)
 
     def test_bop_state_cannot_be_bypassed_by_direct_write(self):

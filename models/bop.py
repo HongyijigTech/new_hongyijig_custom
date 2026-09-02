@@ -242,6 +242,14 @@ class HjigBop(models.Model):
                 and bop.customer_signoff_date
             ):
                 blockers.append(_("Complete customer acknowledgement and approval reference."))
+            if not bop.design_release_generated or not bop.design_release_valid:
+                blockers.append(_("Generate a current Design Input Release package."))
+            if not (
+                bop.design_freeze_customer_confirmed
+                and bop.design_freeze_customer_reference
+                and bop.design_freeze_internal_approver
+            ):
+                blockers.append(_("Complete final customer Design Freeze sign-off and internal approver."))
             bop.stage_ready = not blockers
             bop.freeze_blockers = "\n".join("- %s" % blocker for blocker in blockers)
 
