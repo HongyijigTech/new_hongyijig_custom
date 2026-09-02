@@ -16,7 +16,7 @@ class TestRiskCopilot(TransactionCase):
         })
         cls.project = cls.env["project.project"].create({
             "name": "Risk Copilot Test", "hjig_project_record_type": "customer",
-            "x_project_code": "HJ-AI-RISK-TEST",
+            "x_project_code": "HJ-AIRISK-2026-0001",
             "hjig_authorized_user_ids": [(6, 0, [cls.user.id])],
         })
 
