@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_hjig_risk_ai_scan_list" model="ir.ui.view">
+        <field name="name">hjig.risk.ai.scan.list</field><field name="model">hjig.risk.ai.scan</field>
+        <field name="arch" type="xml"><list decoration-success="state == 'complete'" decoration-danger="state == 'failed'">
+            <field name="code"/><field name="project_id"/><field name="stage_id"/><field name="suggestion_count"/>
+            <field name="pending_count"/><field name="applied_count"/><field name="model_identity"/><field name="run_date"/>
+            <field name="state" widget="badge"/>
+        </list></field>
+    </record>
+    <record id="view_hjig_risk_ai_scan_form" model="ir.ui.view">
+        <field name="name">hjig.risk.ai.scan.form</field><field name="model">hjig.risk.ai.scan</field>
+        <field name="arch" type="xml"><form string="AI Risk Review">
+            <header>
+                <button name="action_run_scan" type="object" string="Run Claude Risk Scan" class="btn-primary" invisible="state not in ['draft', 'failed']"/>
+                <button name="action_complete_review" type="object" string="Complete Employee Review" class="btn-primary" invisible="state != 'review'"/>
+                <field name="state" widget="statusbar" statusbar_visible="draft,review,complete,failed" readonly="1"/>
+            </header>
+            <sheet>
+                <div class="alert alert-info" role="alert"><strong>IG Copilot Workbench</strong> — Claude prepares candidate risks from the current project evidence. An employee must review every row, may edit it, and must add any risks AI missed. AI cannot approve a gate, accept a risk or close a risk.</div>
+                <div class="oe_title"><h1><field name="code"/></h1></div>
+                <group><group string="Scan Scope"><field name="project_id"/><field name="origin_requirement_id"/><field name="stage_id"/><field name="scope_note"/></group>
+                    <group string="Controlled Provenance"><field name="prompt_version"/><field name="model_identity"/><field name="run_date"/><field name="run_by_id"/><field name="source_snapshot_hash"/><field name="source_snapshot_summary"/><field name="failure_message" invisible="not failure_message"/></group></group>
+                <group string="Review Progress"><field name="suggestion_count"/><field name="pending_count"/><field name="applied_count"/></group>
+                <field name="suggestion_ids" context="{'default_scan_id': id}">
+                    <list editable="bottom" create="false" delete="false" decoration-danger="risk_score &gt;= 16" decoration-muted="disposition in ['merged', 'rejected']">
+                        <field name="source_reference"/><field name="cause"/><field name="description"/><field name="impact_statement"/>
+                        <field name="category"/><field name="probability"/><field name="impact"/><field name="risk_score"/>
+                        <field name="confidence"/><field name="possible_duplicate_risk_id"/><field name="disposition" widget="badge"/>
+                        <button name="action_add_to_register" type="object" string="Add to Register" class="btn-primary" invisible="disposition != 'pending'"/>
+                        <button name="action_mark_duplicate" type="object" string="Merge / Duplicate" invisible="disposition != 'pending'"/>
+                        <button name="action_reject" type="object" string="Reject" invisible="disposition != 'pending'"/>
+                    </list>
+                    <form string="AI Draft Risk"><sheet>
+                        <div class="alert alert-warning" role="alert">AI suggestion only. Verify the cited evidence and edit the risk before adding it to the controlled register.</div>
+                        <group><group string="Evidence"><field name="source_type"/><field name="source_reference"/><field name="evidence_excerpt"/><field name="confidence"/><field name="uncertainty"/><field name="possible_duplicate_risk_id"/></group>
+                            <group string="Cause → Event → Impact"><field name="cause"/><field name="description"/><field name="impact_statement"/><field name="category"/><field name="probability"/><field name="impact"/><field name="risk_score"/></group></group>
+                        <group string="Suggested Controls"><field name="mitigation_plan"/><field name="preventive_action"/><field name="contingency_plan"/><field name="trigger_indicator"/></group>
+                        <group string="Employee Decision"><field name="disposition"/><field name="disposition_note"/><field name="risk_id"/><field name="reviewed_by_id"/><field name="reviewed_date"/></group>
+                    </sheet></form>
+                </field>
+                <group string="Human Completion"><field name="employee_additional_risks_confirmed"/><field name="review_notes"/><field name="reviewed_by_id"/><field name="reviewed_date"/></group>
+            </sheet><chatter/>
+        </form></field>
+    </record>
+    <record id="action_hjig_risk_ai_scan" model="ir.actions.act_window"><field name="name">AI Risk Review</field><field name="res_model">hjig.risk.ai.scan</field><field name="view_mode">list,form</field></record>
+    <menuitem id="menu_hjig_risk_ai_scan" name="AI Risk Review" parent="menu_hjig_native_project_forms" action="action_hjig_risk_ai_scan" sequence="31"/>
+</odoo>

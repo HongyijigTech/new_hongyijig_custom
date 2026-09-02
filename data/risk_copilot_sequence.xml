@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo noupdate="1">
+    <record id="seq_hjig_risk_ai_scan" model="ir.sequence">
+        <field name="name">AI Risk Review</field>
+        <field name="code">hjig.risk.ai.scan</field>
+        <field name="prefix">AI-RISK/%(year)s/</field>
+        <field name="padding">5</field>
+    </record>
+</odoo>

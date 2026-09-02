@@ -6,6 +6,7 @@ from . import test_programme_activity_authority
 from . import test_programme_architecture_authority
 from . import test_programme_session
 from . import test_project_registers
+from . import test_risk_copilot
 from . import test_foundation
 from . import test_project_planning
 from . import test_sor
