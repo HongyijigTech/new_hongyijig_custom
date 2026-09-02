@@ -21,7 +21,7 @@ test -s "$backup/${database}_pre_3301.dump"
 sha256sum "$backup/new_hongyijig_custom_pre_3301.tar.gz" "$backup/${database}_pre_3301.dump" > "$backup/SHA256SUMS"
 
 tar -xzf "$archive" -C "$extract"
-grep -q "19.0.3.30.2" "$extract/new_hongyijig_custom/__manifest__.py"
+grep -q "19.0.3.30.3" "$extract/new_hongyijig_custom/__manifest__.py"
 
 rollback() {
     status=$?
@@ -65,6 +65,6 @@ test "$http_ready" = 1
 ! grep -E "ERROR|CRITICAL" "$backup/upgrade.log"
 
 trap - EXIT
-echo "MOULD_PLANNING_3302_STAGING_DEPLOYMENT=PASS"
+echo "MOULD_PLANNING_3303_STAGING_DEPLOYMENT=PASS"
 echo "BACKUP_DIR=$backup"
 cat "$backup/SHA256SUMS"
