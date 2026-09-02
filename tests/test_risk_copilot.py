@@ -4,7 +4,7 @@ from odoo.exceptions import UserError, ValidationError
 from odoo.tests import TransactionCase, tagged
 
 
-@tagged("post_install", "-at_install")
+@tagged("post_install", "-at_install", "risk_copilot")
 class TestRiskCopilot(TransactionCase):
 
     @classmethod
