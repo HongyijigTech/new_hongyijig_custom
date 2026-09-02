@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-archive=/tmp/new_hongyijig_custom_19.0.3.30.1_48089c4.tar.gz
-expected_sha=8cfade9911187bba2203254af50180ddf125f866f9cbb3e33570a1970d3a450f
+archive=/tmp/new_hongyijig_custom_19.0.3.30.2_a02a0d9.tar.gz
+expected_sha=ad2c21ecc060d86d499feeeb58232576ca4a0f76c46bb0791548ec6f37c9b048
 database=HongyijigTech_10Feb
 target=/home/hongyi-jig-erp/odoo/staging_overrides/new_hongyijig_custom
-release_id=mould_planning_3301_48089c4_$(date +%Y%m%d_%H%M%S)
+release_id=mould_planning_3302_$(date +%Y%m%d_%H%M%S)
 backup=/home/hongyi-jig-erp/deployment_backups/${release_id}
 extract=$(mktemp -d /home/hongyi-jig-erp/deployment_work/${release_id}_extract_XXXXXX)
 
@@ -21,7 +21,7 @@ test -s "$backup/${database}_pre_3301.dump"
 sha256sum "$backup/new_hongyijig_custom_pre_3301.tar.gz" "$backup/${database}_pre_3301.dump" > "$backup/SHA256SUMS"
 
 tar -xzf "$archive" -C "$extract"
-grep -q "19.0.3.30.1" "$extract/new_hongyijig_custom/__manifest__.py"
+grep -q "19.0.3.30.2" "$extract/new_hongyijig_custom/__manifest__.py"
 
 rollback() {
     status=$?
@@ -56,6 +56,6 @@ curl --fail --silent --show-error --max-time 20 http://127.0.0.1:8070/web/login 
 ! grep -E "ERROR|CRITICAL" "$backup/upgrade.log"
 
 trap - EXIT
-echo "MOULD_PLANNING_3301_STAGING_DEPLOYMENT=PASS"
+echo "MOULD_PLANNING_3302_STAGING_DEPLOYMENT=PASS"
 echo "BACKUP_DIR=$backup"
 cat "$backup/SHA256SUMS"
