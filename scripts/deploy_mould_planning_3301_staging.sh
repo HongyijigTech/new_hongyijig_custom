@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-archive=/tmp/new_hongyijig_custom_19.0.3.30.2_a02a0d9.tar.gz
-expected_sha=ad2c21ecc060d86d499feeeb58232576ca4a0f76c46bb0791548ec6f37c9b048
+archive=/tmp/new_hongyijig_custom_19.0.3.30.2_ea862f1.tar.gz
+expected_sha=4d3a6e09968346b4a8a1f08a29fef6c3a32c250d4c876e43eab96b0e13fc5a49
 database=HongyijigTech_10Feb
 target=/home/hongyi-jig-erp/odoo/staging_overrides/new_hongyijig_custom
 release_id=mould_planning_3302_$(date +%Y%m%d_%H%M%S)
