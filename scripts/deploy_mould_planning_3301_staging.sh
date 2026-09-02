@@ -52,7 +52,16 @@ mv "$extract/new_hongyijig_custom" "$target"
 sudo systemctl start odoo.service
 sudo systemctl is-active --quiet odoo.service
 test "$production_pid_before" = "$(systemctl show -p MainPID --value odoo-production.service)"
-curl --fail --silent --show-error --max-time 20 http://127.0.0.1:8070/web/login > "$backup/http_login.html"
+http_ready=0
+for _attempt in $(seq 1 20); do
+    if curl --fail --silent --show-error --max-time 10 \
+        http://127.0.0.1:8070/web/login > "$backup/http_login.html"; then
+        http_ready=1
+        break
+    fi
+    sleep 3
+done
+test "$http_ready" = 1
 ! grep -E "ERROR|CRITICAL" "$backup/upgrade.log"
 
 trap - EXIT
