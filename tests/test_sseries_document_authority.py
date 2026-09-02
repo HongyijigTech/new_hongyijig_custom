@@ -7,7 +7,7 @@ from odoo.tests.common import TransactionCase
 class TestSSeriesDocumentAuthority(TransactionCase):
     def test_activation_registry_is_fail_closed_and_complete(self):
         Template = self.env["hjig.sseries.document.template"]
-        self.assertEqual(Template.search_count([]), 24)
+        self.assertEqual(Template.search_count([]), 23)
 
         expected = {
             "S4-NDA": ("blocked", False, "REUSABLE_INTERNAL_UAT_USER_AND_LEGAL_APPROVAL_PENDING"),
@@ -19,7 +19,6 @@ class TestSSeriesDocumentAuthority(TransactionCase):
             "S5-PAYMENT-EVIDENCE": ("blocked", False, "MISSING_APPROVED_MASTER_FAIL_CLOSED"),
             "S5-TAX-INVOICE": ("blocked", False, "DEFERRED_UNTIL_TALLY_MAPPING_APPROVAL_AND_TESTING"),
             "S6-TEAM-HANDOVER": ("ready", True, "APPROVED_INTERNAL_UAT_GENERATOR_TEMPLATE_CUSTOMER_RELEASE_SEPARATE"),
-            "S6-CHINA-HANDOVER": ("template_state", False, "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING"),
             "S6-SUPPLIER-RFQ-EN": ("template_state", False, "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING"),
             "S6-SUPPLIER-RFQ-ZH": ("template_state", False, "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING"),
             "B0-HANDOVER-MANIFEST": ("template_state", False, "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING"),

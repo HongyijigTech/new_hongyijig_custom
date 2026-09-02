@@ -589,16 +589,40 @@ class HjigSSeriesCase(models.Model):
     company_id = fields.Many2one(
         "res.company", required=True, readonly=True, default=lambda self: self.env.company
     )
+    superseded_case_id = fields.Many2one(
+        "hjig.sseries.case", readonly=True, copy=False, ondelete="restrict", index=True,
+        string="Supersedes Case",
+    )
+    superseded_by_case_ids = fields.One2many(
+        "hjig.sseries.case", "superseded_case_id", readonly=True, string="Superseding Cases",
+    )
+    supersession_reason = fields.Selection(
+        [
+            ("legal_entity", "Legal entity change"),
+            ("programme_scope", "Programme scope change"),
+            ("commercial_identity", "Commercial identity change"),
+        ],
+        readonly=True,
+        copy=False,
+    )
+    reopen_count = fields.Integer(default=0, readonly=True, copy=False)
+    active_intake_project_key = fields.Char(readonly=True, copy=False, index=True)
 
-    _intake_project_case_unique = models.Constraint(
-        "UNIQUE(intake_project_id)",
-        "An intake project can have only one S-Series case.",
+    _active_intake_project_case_unique = models.Constraint(
+        "UNIQUE(active_intake_project_key) DEFERRABLE INITIALLY DEFERRED",
+        "An intake project can have only one active S-Series case.",
     )
 
     @api.model_create_multi
     def create(self, vals_list):
-        if not self.env.context.get("hjig_sseries_ingest"):
+        if not (self.env.context.get("hjig_sseries_ingest") or self.env.context.get("hjig_sseries_supersede")):
             raise UserError(_("S-Series cases must originate from governed intake or promotion actions."))
+        for vals in vals_list:
+            if not vals.get("active_intake_project_key"):
+                intake_project_id = vals.get("intake_project_id")
+                if not intake_project_id:
+                    raise ValidationError(_("An intake project is required for an S-Series case."))
+                vals["active_intake_project_key"] = "intake-project-%s" % intake_project_id
         return super().create(vals_list)
 
     def write(self, vals):
@@ -607,6 +631,11 @@ class HjigSSeriesCase(models.Model):
         }
         if frozen.intersection(vals):
             raise ValidationError(_("S-Series intake provenance cannot be changed."))
+        supersession_fields = {
+            "superseded_case_id", "supersession_reason", "active_intake_project_key",
+        }
+        if supersession_fields.intersection(vals) and not self.env.context.get("hjig_sseries_supersede"):
+            raise ValidationError(_("Use the governed S-Series supersession action."))
         if "stage" in vals and not self.env.context.get("hjig_sseries_workflow"):
             raise ValidationError(_("Use governed S-Series actions to change stage."))
         return super().write(vals)

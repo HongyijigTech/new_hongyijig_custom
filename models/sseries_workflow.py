@@ -15,6 +15,23 @@ PROGRAMME_ROUTES = [
     ("sourcebridge_only", "SourceBridge Only"),
 ]
 
+RISK_READINESS_SELECTION = [
+    ("not_assessed", "Not assessed"),
+    ("yes", "Yes"),
+    ("partial", "Partial"),
+    ("no", "No"),
+]
+
+PRICING_RISK_FIELDS = (
+    "sor_readiness",
+    "bop_readiness",
+    "engineering_design_challenges_readiness",
+    "supplier_selection_readiness",
+    "pre_tooling_capability_readiness",
+    "trial_feedbacks_capability_readiness",
+    "moulds_buyoff_capability_readiness",
+)
+
 ROUTE_PROPOSAL_TEMPLATE = {
     "launchguard_complete": "LGC-03",
     "launchguard_design": "LGD-03",
@@ -117,6 +134,8 @@ class HjigSSeriesDocumentTemplate(models.Model):
         return super().write(vals)
 
     def unlink(self):
+        if self.env.context.get("install_mode") or self.env.context.get("module") == "new_hongyijig_custom":
+            return super().unlink()
         raise UserError(_("Controlled S-Series template authority cannot be deleted."))
 
 
@@ -155,6 +174,7 @@ class HjigSSeriesArtifact(models.Model):
             ("approved", "Approved"),
             ("evidence_recorded", "External Evidence Recorded"),
             ("issued", "Issued"),
+            ("superseded", "Superseded by Reopen"),
             ("blocked", "Blocked"),
         ],
         required=True,
@@ -177,6 +197,9 @@ class HjigSSeriesArtifact(models.Model):
     approved_on = fields.Datetime(readonly=True, copy=False)
     issued_by_id = fields.Many2one("res.users", readonly=True, copy=False)
     issued_on = fields.Datetime(readonly=True, copy=False)
+    superseded_on = fields.Datetime(readonly=True, copy=False)
+    superseded_by_reopen_count = fields.Integer(readonly=True, copy=False)
+    superseded_reason = fields.Char(readonly=True, copy=False)
     issue_reference = fields.Char(
         copy=False, groups="new_hongyijig_custom.group_hjig_sseries_manager"
     )
@@ -299,6 +322,10 @@ class HjigSSeriesArtifact(models.Model):
             ):
                 raise ValidationError(_(
                     "Customer issue is blocked until the exact master visual and content gates are verified."
+                ))
+            if artifact.code == "S4-NDA" and not artifact.case_id.nda_legal_approved_for_issue:
+                raise ValidationError(_(
+                    "NDA legal approval for client-review issue is required before customer issue permission."
                 ))
             artifact.with_context(hjig_sseries_artifact_workflow=True).write({
                 "customer_issue_allowed": True,
@@ -489,6 +516,87 @@ class HjigSSeriesIntakeSubmission(models.Model):
         return super().write(vals)
 
 
+class HjigSSeriesLegalException(models.Model):
+    _name = "hjig.sseries.legal_exception"
+    _description = "S-Series Manual Legal Exception Control"
+    _inherit = ["mail.thread", "mail.activity.mixin"]
+    _order = "case_id, exception_type, id"
+
+    case_id = fields.Many2one("hjig.sseries.case", required=True, ondelete="cascade", index=True)
+    exception_type = fields.Selection(
+        [
+            ("introduced_party_notice", "Introduced Party Notice"),
+            ("direct_engagement_consent", "Direct Engagement Consent / Limited Release"),
+        ], required=True, readonly=True, index=True,
+    )
+    applicable = fields.Selection(
+        [("not_set", "Not set"), ("yes", "Yes"), ("no", "No")],
+        required=True, default="not_set", tracking=True,
+    )
+    legal_approved = fields.Boolean(tracking=True)
+    approved_document_id = fields.Many2one(
+        "ir.attachment", ondelete="restrict", copy=False, tracking=True,
+        string="Approved Final PDF",
+    )
+    approved_by_id = fields.Many2one("res.users", readonly=True, copy=False)
+    approved_date = fields.Datetime(readonly=True, copy=False)
+    approved_document_sha256 = fields.Char(readonly=True, copy=False)
+
+    _case_exception_type_unique = models.Constraint(
+        "UNIQUE(case_id, exception_type)",
+        "Each legal exception type can appear only once in an S-Series case.",
+    )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        if not self.env.context.get("hjig_sseries_legal_exception_autocreate"):
+            raise UserError(_("Legal exception controls are created only when an S-Series case is created."))
+        return super().create(vals_list)
+
+    def write(self, vals):
+        if {"case_id", "exception_type"}.intersection(vals):
+            raise ValidationError(_("Legal exception provenance is immutable."))
+        if set(vals) - {"message_follower_ids", "message_partner_ids", "activity_ids"} \
+                and self.filtered(lambda item: item.case_id.stage == "b0_released"):
+            raise ValidationError(_("Legal exception evidence is frozen after B0 release."))
+        if vals.get("approved_document_id") and self.filtered(
+                lambda item: item.legal_approved
+                and item.approved_document_id.id != vals["approved_document_id"]):
+            raise ValidationError(_(
+                "Approved legal exception evidence cannot be replaced while the approval stands. "
+                "Withdraw the legal approval first."
+            ))
+        if "approved_document_id" in vals and "legal_approved" not in vals \
+                and self.filtered("legal_approved"):
+            raise ValidationError(_(
+                "Approved legal exception evidence cannot be replaced while the approval stands. "
+                "Withdraw the legal approval first."
+            ))
+        if "legal_approved" in vals:
+            approved_document = self.env["ir.attachment"]
+            if vals["legal_approved"]:
+                approved_document = self.env["ir.attachment"].browse(
+                    vals["approved_document_id"]
+                    if "approved_document_id" in vals else self.approved_document_id.ids
+                )
+                if len(approved_document) != 1 or not approved_document.datas:
+                    raise ValidationError(_(
+                        "A final approved legal exception PDF is required for legal approval."
+                    ))
+            vals.update({
+                "approved_by_id": self.env.user.id if vals["legal_approved"] else False,
+                "approved_date": fields.Datetime.now() if vals["legal_approved"] else False,
+                "approved_document_sha256": (
+                    hashlib.sha256(base64.b64decode(approved_document.datas)).hexdigest()
+                    if vals["legal_approved"] else False
+                ),
+            })
+        return super().write(vals)
+
+    def unlink(self):
+        raise UserError(_("Legal exception controls cannot be deleted."))
+
+
 class HjigSSeriesCase(models.Model):
     _inherit = "hjig.sseries.case"
 
@@ -504,6 +612,49 @@ class HjigSSeriesCase(models.Model):
         [("low", "Low"), ("medium", "Medium"), ("high", "High")], tracking=True
     )
     governance_summary = fields.Text(tracking=True)
+    sor_readiness = fields.Selection(
+        RISK_READINESS_SELECTION,
+        default="not_assessed",
+        tracking=True,
+        string="SOR Readiness",
+    )
+    bop_readiness = fields.Selection(
+        RISK_READINESS_SELECTION,
+        default="not_assessed",
+        tracking=True,
+        string="BOP Readiness",
+    )
+    engineering_design_challenges_readiness = fields.Selection(
+        RISK_READINESS_SELECTION, default="not_assessed", tracking=True,
+        string="Engineering Design Challenges Readiness",
+    )
+    supplier_selection_readiness = fields.Selection(
+        RISK_READINESS_SELECTION, default="not_assessed", tracking=True,
+        string="Supplier Selection Readiness",
+    )
+    pre_tooling_capability_readiness = fields.Selection(
+        RISK_READINESS_SELECTION, default="not_assessed", tracking=True,
+        string="Pre Tooling Capability Readiness",
+    )
+    trial_feedbacks_capability_readiness = fields.Selection(
+        RISK_READINESS_SELECTION, default="not_assessed", tracking=True,
+        string="Trial Feedbacks Capability Readiness",
+    )
+    moulds_buyoff_capability_readiness = fields.Selection(
+        RISK_READINESS_SELECTION, default="not_assessed", tracking=True,
+        string="Moulds Buy-off Capability Readiness",
+    )
+    sor_risk_points = fields.Integer(compute="_compute_pricing_risk", readonly=True)
+    bop_risk_points = fields.Integer(compute="_compute_pricing_risk", readonly=True)
+    pricing_risk_points = fields.Integer(compute="_compute_pricing_risk", readonly=True)
+    pricing_risk_multiplier = fields.Float(
+        compute="_compute_pricing_risk", readonly=True, digits=(4, 2),
+        string="Pricing Risk Multiplier",
+    )
+    risk_adjusted_governance_fee = fields.Monetary(
+        compute="_compute_risk_adjusted_governance_fee", readonly=True,
+        string="Risk-Adjusted Governance Fee",
+    )
     governance_approved_by_id = fields.Many2one("res.users", readonly=True, copy=False)
     governance_approved_on = fields.Datetime(readonly=True, copy=False)
     approved_governance_fee = fields.Monetary(
@@ -529,6 +680,15 @@ class HjigSSeriesCase(models.Model):
     nda_effective_date = fields.Date(tracking=True)
     nda_customer_signed = fields.Boolean(tracking=True)
     nda_hongyi_signed = fields.Boolean(tracking=True)
+    nda_legal_approved_for_issue = fields.Boolean(
+        default=False, tracking=True, groups="new_hongyijig_custom.group_hjig_sseries_manager"
+    )
+    nda_redline_round = fields.Integer(
+        default=0, tracking=True, groups="new_hongyijig_custom.group_hjig_sseries_manager"
+    )
+    nda_legal_approved_for_signature = fields.Boolean(
+        default=False, tracking=True, groups="new_hongyijig_custom.group_hjig_sseries_manager"
+    )
     acceptance_basis = fields.Selection(
         [("signed_proposal", "Signed Proposal"), ("purchase_order", "Purchase Order")], tracking=True
     )
@@ -555,6 +715,7 @@ class HjigSSeriesCase(models.Model):
     handover_owner_id = fields.Many2one("res.users", domain="[('share', '=', False)]", tracking=True)
     handover_accepted = fields.Boolean(tracking=True)
     artifact_ids = fields.One2many("hjig.sseries.artifact", "case_id", readonly=True)
+    legal_exception_ids = fields.One2many("hjig.sseries.legal_exception", "case_id", readonly=True)
     b0_manifest_id = fields.Many2one("hjig.sseries.b0.handover", readonly=True, copy=False)
     portfolio_guard_id = fields.Many2one(
         "hjig.portfolio.guard", readonly=True, copy=False, ondelete="restrict"
@@ -567,6 +728,43 @@ class HjigSSeriesCase(models.Model):
     currency_id = fields.Many2one(
         "res.currency", related="company_id.currency_id", store=True, readonly=True
     )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        cases = super().create(vals_list)
+        self.env["hjig.sseries.legal_exception"].sudo().with_context(
+            hjig_sseries_legal_exception_autocreate=True
+        ).create([
+            {"case_id": case.id, "exception_type": exception_type}
+            for case in cases
+            for exception_type in ("introduced_party_notice", "direct_engagement_consent")
+        ])
+        return cases
+
+    @api.depends(*PRICING_RISK_FIELDS)
+    def _compute_pricing_risk(self):
+        # Exact Prog. Costing / FINAL_FULL D14:D20 logic: any value other than
+        # YES or PARTIAL, including blank/not assessed, contributes two points.
+        point_map = {"yes": 0, "partial": 1, "no": 2, "not_assessed": 2}
+        for case in self:
+            case.sor_risk_points = point_map.get(case.sor_readiness, 0)
+            case.bop_risk_points = point_map.get(case.bop_readiness, 0)
+            case.pricing_risk_points = sum(
+                point_map.get(case[field_name], 2) for field_name in PRICING_RISK_FIELDS
+            )
+            if case.pricing_risk_points <= 2:
+                case.pricing_risk_multiplier = 1.0
+            elif case.pricing_risk_points <= 7:
+                case.pricing_risk_multiplier = 1.2
+            else:
+                case.pricing_risk_multiplier = 1.4
+
+    @api.depends("approved_governance_fee", "pricing_risk_multiplier")
+    def _compute_risk_adjusted_governance_fee(self):
+        for case in self:
+            case.risk_adjusted_governance_fee = (
+                case.approved_governance_fee * case.pricing_risk_multiplier
+            )
 
     def _assert_manager(self):
         if not self.env.user.has_group("new_hongyijig_custom.group_hjig_sseries_manager"):
@@ -600,7 +798,24 @@ class HjigSSeriesCase(models.Model):
             ) % authority.display_name)
         return authority
 
+    def _assert_nda_signature_legal_gate(self):
+        for case in self.filtered(lambda item: item.nda_required and item.nda_redline_round > 0):
+            if not case.nda_legal_approved_for_signature:
+                raise ValidationError(_(
+                    "NDA legal re-approval for signature is required after customer redlines."
+                ))
+        return True
+
     def write(self, vals):
+        if "nda_redline_round" in vals:
+            requested_round = vals["nda_redline_round"]
+            if not isinstance(requested_round, int) or isinstance(requested_round, bool):
+                raise ValidationError(_("NDA redline round must be a whole number."))
+            for case in self:
+                if requested_round < case.nda_redline_round:
+                    raise ValidationError(_("NDA redline round cannot be reduced."))
+                if requested_round > case.nda_redline_round:
+                    vals["nda_legal_approved_for_signature"] = False
         if not self.env.context.get("hjig_sseries_workflow"):
             workflow_fields = {
                 "internal_review_approved_by_id", "internal_review_approved_on",
@@ -612,11 +827,18 @@ class HjigSSeriesCase(models.Model):
             if workflow_fields.intersection(vals):
                 raise ValidationError(_("Governed workflow evidence can be written only by S-Series actions."))
             review_fields = {"programme_route", "scope_confirmed", "internal_review_summary", "reviewer_id"}
-            governance_fields = {"governance_decision", "risk_level", "governance_summary"}
+            governance_fields = {
+                "governance_decision", "risk_level", "governance_summary", "sor_readiness",
+                "bop_readiness", "engineering_design_challenges_readiness",
+                "supplier_selection_readiness", "pre_tooling_capability_readiness",
+                "trial_feedbacks_capability_readiness", "moulds_buyoff_capability_readiness",
+            }
             commercial_fields = {"approved_governance_fee", "target_margin", "payment_terms_summary"}
             acceptance_fields = {
                 "nda_required", "nda_completed", "nda_reference", "nda_effective_date",
                 "nda_customer_signed", "nda_hongyi_signed",
+                "nda_legal_approved_for_issue", "nda_redline_round",
+                "nda_legal_approved_for_signature",
                 "acceptance_basis", "acceptance_reference", "acceptance_date",
                 "customer_signature_received", "hongyi_countersigned", "purchase_order_received",
             }
@@ -640,8 +862,9 @@ class HjigSSeriesCase(models.Model):
                     raise ValidationError(_("Finance and payment evidence is editable only during activation."))
                 if case.stage not in ("s5_sourcing", "s6_handover") and handover_fields.intersection(vals):
                     raise ValidationError(_("Team handover fields are editable only before B0 release."))
-                if case.stage == "b0_released" and not self.env.context.get(
-                    "hjig_crm_spine_reconcile"
+                if case.stage == "b0_released" and not (
+                    self.env.context.get("hjig_crm_spine_reconcile")
+                    or self.env.context.get("hjig_sseries_supersede")
                 ) and set(vals) - {
                     "message_follower_ids", "message_partner_ids", "activity_ids"
                 }:
@@ -668,13 +891,19 @@ class HjigSSeriesCase(models.Model):
             missing_codes = set(codes) - set(templates.mapped("code"))
             if missing_codes:
                 raise ValidationError(_("Controlled document authority is missing: %s") % ", ".join(sorted(missing_codes)))
-            existing = set(case.artifact_ids.mapped("template_id").ids)
+            active_template_ids = set(
+                case.artifact_ids.filtered(lambda artifact: artifact.state != "superseded").mapped("template_id").ids
+            )
             for template in templates.sorted(lambda item: (item.stage, item.code)):
-                if template.id not in existing:
+                if template.id not in active_template_ids:
+                    prior_versions = case.artifact_ids.filtered(
+                        lambda artifact, target=template: artifact.template_id == target
+                    ).mapped("version")
                     Artifact.create({
                         "name": "%s / %s" % (case.name, template.code),
                         "case_id": case.id,
                         "template_id": template.id,
+                        "version": max(prior_versions or [0]) + 1,
                     })
         return True
 
@@ -742,6 +971,86 @@ class HjigSSeriesCase(models.Model):
             case.with_context(hjig_sseries_workflow=True).write(common)
         return True
 
+    def action_reopen_case(self):
+        """Reopen the same rejected case and retain its tracked record history."""
+        self._assert_manager()
+        for case in self:
+            if case.stage != "cancelled" or case.governance_decision != "no_go":
+                raise UserError(_("Only a NO-GO cancelled case can be reopened."))
+            if case.superseded_by_case_ids:
+                raise ValidationError(_("A superseded case cannot reopen; use its active successor."))
+            affected_artifacts = case.artifact_ids.filtered(
+                lambda artifact: artifact.stage not in ("s0_received", "s1_review")
+                and artifact.state != "superseded"
+            )
+            affected_artifacts.with_context(hjig_sseries_artifact_workflow=True).write({
+                "state": "superseded",
+                "customer_issue_allowed": False,
+                "supplier_issue_allowed": False,
+                "superseded_on": fields.Datetime.now(),
+                "superseded_by_reopen_count": case.reopen_count + 1,
+                "superseded_reason": _("Case reopened after NO-GO governance decision"),
+            })
+            case.with_context(hjig_sseries_workflow=True).write({
+                "stage": "s1_review",
+                "governance_decision": False,
+                "risk_level": False,
+                "governance_summary": False,
+                "governance_approved_by_id": False,
+                "governance_approved_on": False,
+                "reopen_count": case.reopen_count + 1,
+                "next_action": _("Reconfirm the changed facts and record a new governance decision"),
+                "exception_state": "attention",
+                "blocker_summary": False,
+            })
+        return True
+
+    def action_create_superseding_case(self, material_change_type):
+        """Create a new case only for one of the three locked material-change types."""
+        self._assert_manager()
+        allowed = {"legal_entity", "programme_scope", "commercial_identity"}
+        if material_change_type not in allowed:
+            raise ValidationError(_(
+                "A superseding case requires legal entity, programme scope or commercial identity change."
+            ))
+        # Keep ordinary model create access denied.  The only privileged create
+        # is this single call, after both manager authority and the locked
+        # material-change allow-list have been validated above.
+        Case = self.env["hjig.sseries.case"].sudo().with_context(hjig_sseries_supersede=True)
+        successors = self.env["hjig.sseries.case"]
+        for case in self:
+            if case.superseded_by_case_ids:
+                raise ValidationError(_("This case already has a superseding case."))
+            # Release the active-key slot inside this transaction before the successor
+            # is created.  A failure rolls the transaction back, leaving the original intact.
+            case.with_context(
+                hjig_sseries_workflow=True, hjig_sseries_supersede=True
+            ).write({
+                "stage": "cancelled",
+                "active_intake_project_key": False,
+                "exception_state": "attention",
+            })
+            vals = {
+                "name": self.env["ir.sequence"].next_by_code("hjig.sseries.case") or "New",
+                "submission_id": case.submission_id.id,
+                "intake_project_id": case.intake_project_id.id,
+                "customer_name": case.customer_name,
+                "project_name": case.project_name,
+                "company_id": case.company_id.id,
+                "superseded_case_id": case.id,
+                "supersession_reason": material_change_type,
+                "stage": "s0_received",
+                "next_action": _("Assign owner and confirm the material change in internal review"),
+            }
+            successor = Case.create(vals)
+            case.with_context(
+                hjig_sseries_workflow=True, hjig_sseries_supersede=True
+            ).write({
+                "next_action": _("Superseded by %s") % successor.name,
+            })
+            successors |= successor
+        return successors
+
     def action_prepare_quotation(self):
         self._assert_manager()
         product = self.env.ref("new_hongyijig_custom.product_hjig_sseries_fee").product_variant_id
@@ -769,7 +1078,7 @@ class HjigSSeriesCase(models.Model):
                 case.with_context(hjig_sseries_workflow=True).write({
                     "proposal_number": self.env["ir.sequence"].next_by_code(sequence),
                 })
-            portfolio_total = sum(commercial_cases.mapped("approved_governance_fee"))
+            portfolio_total = sum(commercial_cases.mapped("risk_adjusted_governance_fee"))
             umbrella_snapshot = {
                 "commercial_authority_case": case.name,
                 "proposal_number": case.proposal_number,
@@ -783,7 +1092,19 @@ class HjigSSeriesCase(models.Model):
                     "client_project_id": child.client_project_id,
                     "project_name": child.project_name,
                     "programme_route": child.programme_route,
-                    "approved_governance_fee": child.approved_governance_fee,
+                "approved_governance_fee": child.approved_governance_fee,
+                "risk_adjusted_governance_fee": child.risk_adjusted_governance_fee,
+                "sor_readiness": child.sor_readiness,
+                "bop_readiness": child.bop_readiness,
+                "sor_risk_points": child.sor_risk_points,
+                "bop_risk_points": child.bop_risk_points,
+                "engineering_design_challenges_readiness": child.engineering_design_challenges_readiness,
+                "supplier_selection_readiness": child.supplier_selection_readiness,
+                "pre_tooling_capability_readiness": child.pre_tooling_capability_readiness,
+                "trial_feedbacks_capability_readiness": child.trial_feedbacks_capability_readiness,
+                "moulds_buyoff_capability_readiness": child.moulds_buyoff_capability_readiness,
+                "pricing_risk_points": child.pricing_risk_points,
+                "pricing_risk_multiplier": child.pricing_risk_multiplier,
                     "target_margin": child.target_margin,
                     "sourcebridge_required": child.sourcebridge_required,
                 } for child in commercial_cases],
@@ -807,7 +1128,7 @@ class HjigSSeriesCase(models.Model):
                             dict(PROGRAMME_ROUTES).get(child.programme_route), child.project_name
                         ),
                         "product_uom_qty": 1.0,
-                        "price_unit": child.approved_governance_fee,
+                        "price_unit": child.risk_adjusted_governance_fee,
                     })
             else:
                 order = case.sale_order_id
@@ -819,6 +1140,8 @@ class HjigSSeriesCase(models.Model):
                     child_case=child.name,
                     programme_route=child.programme_route,
                     approved_governance_fee=child.approved_governance_fee,
+                    risk_adjusted_governance_fee=child.risk_adjusted_governance_fee,
+                    pricing_risk_multiplier=child.pricing_risk_multiplier,
                     target_margin=child.target_margin,
                     sourcebridge_required=child.sourcebridge_required,
                 )
@@ -872,6 +1195,7 @@ class HjigSSeriesCase(models.Model):
                     raise ValidationError(_(
                         "The NDA needs both customer signature and Hongyi signature evidence."
                     ))
+                nda_case._assert_nda_signature_legal_gate()
                 nda_artifact = nda_case.artifact_ids.filtered(
                     lambda item: item.code == "S4-NDA"
                 )[:1]
@@ -961,7 +1285,7 @@ class HjigSSeriesCase(models.Model):
                 next_stage = "s5_sourcing" if child.sourcebridge_required else "s6_handover"
                 if child.sourcebridge_required:
                     child._ensure_artifact_codes([
-                        "S6-CHINA-HANDOVER", "S6-SUPPLIER-RFQ-EN", "S6-SUPPLIER-RFQ-ZH",
+                        "S6-SUPPLIER-RFQ-EN", "S6-SUPPLIER-RFQ-ZH",
                     ])
                 child.with_context(hjig_sseries_workflow=True).write({
                     "stage": next_stage,
@@ -979,7 +1303,7 @@ class HjigSSeriesCase(models.Model):
 
     def action_complete_sourcing_pack(self):
         self._assert_manager()
-        required = {"S6-CHINA-HANDOVER", "S6-SUPPLIER-RFQ-EN", "S6-SUPPLIER-RFQ-ZH"}
+        required = {"S6-SUPPLIER-RFQ-EN", "S6-SUPPLIER-RFQ-ZH"}
         for case in self:
             if case.stage != "s5_sourcing" or not case.sourcebridge_required:
                 raise UserError(_("A conditional SourceBridge sourcing case is required."))
@@ -1209,6 +1533,27 @@ class HjigSSeriesCase(models.Model):
                 raise ValidationError(_("Approved Team Handover, responsible owner and acceptance are required."))
             if not case.order_punch_approved or not case.payment_received or not case.sale_order_id:
                 raise ValidationError(_("Commercial acceptance, Order Punch and payment gates are incomplete."))
+            unassessed_exceptions = case.legal_exception_ids.filtered(
+                lambda item: item.applicable == "not_set"
+            )
+            approval_missing_exceptions = case.legal_exception_ids.filtered(
+                lambda item: item.applicable == "yes" and (
+                    not item.legal_approved or not item.approved_document_id
+                )
+            )
+            if unassessed_exceptions or approval_missing_exceptions:
+                blockers = []
+                if unassessed_exceptions:
+                    blockers.append(_("not assessed: %s") % ", ".join(
+                        unassessed_exceptions.mapped("exception_type")
+                    ))
+                if approval_missing_exceptions:
+                    blockers.append(_("approved evidence missing: %s") % ", ".join(
+                        approval_missing_exceptions.mapped("exception_type")
+                    ))
+                raise ValidationError(_(
+                    "B0 release is blocked by unresolved legal exception controls: %s"
+                ) % "; ".join(blockers))
             case._ensure_artifact_codes(["B0-HANDOVER-MANIFEST"])
             case._activate_execution_handover()
             manifest = self.env["hjig.sseries.b0.handover"].with_context(
@@ -1320,3 +1665,23 @@ class HjigSSeriesB0Handover(models.Model):
 
     def unlink(self):
         raise UserError(_("A released B0 handover manifest cannot be deleted."))
+
+
+class HjigSSeriesApprovedLegalEvidenceAttachment(models.Model):
+    _inherit = "ir.attachment"
+
+    def write(self, vals):
+        content_fields = {
+            "datas", "raw", "db_datas", "store_fname", "checksum", "mimetype", "name",
+        }
+        if content_fields.intersection(vals) and self.env[
+                "hjig.sseries.legal_exception"
+        ].sudo().search([
+            ("legal_approved", "=", True),
+            ("approved_document_id", "in", self.ids),
+        ], limit=1):
+            raise ValidationError(_(
+                "Approved legal exception evidence content cannot be modified while the approval "
+                "stands. Withdraw the legal approval first."
+            ))
+        return super().write(vals)

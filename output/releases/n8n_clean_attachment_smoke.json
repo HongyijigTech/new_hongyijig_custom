@@ -1,0 +1,10 @@
+{
+  "action": "UPLOAD_SOURCEBRIDGE_ATTACHMENT",
+  "client_submission_id": "PB-N8NSMOKE-20260831B",
+  "client_project_id": "",
+  "component_index": 1,
+  "attachment_type": "REFERENCE_IMAGE",
+  "file_name": "n8n-clean-smoke.png",
+  "mime_type": "image/png",
+  "file_base64": "iVBORw0KGgpISklHIGNsZWFuIHB1Ymxpc2hlZCBuOG4gc21va2U="
+}

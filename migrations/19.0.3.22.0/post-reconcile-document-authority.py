@@ -92,16 +92,6 @@ def migrate(cr, version):
             "template_content_qa_verified": False,
             "notes": "Candidate only; exact visual-parent approval and rendered QA remain pending.",
         },
-        "S6-CHINA-HANDOVER": {
-            "authority_status": "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING",
-            "template_type": "GOOGLE_DOCS_TEMPLATE",
-            "expected_page_count": 2,
-            "rendering_status": "template_state",
-            "approved_for_internal_uat_generation": False,
-            "template_visual_qa_verified": False,
-            "template_content_qa_verified": False,
-            "notes": "Restricted internal sourcing candidate; UAT boundary, access control, visual parent and Helvetica QA remain pending.",
-        },
         "S6-SUPPLIER-RFQ-EN": {
             "authority_status": "EXACT_NATIVE_CANDIDATE_USER_APPROVAL_PENDING",
             "template_type": "GOOGLE_DOCS_TEMPLATE",
@@ -143,4 +133,3 @@ def migrate(cr, version):
                 "customer_issue_allowed": False,
                 "supplier_issue_allowed": False,
             })
-

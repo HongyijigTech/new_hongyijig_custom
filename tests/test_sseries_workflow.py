@@ -1,4 +1,5 @@
 import base64
+import hashlib
 from copy import deepcopy
 
 from odoo.exceptions import UserError, ValidationError
@@ -249,7 +250,7 @@ class TestSSeriesWorkflow(TransactionCase):
         })
         case.with_user(self.manager).action_prepare_quotation()
         self.assertTrue(case.proposal_number.startswith("HJIG-LGC-"))
-        self.assertEqual(case.sale_order_id.amount_untaxed, 350000)
+        self.assertEqual(case.sale_order_id.amount_untaxed, 490000)
         self.assertEqual(case.pricing_snapshot_json["approved_governance_fee"], 350000)
 
         self._prepare_and_approve(proposal, "lgc-proposal")
@@ -308,8 +309,125 @@ class TestSSeriesWorkflow(TransactionCase):
             "handover_owner_id": self.reviewer.id,
             "handover_accepted": True,
         })
+        with self.assertRaisesRegex(ValidationError, "not assessed"):
+            case.with_user(self.manager).action_release_b0()
+        exception = case.legal_exception_ids.filtered(
+            lambda item: item.exception_type == "introduced_party_notice"
+        )
+        exception.with_user(self.manager).write({"applicable": "yes"})
+        with self.assertRaisesRegex(ValidationError, "introduced_party_notice"):
+            case.with_user(self.manager).action_release_b0()
+        attachment = self.env["ir.attachment"].create({
+            "name": "approved-introduced-party-notice.pdf",
+            "datas": base64.b64encode(self._pdf("introduced-party-notice")),
+            "mimetype": "application/pdf",
+            "res_model": exception._name,
+            "res_id": exception.id,
+        })
+        exception.with_user(self.manager).write({
+            "legal_approved": True,
+            "approved_document_id": attachment.id,
+        })
+        approved_document_id = exception.approved_document_id.id
+        approved_document_sha256 = exception.approved_document_sha256
+        replacement_attachment = self.env["ir.attachment"].create({
+            "name": "replacement-introduced-party-notice.pdf",
+            "datas": base64.b64encode(self._pdf("replacement-introduced-party-notice")),
+            "mimetype": "application/pdf",
+            "res_model": exception._name,
+            "res_id": exception.id,
+        })
+        with self.assertRaisesRegex(ValidationError, "while the approval stands"):
+            exception.with_user(self.manager).write({
+                "approved_document_id": replacement_attachment.id,
+            })
+        self.assertEqual(exception.approved_document_id.id, approved_document_id)
+        self.assertEqual(exception.approved_document_sha256, approved_document_sha256)
+        with self.assertRaisesRegex(ValidationError, "while the approval stands"):
+            exception.with_user(self.manager).write({
+                "legal_approved": True,
+                "approved_document_id": replacement_attachment.id,
+            })
+        self.assertEqual(exception.approved_document_id.id, approved_document_id)
+        self.assertEqual(exception.approved_document_sha256, approved_document_sha256)
+        with self.assertRaisesRegex(ValidationError, "while the approval stands"):
+            exception.with_user(self.manager).write({
+                "legal_approved": False,
+                "approved_document_id": replacement_attachment.id,
+            })
+        self.assertEqual(exception.approved_document_id.id, approved_document_id)
+        self.assertEqual(exception.approved_document_sha256, approved_document_sha256)
+        with self.assertRaisesRegex(ValidationError, "final approved legal exception PDF"):
+            exception.with_user(self.manager).write({
+                "legal_approved": True,
+                "approved_document_id": False,
+            })
+        unrelated_attachment = self.env["ir.attachment"].create({
+            "name": "unrelated-attachment.pdf",
+            "datas": base64.b64encode(self._pdf("unrelated-original")),
+            "mimetype": "application/pdf",
+        })
+        unrelated_attachment.sudo().write({
+            "datas": base64.b64encode(self._pdf("unrelated-updated")),
+        })
+        self.assertEqual(
+            base64.b64decode(unrelated_attachment.datas), self._pdf("unrelated-updated")
+        )
+        exception.with_user(self.manager).write({"legal_approved": False})
+        self.assertFalse(exception.approved_document_sha256)
+        exception.approved_document_id.sudo().write({
+            "datas": base64.b64encode(self._pdf("substituted-introduced-party-notice")),
+        })
+        exception.approved_document_id.sudo().write({
+            "datas": base64.b64encode(self._pdf("introduced-party-notice")),
+        })
+        exception.with_user(self.manager).write({"legal_approved": True})
+        self.assertEqual(
+            exception.approved_document_sha256,
+            hashlib.sha256(self._pdf("introduced-party-notice")).hexdigest(),
+        )
+        non_applicable_exception = case.legal_exception_ids.filtered(
+            lambda item: item.exception_type == "direct_engagement_consent"
+        )
+        self.assertEqual(non_applicable_exception.applicable, "not_set")
+        self.assertFalse(non_applicable_exception.legal_approved)
+        self.assertFalse(non_applicable_exception.approved_document_id)
+        non_applicable_exception.with_user(self.manager).write({"applicable": "no"})
+        self.assertEqual(non_applicable_exception.applicable, "no")
+        self.assertFalse(non_applicable_exception.legal_approved)
+        self.assertFalse(non_applicable_exception.approved_document_id)
         case.with_user(self.manager).action_release_b0()
         self.assertEqual(case.stage, "b0_released")
+        with self.assertRaisesRegex(ValidationError, "frozen after B0 release"):
+            exception.with_user(self.manager).write({"applicable": "not_set"})
+        self.assertEqual(exception.applicable, "yes")
+        self.assertTrue(exception.legal_approved)
+        exception.with_user(self.manager).write({"activity_ids": []})
+        self.assertEqual(exception.applicable, "yes")
+        self.assertTrue(exception.legal_approved)
+        with self.assertRaisesRegex(ValidationError, "frozen after B0 release"):
+            exception.with_user(self.manager).write({
+                "activity_ids": [],
+                "applicable": "not_set",
+            })
+        self.assertEqual(exception.applicable, "yes")
+        with self.assertRaises(UserError):
+            exception.sudo().unlink()
+        self.assertTrue(exception.exists())
+        self.assertEqual(
+            exception.approved_document_sha256,
+            hashlib.sha256(self._pdf("introduced-party-notice")).hexdigest(),
+        )
+        with self.assertRaisesRegex(ValidationError, "content cannot be modified"):
+            exception.approved_document_id.sudo().write({
+                "datas": base64.b64encode(self._pdf("substituted-introduced-party-notice")),
+            })
+        self.assertEqual(
+            exception.approved_document_sha256,
+            hashlib.sha256(
+                base64.b64decode(exception.approved_document_id.datas)
+            ).hexdigest(),
+        )
         self.assertTrue(case.project_id.x_project_code.startswith("HJ-LGC-"))
         self.assertEqual(case.programme_run_id.sale_order_id, case.sale_order_id)
         self.assertEqual(case.b0_manifest_id.project_id, case.project_id)
@@ -447,6 +565,55 @@ class TestSSeriesWorkflow(TransactionCase):
         self.assertEqual(nda_artifact.state, "required")
         self.assertFalse(nda_artifact.customer_issue_allowed)
 
+    def test_nda_redline_round_resets_signature_legal_approval(self):
+        case = self.Intake.ingest_payload(self._payload("NDA-REDLINE-0001"))["submission"].case_ids
+        case.with_context(hjig_sseries_workflow=True).write({"stage": "s3_proposal"})
+        self.assertEqual(
+            set(case.legal_exception_ids.mapped("exception_type")),
+            {"introduced_party_notice", "direct_engagement_consent"},
+        )
+        case.with_user(self.manager).write({"nda_redline_round": 1})
+        self.assertFalse(case.nda_legal_approved_for_signature)
+        case.with_user(self.manager).write({"nda_legal_approved_for_signature": True})
+        self.assertTrue(case.nda_legal_approved_for_signature)
+        case.with_user(self.manager).write({"nda_redline_round": 2})
+        self.assertFalse(case.nda_legal_approved_for_signature)
+        with self.assertRaisesRegex(ValidationError, "cannot be reduced"):
+            case.with_user(self.manager).write({"nda_redline_round": 1})
+
+    def test_nda_issue_and_repeat_redline_legal_gates(self):
+        case = self.Intake.ingest_payload(self._payload("NDA-LEGAL-0001"))["submission"].case_ids
+        case.with_context(hjig_sseries_workflow=True).write({"stage": "s3_proposal"})
+        template = self.env.ref("new_hongyijig_custom.sseries_template_s4_nda")
+        template.with_context(install_mode=True).write({
+            "rendering_status": "ready",
+            "template_visual_qa_verified": True,
+            "template_content_qa_verified": True,
+        })
+        artifact = self.env["hjig.sseries.artifact"].with_context(
+            hjig_sseries_workflow=True
+        ).create({
+            "name": "%s / S4-NDA" % case.name,
+            "case_id": case.id,
+            "template_id": template.id,
+        })
+        self._prepare_and_approve(artifact, "nda-legal-gate")
+        artifact.with_user(self.manager).user_final_approval = True
+        with self.assertRaisesRegex(ValidationError, "legal approval for client-review issue"):
+            artifact.with_user(self.manager).action_allow_customer_issue()
+        case.with_user(self.manager).write({"nda_legal_approved_for_issue": True})
+        artifact.with_user(self.manager).action_allow_customer_issue()
+        self.assertTrue(artifact.customer_issue_allowed)
+
+        case.with_user(self.manager).write({"nda_required": True, "nda_redline_round": 1})
+        with self.assertRaisesRegex(ValidationError, "legal re-approval for signature"):
+            case._assert_nda_signature_legal_gate()
+        case.with_user(self.manager).write({"nda_legal_approved_for_signature": True})
+        case._assert_nda_signature_legal_gate()
+        case.with_user(self.manager).write({"nda_redline_round": 2})
+        with self.assertRaisesRegex(ValidationError, "legal re-approval for signature"):
+            case._assert_nda_signature_legal_gate()
+
     def test_pending_nda_candidate_cannot_use_odoo_renderer(self):
         submission = self.Intake.ingest_payload(self._payload("WORKFLOW-AUTHORITY-0001"))["submission"]
         case = submission.case_ids
@@ -519,7 +686,7 @@ class TestSSeriesWorkflow(TransactionCase):
         })
         case.with_user(self.manager).action_complete_activation()
         self.assertEqual(case.stage, "s5_sourcing")
-        for code in ("S6-CHINA-HANDOVER", "S6-SUPPLIER-RFQ-EN", "S6-SUPPLIER-RFQ-ZH"):
+        for code in ("S6-SUPPLIER-RFQ-EN", "S6-SUPPLIER-RFQ-ZH"):
             self._generate_and_approve(case.artifact_ids.filtered(lambda item, c=code: item.code == c))
         case.with_user(self.manager).action_complete_sourcing_pack()
         self._generate_and_approve(
@@ -541,6 +708,97 @@ class TestSSeriesWorkflow(TransactionCase):
         self.assertEqual(engagement.sale_order_id, case.sale_order_id)
         self.assertEqual(len(engagement.component_ids), 2)
         self.assertEqual(case.b0_manifest_id.sourcebridge_engagement_id, engagement)
+
+    def test_sor_bop_risk_changes_pricing_only_and_never_blocks_governance(self):
+        case = self.Intake.ingest_payload(self._payload("RISK-0001"))["submission"].case_ids
+        case.action_start_internal_review()
+        case.write({
+            "reviewer_id": self.reviewer.id,
+            "programme_route": "launchguard_complete",
+            "scope_confirmed": True,
+            "internal_review_summary": "Scope confirmed; SOR and BOP remain a pricing-risk input.",
+        })
+        case.with_user(self.manager).action_approve_internal_review()
+        self.assertEqual(case.pricing_risk_points, 14)
+        self.assertEqual(case.pricing_risk_multiplier, 1.4)
+        case.write({
+            "governance_decision": "go",
+            "risk_level": "high",
+            "governance_summary": "GO; SOR and BOP availability does not block this case.",
+            "sor_readiness": "no",
+            "bop_readiness": "partial",
+            "engineering_design_challenges_readiness": "yes",
+            "supplier_selection_readiness": "yes",
+            "pre_tooling_capability_readiness": "yes",
+            "trial_feedbacks_capability_readiness": "yes",
+            "moulds_buyoff_capability_readiness": "yes",
+        })
+        self.assertEqual(case.sor_risk_points, 2)
+        self.assertEqual(case.bop_risk_points, 1)
+        self.assertEqual(case.pricing_risk_points, 3)
+        self.assertEqual(case.pricing_risk_multiplier, 1.2)
+        case.with_user(self.manager).action_approve_governance()
+        self.assertEqual(case.stage, "s3_proposal")
+        case.with_user(self.manager).write({
+            "approved_governance_fee": 100000,
+            "target_margin": 0.35,
+            "payment_terms_summary": "Controlled payment terms.",
+        })
+        case.with_user(self.manager).action_prepare_quotation()
+        self.assertEqual(case.risk_adjusted_governance_fee, 120000)
+        self.assertEqual(case.sale_order_id.amount_untaxed, 120000)
+        self.assertEqual(case.pricing_snapshot_json["pricing_risk_multiplier"], 1.2)
+
+    def test_no_go_reopens_same_case_and_material_change_creates_successor(self):
+        case = self.Intake.ingest_payload(self._payload("REOPEN-0001"))["submission"].case_ids
+        case.action_start_internal_review()
+        case.write({
+            "reviewer_id": self.reviewer.id,
+            "programme_route": "launchguard_complete",
+            "scope_confirmed": True,
+            "internal_review_summary": "Initial review complete.",
+        })
+        case.with_user(self.manager).action_approve_internal_review()
+        case.write({
+            "governance_decision": "no_go",
+            "risk_level": "high",
+            "governance_summary": "Rejected pending clarification.",
+        })
+        case.with_user(self.manager).action_approve_governance()
+        self.assertEqual(case.stage, "cancelled")
+        governance_artifact = case.artifact_ids.filtered(
+            lambda item: item.code == "S2-GOVERNANCE"
+        )
+        self.assertEqual(governance_artifact.state, "required")
+        case.with_user(self.manager).action_reopen_case()
+        self.assertEqual(case.stage, "s1_review")
+        self.assertEqual(case.reopen_count, 1)
+        self.assertFalse(case.governance_decision)
+        self.assertEqual(governance_artifact.state, "superseded")
+        self.assertFalse(governance_artifact.customer_issue_allowed)
+        self.assertFalse(governance_artifact.supplier_issue_allowed)
+        self.assertEqual(governance_artifact.superseded_by_reopen_count, 1)
+
+        case.with_user(self.manager).action_approve_internal_review()
+        replacement = case.artifact_ids.filtered(
+            lambda item: item.code == "S2-GOVERNANCE" and item.state != "superseded"
+        )
+        self.assertEqual(replacement.version, 2)
+
+        successor = case.with_user(self.manager).action_create_superseding_case("commercial_identity")
+        self.assertEqual(len(successor), 1)
+        self.assertEqual(successor.superseded_case_id, case)
+        self.assertEqual(successor.supersession_reason, "commercial_identity")
+        self.assertEqual(successor.stage, "s0_received")
+        self.assertEqual(case.stage, "cancelled")
+        self.assertFalse(case.active_intake_project_key)
+        self.assertTrue(successor.active_intake_project_key)
+
+    def test_china_handover_template_is_not_active_or_required(self):
+        template = self.env["hjig.sseries.document.template"].search([
+            ("code", "=", "S6-CHINA-HANDOVER"),
+        ])
+        self.assertFalse(template.filtered("active"))
 
     def test_portfolioguard_uses_one_umbrella_order_and_child_b0_runs(self):
         submission = self.Intake.ingest_payload(self._portfolio_payload())["submission"]
@@ -576,7 +834,7 @@ class TestSSeriesWorkflow(TransactionCase):
 
         self.assertEqual(len(cases.mapped("sale_order_id")), 1)
         self.assertEqual(len(lead.sale_order_id.order_line), 2)
-        self.assertEqual(lead.sale_order_id.amount_untaxed, 500000)
+        self.assertEqual(lead.sale_order_id.amount_untaxed, 700000)
         self.assertEqual(len(set(cases.mapped("proposal_number"))), 1)
         with self.assertRaises(UserError):
             cases[1].with_user(self.manager).action_prepare_quotation()

@@ -28,6 +28,9 @@
                             invisible="owner_id == uid"/>
                     <button name="action_start_internal_review" string="Start Review" type="object"
                             class="btn-primary" invisible="stage != 's0_received'"/>
+                    <button name="action_reopen_case" string="Reopen Case" type="object"
+                            class="btn-primary" invisible="stage != 'cancelled'"
+                            groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
                     <button name="action_approve_internal_review" string="Confirm Review" type="object"
                             class="btn-primary" invisible="stage != 's1_review'"
                             groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
@@ -78,6 +81,12 @@
                         <field name="exception_state" readonly="1"/>
                         <field name="blocker_summary" placeholder="No blocker recorded"/>
                     </group>
+                    <group string="Case History" invisible="not superseded_case_id and not superseded_by_case_ids and not reopen_count">
+                        <field name="superseded_case_id" readonly="1"/>
+                        <field name="supersession_reason" readonly="1"/>
+                        <field name="reopen_count" readonly="1"/>
+                        <field name="superseded_by_case_ids" readonly="1"/>
+                    </group>
                     <notebook>
                         <page string="Step 1 — Customer Intake">
                             <field name="intake_project_id" readonly="1"/>
@@ -102,10 +111,24 @@
                                 <field name="governance_approved_by_id" readonly="1"/>
                                 <field name="governance_approved_on" readonly="1"/>
                             </group>
+                            <group string="Pricing Risk Only">
+                                <field name="sor_readiness"/>
+                                <field name="bop_readiness"/>
+                                <field name="engineering_design_challenges_readiness"/>
+                                <field name="supplier_selection_readiness"/>
+                                <field name="pre_tooling_capability_readiness"/>
+                                <field name="trial_feedbacks_capability_readiness"/>
+                                <field name="moulds_buyoff_capability_readiness"/>
+                                <field name="sor_risk_points" readonly="1"/>
+                                <field name="bop_risk_points" readonly="1"/>
+                                <field name="pricing_risk_points" readonly="1"/>
+                                <field name="pricing_risk_multiplier" readonly="1"/>
+                            </group>
                         </page>
                         <page string="Step 4 — Commercial &amp; Handover">
                             <group>
                                 <field name="approved_governance_fee"/>
+                                <field name="risk_adjusted_governance_fee" readonly="1"/>
                                 <field name="target_margin" widget="percentage"/>
                                 <field name="costing_rule_version" readonly="1"/>
                                 <field name="payment_terms_summary" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
@@ -124,6 +147,13 @@
                                     <field name="nda_customer_signed"
                                            readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
                                     <field name="nda_hongyi_signed"
+                                           readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                    <field name="nda_legal_approved_for_issue"
+                                           readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                    <field name="nda_redline_round"
+                                           readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
+                                    <field name="nda_legal_approved_for_signature"
+                                           invisible="nda_redline_round == 0"
                                            readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
                                 </group>
                                 <field name="acceptance_basis" readonly="form_type == 'portfolio_guard' and not portfolio_commercial_lead"/>
@@ -160,6 +190,18 @@
                                     <field name="code" optional="hide"/>
                                 </list>
                             </field>
+                            <group string="Manual Legal Exceptions">
+                                <field name="legal_exception_ids">
+                                    <list create="0" delete="0">
+                                        <field name="exception_type"/>
+                                        <field name="applicable"/>
+                                        <field name="legal_approved"/>
+                                        <field name="approved_document_id"/>
+                                        <field name="approved_by_id"/>
+                                        <field name="approved_date"/>
+                                    </list>
+                                </field>
+                            </group>
                         </page>
                     </notebook>
                 </sheet>
@@ -283,7 +325,7 @@
             <form string="S-Series Document Control" create="0" delete="0">
                 <header>
                     <button name="action_generate_controlled_draft" string="Generate Controlled PDF Draft" type="object" class="btn-primary"
-                            invisible="state in ['approved', 'issued'] or not template_generation_allowed or code not in ['S4-ACCEPTANCE', 'S5-ORDER-PUNCH', 'S6-TEAM-HANDOVER', 'S6-CHINA-HANDOVER', 'S6-SUPPLIER-RFQ-EN', 'S6-SUPPLIER-RFQ-ZH']"
+                            invisible="state in ['approved', 'issued'] or not template_generation_allowed or code not in ['S4-ACCEPTANCE', 'S5-ORDER-PUNCH', 'S6-TEAM-HANDOVER', 'S6-SUPPLIER-RFQ-EN', 'S6-SUPPLIER-RFQ-ZH']"
                             groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
                     <button name="action_verify_visual_qa" string="Verify Visual QA" type="object" class="btn-primary" invisible="state not in ['required', 'draft'] or visual_qa_verified" groups="new_hongyijig_custom.group_hjig_sseries_manager"/>
                     <button name="action_verify_content_qa" string="Verify Content &amp; Governance QA" type="object" class="btn-primary" invisible="state not in ['required', 'draft'] or not visual_qa_verified or content_qa_verified" groups="new_hongyijig_custom.group_hjig_sseries_manager"/>

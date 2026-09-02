@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-release_code="a988f92"
+release_code="248e82a"
 active_module="/home/hongyi-jig-erp/odoo/staging_overrides/new_hongyijig_custom"
-package_path="/home/hongyi-jig-erp/releases/incoming/Hongyi_Odoo_SSeries_a988f92.tar.gz"
-expected_sha="a753c40618c9b3f3106267a779a4ba9a449fc64686eb6a05d83d9c8086153e15"
+package_path="/home/hongyi-jig-erp/releases/incoming/Hongyi_Odoo_SSeries_248e82a.tar.gz"
+expected_sha="ed47698529ccf30c39964424c878e13c9b296248ef814e3b635a60a31dd315b2"
+expected_active_source_sha="29fc4672e8f7c8ed36996b828534a932c25410ae2fbe4bef07445f1fbc28ab03"
 release_stamp="$(date +%Y%m%d_%H%M%S)"
 rollback_root="/home/hongyi-jig-erp/releases/rollback/${release_code}_predeploy_${release_stamp}"
 failed_root="/home/hongyi-jig-erp/releases/rollback/${release_code}_failed_${release_stamp}"
@@ -60,7 +61,7 @@ rollback_on_error() {
     set +e
     if test "${deployment_started}" -eq 1; then
         mkdir -p "${failed_root}"
-        sudo systemctl stop odoo.service
+        sudo -n /usr/bin/systemctl stop odoo.service
         if test -d "${rollback_root}/active_module"; then
             if test -d "${active_module}"; then
                 mv "${active_module}" "${failed_root}/candidate_module"
@@ -72,7 +73,7 @@ rollback_on_error() {
             mv "${filestore}" "${failed_root}/filestore_after_failure"
         fi
         tar -xzf "${filestore_backup}" -C "$(dirname "${filestore}")"
-        sudo systemctl start odoo.service
+        sudo -n /usr/bin/systemctl start odoo.service
         test "$(systemctl is-active odoo.service)" = "active"
         test "$(systemctl is-active odoo-production.service)" = "active"
         echo "HJIG_STAGING_UPGRADE_ROLLED_BACK release=${release_code} code=${failure_code} rollback=${rollback_root}"
@@ -89,14 +90,16 @@ test -f "${package_path}"
 test ! -e "${rollback_root}"
 test ! -e "${failed_root}"
 printf '%s  %s\n' "${expected_sha}" "${package_path}" | sha256sum --check --status
-grep -q "0 failed, 0 error(s) of 163 tests" "/home/hongyi-jig-erp/releases/work/${release_code}/post_install_tests.log"
-grep -q "SSERIES_FOUNDATION_PASS" "/home/hongyi-jig-erp/releases/work/${release_code}/sseries_validation.log"
-grep -q "'version': '19.0.3.9.0'" "${active_module}/__manifest__.py"
+grep -q "0 failed, 0 error(s) of 188 tests" "/home/hongyi-jig-erp/releases/work/${release_code}/post_install_tests.log"
+grep -q "SSERIES_WORKFLOW_PASS" "/home/hongyi-jig-erp/releases/work/${release_code}/sseries_validation.log"
+grep -q "'version': '19.0.3.17.0'" "${active_module}/__manifest__.py"
+active_source_sha="$(find "${active_module}" -type f ! -path '*/__pycache__/*' ! -name '*.pyc' -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+test "${active_source_sha}" = "${expected_active_source_sha}"
 
 mkdir -p "${rollback_root}" "${frozen_root}"
 cp "${package_path}" "${frozen_root}/"
 tar -xzf "${package_path}" -C "${candidate_root}"
-grep -q "'version': '19.0.3.10.0'" "${candidate_root}/new_hongyijig_custom/__manifest__.py"
+grep -q "'version': '19.0.3.19.0'" "${candidate_root}/new_hongyijig_custom/__manifest__.py"
 
 export HJIG_DATABASE_DUMP="${database_dump}"
 "${odoo_python}" - <<'PY'
@@ -137,8 +140,8 @@ sha256sum \
     > "${rollback_root}/SHA256SUMS"
 sha256sum --check "${rollback_root}/SHA256SUMS"
 
-sudo -n true
-sudo systemctl stop odoo.service
+sudo -n /usr/bin/systemctl is-active odoo.service >/dev/null
+sudo -n /usr/bin/systemctl stop odoo.service
 deployment_started=1
 test "$(systemctl is-active odoo-production.service)" = "active"
 
@@ -167,7 +170,15 @@ required_models = {
     "hjig.sseries.intake.submission",
     "hjig.sseries.intake.project",
     "hjig.sseries.intake.component",
+    "hjig.sseries.intake.gateway",
+    "hjig.mould.change.log",
+    "hjig.mould.geometry",
     "hjig.sseries.case",
+    "hjig.sseries.document.template",
+    "hjig.sseries.artifact",
+    "hjig.sseries.b0.handover",
+    "hjig.bop",
+    "hjig.bop.line",
     "hjig.programme.run",
     "hjig.portfolio.guard",
     "hjig.sourcebridge.engagement",
@@ -185,24 +196,70 @@ for xmlid in (
 ):
     if not env.ref(xmlid, raise_if_not_found=False):
         raise RuntimeError(f"Missing preserved/new UI authority: {xmlid}")
-if env["hjig.sseries.intake.submission"].search_count([]):
-    raise RuntimeError("Deployment must not fabricate S-Series submissions")
-if env["hjig.sseries.case"].search_count([]):
-    raise RuntimeError("Deployment must not fabricate S-Series cases")
+submission_count = env["hjig.sseries.intake.submission"].search_count([])
+cases = env["hjig.sseries.case"].search([])
+case_count = len(cases)
+if cases.filtered(lambda item: not item.lead_id):
+    raise RuntimeError("CRM spine reconciliation left an S-Series case without an opportunity")
+for submission in cases.mapped("submission_id"):
+    if len(submission.case_ids.mapped("lead_id")) != 1:
+        raise RuntimeError("One website submission must map to exactly one CRM opportunity")
+if env["hjig.sseries.document.template"].search_count([]) != 22:
+    raise RuntimeError("Unexpected controlled S-Series document-template count")
+for field_name in (
+    "render_engine_version",
+    "render_source_digest",
+    "rendered_page_count",
+    "render_manifest_json",
+):
+    if field_name not in env["hjig.sseries.artifact"]._fields:
+        raise RuntimeError(f"Missing controlled-rendering evidence field: {field_name}")
+for field_name in (
+    "hjig_programme_activation_state",
+    "hjig_programme_run_ids",
+    "hjig_authorized_user_ids",
+):
+    if field_name not in env["project.project"]._fields:
+        raise RuntimeError(f"Missing preserved project field: {field_name}")
 Master = env["hjig.governance.artifact.master"]
 sops = Master.search([("code", "in", [f"SOP-{number:03d}" for number in range(1, 15)])])
 if len(sops) != 14 or sops.filtered(lambda item: not item.ai_reference_ready):
     raise RuntimeError("Preserved B-Series SOP guidance is incomplete")
+for xmlid in (
+    "new_hongyijig_custom.crm_stage_hjig_pre_fd",
+    "new_hongyijig_custom.crm_stage_hjig_fd_series",
+    "new_hongyijig_custom.crm_stage_hjig_p_series",
+    "new_hongyijig_custom.crm_stage_hjig_s_series",
+    "new_hongyijig_custom.crm_stage_hjig_order_punch",
+    "new_hongyijig_custom.crm_stage_hjig_bseries_handover",
+):
+    if not env.ref(xmlid, raise_if_not_found=False):
+        raise RuntimeError(f"Missing governed CRM spine stage: {xmlid}")
+menu = env.ref("new_hongyijig_custom.menu_hjig_sseries")
+if menu.group_ids != env.ref("base.group_no_one"):
+    raise RuntimeError("Separate S-Series employee menu is not hidden")
+for field_name in (
+    "hjig_sseries_case_ids",
+    "hjig_sseries_current_status",
+    "hjig_accountability_phase",
+    "hjig_accountable_email",
+):
+    if field_name not in env["crm.lead"]._fields:
+        raise RuntimeError(f"Missing CRM spine field: {field_name}")
 module = env["ir.module.module"].search([("name", "=", "new_hongyijig_custom")], limit=1)
-if module.installed_version != "19.0.3.10.0":
+if module.installed_version != "19.0.3.19.0":
     raise RuntimeError(f"Unexpected installed version: {module.installed_version}")
-print("STAGING_SSERIES_FOUNDATION_PASS version=19.0.3.10.0 submissions=0 cases=0 bseries_preserved=true")
+print(
+    "STAGING_SSERIES_WORKFLOW_PASS version=19.0.3.19.0 "
+    f"submissions={submission_count} cases={case_count} templates=22 "
+    "one_crm_spine=true bseries_preserved=true"
+)
 env.cr.rollback()
 PY
-grep -q "STAGING_SSERIES_FOUNDATION_PASS" "${postcheck_log}"
+grep -q "STAGING_SSERIES_WORKFLOW_PASS" "${postcheck_log}"
 
-grep -q "'version': '19.0.3.10.0'" "${active_module}/__manifest__.py"
-sudo systemctl start odoo.service
+grep -q "'version': '19.0.3.19.0'" "${active_module}/__manifest__.py"
+sudo -n /usr/bin/systemctl start odoo.service
 test "$(systemctl is-active odoo.service)" = "active"
 test "$(systemctl is-active odoo-production.service)" = "active"
 http_code="000"
@@ -220,4 +277,4 @@ if grep -Eq "ERROR|CRITICAL" "${upgrade_log}"; then
 fi
 deployment_started=0
 trap - ERR
-echo "HJIG_STAGING_UPGRADE_SUCCESS release=${release_code} version=19.0.3.10.0 rollback=${rollback_root} http=${http_code} production=untouched"
+echo "HJIG_STAGING_UPGRADE_SUCCESS release=${release_code} version=19.0.3.19.0 rollback=${rollback_root} http=${http_code} production=untouched"

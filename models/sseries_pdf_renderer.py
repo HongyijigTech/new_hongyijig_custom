@@ -32,9 +32,6 @@ TEMPLATE_SPECS = {
     "S6-TEAM-HANDOVER": (
         "Hongyi_S6_Team_Handover_EXACT_NATIVE_TEMPLATE_R1_SANITIZED.docx", 2
     ),
-    "S6-CHINA-HANDOVER": (
-        "Hongyi_S6_China_Handover_EXACT_NATIVE_TEMPLATE_R1_SANITIZED.docx", 2
-    ),
     "S6-SUPPLIER-RFQ-EN": (
         "Hongyi_S6_Supplier_RFQ_EN_EXACT_NATIVE_TEMPLATE_R1_SANITIZED.docx", 2
     ),
