@@ -180,7 +180,6 @@ class HjigRiskAiScan(models.Model):
         payload = {
             "model": model_name,
             "max_tokens": 8000,
-            "temperature": 0,
             "system": system_prompt,
             "messages": [{"role": "user", "content": "Review this governed project snapshot:\n" + source_json}],
         }
