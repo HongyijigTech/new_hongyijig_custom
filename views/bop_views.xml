@@ -19,6 +19,12 @@
         <field name="arch" type="xml">
             <form string="Bought Out Parts Register">
                 <header>
+                    <button name="action_sign_population" type="object" string="Confirm Population Sign-off"
+                            class="btn-secondary" invisible="state not in ['draft', 'rejected'] or not population_ready"/>
+                    <button name="action_import_mould_planning_parts" type="object" string="Import Mould Planning Parts"
+                            class="btn-secondary" invisible="state not in ['draft', 'rejected']"/>
+                    <button name="action_generate_design_release" type="object" string="Generate Design Input Release"
+                            class="btn-primary" invisible="state not in ['draft', 'rejected'] or not design_release_ready or design_release_valid"/>
                     <button name="action_submit_review" type="object" string="Submit for Review"
                             class="btn-primary" invisible="state not in ['draft', 'rejected']"/>
                     <button name="action_freeze" type="object" string="Freeze BOP"
@@ -39,6 +45,8 @@
                         <group>
                             <field name="freeze_blockers" readonly="1" nolabel="1"
                                    placeholder="All BOP reference-lock checks are complete."/>
+                            <field name="governance_blockers" readonly="1" nolabel="1"
+                                   placeholder="Population, mapping and design-input gates are complete."/>
                         </group>
                     </group>
                     <group>
@@ -62,7 +70,37 @@
                         <field name="frozen_by_id" readonly="1"/>
                     </group>
                     <notebook>
-                        <page string="1. Source &amp; Assembly Baseline">
+                        <page string="1. My Work &amp; Population">
+                            <div class="alert alert-info" role="alert">
+                                Start here at IG-01. Project Coordinator lists every known BOP, records unresolved count,
+                                and obtains technical plus customer population sign-off. Tentative data is allowed here;
+                                it is not silently treated as frozen design input.
+                            </div>
+                            <div class="alert alert-secondary" role="alert">
+                                Future Copilot (not active yet): it may draft candidate BOP rows from customer documents,
+                                flag missing fields and prepare a customer-query email. Human technical and customer
+                                approvals will remain mandatory; Copilot will never freeze a record itself.
+                            </div>
+                            <group>
+                                <group string="Population Declaration">
+                                    <field name="population_declared_complete" widget="boolean_toggle"/>
+                                    <field name="population_coordinator_designation"/>
+                                    <field name="population_unresolved_count"/>
+                                    <field name="population_evidence_reference"
+                                           placeholder="Customer BOM, SOR, email or reviewed source reference"/>
+                                </group>
+                                <group string="Independent Review &amp; Customer Sign-off">
+                                    <field name="population_technical_reviewed" widget="boolean_toggle"/>
+                                    <field name="population_technical_reviewer_designation"/>
+                                    <field name="population_customer_signed" widget="boolean_toggle"/>
+                                    <field name="population_customer_reference"/>
+                                    <field name="population_ready" widget="boolean_toggle" readonly="1"/>
+                                    <field name="population_signed_at" readonly="1" invisible="not population_signed_at"/>
+                                    <field name="population_signed_by_id" readonly="1" invisible="not population_signed_by_id"/>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="2. Source &amp; Assembly Baseline">
                             <div class="alert alert-info" role="alert">
                                 Use one authoritative BOP register. Link the customer-controlled document when supplied;
                                 otherwise capture the same reference data through the guided component register.
@@ -87,7 +125,7 @@
                                 </group>
                             </group>
                         </page>
-                        <page string="2. BOP Component Register">
+                        <page string="3. BOP Items">
                             <div class="alert alert-warning" role="alert">
                                 Add only parts that influence assembly, fitment, function or validation. Open each row
                                 to complete its photo, drawing revision, source ownership and interface checks.
@@ -102,17 +140,110 @@
                                             string="Open Full Details" icon="fa-external-link"/>
                                     <field name="component_code"/><field name="component_name"/>
                                     <field name="component_category" optional="show"/>
-                                    <field name="source_ownership" optional="show"/>
-                                    <field name="drawing_reference" optional="show"/>
-                                    <field name="drawing_revision" optional="show"/>
-                                    <field name="impact_scope" optional="show"/>
-                                    <field name="cad_assembly_match" optional="show"/>
-                                    <field name="sample_status" optional="show"/>
+                                    <field name="applicability" optional="show"/>
+                                    <field name="sourcing_responsibility" optional="show"/>
+                                    <field name="manufacturer" optional="show"/>
+                                    <field name="model_part_number" optional="show"/>
+                                    <field name="verified_usable_quantity" optional="show"/>
+                                    <field name="required_quantity" optional="show"/>
+                                    <field name="lock_status" optional="show"/>
                                     <field name="is_ready" readonly="1"/>
                                 </list>
                             </field>
                         </page>
-                        <page string="3. Responsibility &amp; Sign-Off">
+                        <page string="4. Product Components">
+                            <div class="alert alert-info" role="alert">
+                                This is the canonical part list used by BOP mapping and Mould Planning. A Meeting Component
+                                is a real adjacent/interface part—not a generic note. Keep maturity Tentative until confirmed.
+                            </div>
+                            <field name="product_component_ids" readonly="state not in ['draft', 'rejected']">
+                                <list editable="bottom" decoration-success="maturity == 'confirmed'"
+                                      decoration-warning="maturity == 'tentative'">
+                                    <field name="sequence" widget="handle"/><field name="code"/><field name="name"/>
+                                    <field name="maturity"/><field name="is_meeting_component"/>
+                                    <field name="origin"/><field name="design_scope"/><field name="tooling_scope"/>
+                                    <field name="mould_part_id" optional="show"/>
+                                </list>
+                                <form string="Product Component">
+                                    <group><group><field name="code"/><field name="name"/><field name="maturity"/>
+                                        <field name="is_meeting_component" widget="boolean_toggle"/></group>
+                                        <group><field name="origin"/><field name="design_scope"/>
+                                            <field name="tooling_scope"/><field name="mould_part_id"/></group></group>
+                                    <field name="notes"/>
+                                </form>
+                            </field>
+                        </page>
+                        <page string="5. Interface Mappings">
+                            <div class="alert alert-warning" role="alert">
+                                Map one BOP to one or several product components. Use Interface topology for shared fitment;
+                                adjacent-meeting role is accepted only for a component explicitly marked Meeting.
+                            </div>
+                            <field name="mapping_ids" readonly="state not in ['draft', 'rejected']">
+                                <list decoration-success="is_confirmed_ready" decoration-danger="is_exception and not exception_ready">
+                                    <field name="sequence" widget="handle"/><field name="code"/><field name="bop_line_id"/>
+                                    <field name="is_exception"/><field name="topology"/><field name="maturity"/>
+                                    <field name="technical_confirmed"/><field name="customer_signed"/>
+                                    <field name="is_confirmed_ready" readonly="1"/>
+                                </list>
+                                <form string="BOP Interface Mapping">
+                                    <group><group><field name="code"/><field name="bop_line_id"/>
+                                        <field name="is_exception" widget="boolean_toggle"/></group>
+                                        <group invisible="is_exception"><field name="topology"/><field name="maturity"/>
+                                            <field name="quantity_per_assembly"/><field name="interface_location"/></group></group>
+                                    <group string="Approved Mapping-Pending Exception" invisible="not is_exception">
+                                        <field name="exception_reason"/><field name="exception_evidence"/>
+                                        <field name="exception_accountable_designation"/><field name="exception_due_date"/>
+                                        <field name="exception_technical_approved" widget="boolean_toggle"/>
+                                        <field name="exception_ready" readonly="1"/>
+                                    </group>
+                                    <group string="Participant Components" invisible="is_exception">
+                                        <field name="participant_ids">
+                                            <list editable="bottom"><field name="sequence" widget="handle"/>
+                                                <field name="bop_id" invisible="1"/><field name="component_id"/><field name="role"/>
+                                                <field name="quantity"/><field name="position"/></list>
+                                        </field>
+                                    </group>
+                                    <group invisible="is_exception"><group string="Control">
+                                        <field name="accountable_designation"/><field name="due_date"/>
+                                        <field name="evidence_reference"/></group><group string="Approval">
+                                        <field name="technical_confirmed" widget="boolean_toggle"/>
+                                        <field name="customer_signed" widget="boolean_toggle"/>
+                                        <field name="customer_reference"/><field name="is_confirmed_ready" readonly="1"/>
+                                    </group></group>
+                                    <group string="ECN Reopen"><field name="change_reason"/><field name="ecn_reference"/>
+                                        <field name="ecn_required"/><field name="state" readonly="1"/>
+                                        <button name="action_reopen_via_ecn" type="object" string="Reopen via ECN"
+                                                class="btn-danger" invisible="state != 'active'"/></group>
+                                </form>
+                            </field>
+                        </page>
+                        <page string="6. Governance &amp; Design Release">
+                            <group string="Live Gate Status"><group>
+                                <field name="population_ready" widget="boolean_toggle" readonly="1"/>
+                                <field name="mapping_ready" widget="boolean_toggle" readonly="1"/>
+                                <field name="design_release_ready" widget="boolean_toggle" readonly="1"/>
+                            </group><group>
+                                <field name="product_component_count" readonly="1"/>
+                                <field name="mapping_count" readonly="1"/>
+                                <field name="confirmed_mapping_count" readonly="1"/>
+                            </group></group>
+                            <group string="Design Input Release"><group>
+                                <field name="design_release_baseline" placeholder="e.g. BOP-R00 + SOR-R01 + Mould Plan-R00"/>
+                                <field name="design_release_recipients" placeholder="Design agency, tooling agency, named recipients"/>
+                            </group><group>
+                                <field name="design_release_generated" widget="boolean_toggle" readonly="1"/>
+                                <field name="design_release_valid" widget="boolean_toggle" readonly="1"/>
+                                <field name="design_release_generated_at" readonly="1"/>
+                                <field name="design_release_generated_by_id" readonly="1"/>
+                                <field name="design_release_snapshot_hash" readonly="1" invisible="not design_release_snapshot_hash"/>
+                            </group></group>
+                            <group string="Final Design Freeze"><group>
+                                <field name="design_freeze_customer_confirmed" widget="boolean_toggle"/>
+                                <field name="design_freeze_customer_reference"/>
+                                <field name="design_freeze_internal_approver"/>
+                            </group><group><field name="governance_blockers" nolabel="1" readonly="1"/></group></group>
+                        </page>
+                        <page string="7. Responsibility &amp; Sign-Off">
                             <div class="alert alert-danger" role="alert">
                                 Hongyi JIG validates the moulded part against the frozen BOP reference. BOP quality,
                                 performance, dimensional variation and post-freeze source/design changes remain outside
@@ -135,7 +266,7 @@
                                 </group>
                             </group>
                         </page>
-                        <page string="4. Notes &amp; Freeze Audit">
+                        <page string="8. Notes &amp; Freeze Audit">
                             <field name="notes" readonly="state in ['frozen', 'superseded']"/>
                             <group string="Immutable Freeze Evidence" invisible="not snapshot_hash">
                                 <field name="snapshot_hash" readonly="1"/>
@@ -155,6 +286,13 @@
         <field name="model">hjig.bop.line</field>
         <field name="arch" type="xml">
             <form string="Bought Out Part Detail">
+                <header>
+                    <button name="action_lock_item" type="object" string="Lock Item" class="btn-primary"
+                            invisible="lock_status != 'draft' or not is_ready"/>
+                    <button name="action_reopen_via_ecn" type="object" string="Reopen via ECN" class="btn-danger"
+                            invisible="lock_status != 'locked'"/>
+                    <field name="lock_status" widget="statusbar" statusbar_visible="draft,locked,reopened_via_ecn"/>
+                </header>
                 <sheet>
                     <div class="oe_title">
                         <label for="component_name"/>
@@ -169,6 +307,7 @@
                                    options="{'no_create': True, 'no_create_edit': True}"
                                    readonly="bop_state not in ['draft', 'rejected']"/>
                             <field name="component_code" readonly="bop_state not in ['draft', 'rejected']"/>
+                            <field name="customer_part_number" readonly="bop_state not in ['draft', 'rejected']"/>
                             <field name="component_category" readonly="bop_state not in ['draft', 'rejected']"/>
                             <field name="quantity" readonly="bop_state not in ['draft', 'rejected']"/>
                             <field name="weight_grams" readonly="bop_state not in ['draft', 'rejected']"/>
@@ -181,23 +320,56 @@
                         </group>
                     </group>
                     <notebook>
-                        <page string="1. Source &amp; Drawing">
+                        <page string="1. Identity &amp; Applicability">
+                            <group><group string="Controlled Identity">
+                                <field name="manufacturer"/><field name="model_part_number"/><field name="item_revision"/>
+                            </group><group string="Applicability">
+                                <field name="applicability"/><field name="na_reason" invisible="applicability == 'applicable'"/>
+                                <field name="na_evidence" invisible="applicability == 'applicable'"/>
+                                <field name="na_approved_by_designation" invisible="applicability != 'na_approved'"/>
+                            </group></group>
+                        </page>
+                        <page string="2. Sourcing &amp; Commercial">
+                            <div class="alert alert-info" role="alert">
+                                Commercial checks apply only where Hongyi is commercially responsible. This avoids
+                                burdening engineering employees with irrelevant fields.
+                            </div>
+                            <group><group><field name="sourcing_responsibility"/>
+                                <field name="hongyi_commercially_responsible" widget="boolean_toggle"/>
+                                <field name="source_ownership"/><field name="supplier_reference"/></group>
+                                <group invisible="not hongyi_commercially_responsible">
+                                    <field name="supplier_status"/><field name="quote_reference"/>
+                                    <field name="unit_price"/><field name="currency_id" readonly="1"/>
+                                    <field name="commercial_status"/><field name="commercial_pending_reason"
+                                           invisible="commercial_status != 'pending'"/>
+                                </group></group>
+                        </page>
+                        <page string="3. Controlled Documents">
                             <group>
                                 <group string="Source Ownership">
-                                    <field name="source_ownership" readonly="bop_state not in ['draft', 'rejected']"/>
-                                    <field name="supplier_reference" readonly="bop_state not in ['draft', 'rejected']"/>
                                     <field name="material_specification" readonly="bop_state not in ['draft', 'rejected']"/>
                                     <field name="critical_tolerance" readonly="bop_state not in ['draft', 'rejected']"/>
+                                    <field name="technical_validation"/><field name="validator_designation"/>
                                 </group>
-                                <group string="Controlled Drawing Reference">
-                                    <field name="drawing_reference" readonly="bop_state not in ['draft', 'rejected']"/>
-                                    <field name="drawing_revision" readonly="bop_state not in ['draft', 'rejected']"/>
-                                    <field name="datasheet_status" readonly="bop_state not in ['draft', 'rejected']"/>
-                                    <field name="cad_status" readonly="bop_state not in ['draft', 'rejected']"/>
+                                <group string="Legacy Assembly Reference">
+                                    <field name="drawing_reference"/><field name="drawing_revision"/>
+                                    <field name="cad_status"/><field name="size_status"/><field name="sample_status"/>
                                 </group>
                             </group>
+                            <group string="2D Drawing"><field name="drawing_2d_status"/>
+                                <field name="drawing_2d_reference" invisible="drawing_2d_status != 'available'"/>
+                                <field name="drawing_2d_revision" invisible="drawing_2d_status != 'available'"/>
+                                <field name="drawing_2d_na_reason" invisible="drawing_2d_status != 'na'"/></group>
+                            <group string="3D Model"><field name="model_3d_status"/>
+                                <field name="model_3d_reference" invisible="model_3d_status != 'available'"/>
+                                <field name="model_3d_revision" invisible="model_3d_status != 'available'"/>
+                                <field name="model_3d_na_reason" invisible="model_3d_status != 'na'"/></group>
+                            <group string="Datasheet"><field name="datasheet_status"/>
+                                <field name="datasheet_reference" invisible="datasheet_status not in ['available', 'received']"/>
+                                <field name="datasheet_revision" invisible="datasheet_status not in ['available', 'received']"/>
+                                <field name="datasheet_na_reason" invisible="datasheet_status not in ['na', 'not_applicable']"/></group>
                         </page>
-                        <page string="2. Assembly / Function Impact">
+                        <page string="4. Assembly / Function Impact">
                             <group>
                                 <group>
                                     <field name="assembly_impact" readonly="bop_state not in ['draft', 'rejected']"/>
@@ -211,16 +383,36 @@
                                 </group>
                             </group>
                         </page>
-                        <page string="3. Physical Readiness">
+                        <page string="5. Physical Readiness">
                             <div class="alert alert-info" role="alert">
                                 IG-01 can proceed only when the reference data and physical sample are verified.
                                 Envelope-only or pending dimensions remain a gate blocker.
                             </div>
                             <group>
-                                <field name="size_status" readonly="bop_state not in ['draft', 'rejected']"/>
-                                <field name="sample_status" readonly="bop_state not in ['draft', 'rejected']"/>
+                                <field name="required_quantity"/><field name="ordered_quantity"/>
+                                <field name="received_quantity"/><field name="verified_usable_quantity"/>
+                                <field name="required_by_date"/><field name="custody_location"/>
+                                <field name="verification_date"/><field name="verification_evidence"/>
                                 <field name="notes" readonly="bop_state not in ['draft', 'rejected']"/>
                             </group>
+                        </page>
+                        <page string="6. Alternates &amp; Lock">
+                            <div class="alert alert-danger" role="alert">
+                                An alternate never silently replaces a frozen item. After lock, substitution must reopen
+                                through ECN and invalidates any prior Design Input Release.
+                            </div>
+                            <field name="alternate_ids"><list editable="bottom"><field name="sequence" widget="handle"/>
+                                <field name="manufacturer"/><field name="part_number"/><field name="revision"/>
+                                <field name="evidence_reference"/><field name="approved_by_designation"/>
+                                <field name="approval_date"/></list></field>
+                            <group><group string="Customer Item Freeze">
+                                <field name="customer_item_freeze" widget="boolean_toggle"/>
+                                <field name="customer_item_freeze_reference"/><field name="customer_item_freeze_date"/>
+                                <field name="is_ready" widget="boolean_toggle" readonly="1"/>
+                            </group><group string="ECN Reopen">
+                                <field name="change_reason"/><field name="ecn_reference"/><field name="ecn_required"/>
+                                <field name="locked_by_id" readonly="1"/><field name="locked_at" readonly="1"/>
+                            </group></group>
                         </page>
                     </notebook>
                 </sheet>

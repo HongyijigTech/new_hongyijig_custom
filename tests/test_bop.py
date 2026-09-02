@@ -33,7 +33,7 @@ class TestBopRegister(TransactionCase):
             })
 
     def _ready_bop(self):
-        return self.env["hjig.bop"].create({
+        bop = self.env["hjig.bop"].create({
             "project_id": self.project.id,
             "revision": "R00",
             "effective_date": "2026-08-30",
@@ -47,10 +47,35 @@ class TestBopRegister(TransactionCase):
             "customer_signoff_designation": "Project Head",
             "customer_signoff_reference": "Approved email dated 2026-08-30",
             "customer_signoff_date": "2026-08-30",
+            "population_declared_complete": True,
+            "population_coordinator_designation": "Project Coordinator",
+            "population_unresolved_count": 0,
+            "population_evidence_reference": "Customer BOM v3 + SOR R01",
+            "population_technical_reviewed": True,
+            "population_technical_reviewer_designation": "Senior Tool Design Engineer",
+            "population_customer_signed": True,
+            "population_customer_reference": "Customer email 2026-08-30",
+            "design_release_baseline": "BOP-R00 + SOR-R01 + MP-R00",
+            "design_release_recipients": "Design Agency; Tooling Agency",
+            "design_freeze_customer_confirmed": True,
+            "design_freeze_customer_reference": "Customer design-freeze email 2026-08-30",
+            "design_freeze_internal_approver": "Senior Tool Design Engineer",
             "line_ids": [(0, 0, {
                 "component_code": "BOP-001", "component_name": "Purchased Insert",
                 "component_category": "insert_fastener",
                 "quantity": 2, "weight_grams": 25,
+                "manufacturer": "Approved Manufacturer", "model_part_number": "INS-001",
+                "item_revision": "R03", "sourcing_responsibility": "customer_supplied",
+                "drawing_2d_status": "available", "drawing_2d_reference": "BOP-DWG-001",
+                "drawing_2d_revision": "R03", "model_3d_status": "available",
+                "model_3d_reference": "BOP-CAD-001", "model_3d_revision": "R03",
+                "datasheet_reference": "BOP-DS-001", "datasheet_revision": "R03",
+                "technical_validation": "validated",
+                "validator_designation": "Senior Tool Design Engineer",
+                "required_quantity": 2, "ordered_quantity": 2,
+                "received_quantity": 2, "verified_usable_quantity": 2,
+                "customer_item_freeze": True,
+                "customer_item_freeze_reference": "Customer email 2026-08-30",
                 "source_ownership": "customer",
                 "drawing_reference": "BOP-DWG-001",
                 "drawing_revision": "R03",
@@ -61,6 +86,22 @@ class TestBopRegister(TransactionCase):
                 "size_status": "frozen", "sample_status": "received",
             })],
         })
+        component = self.env["hjig.bop.product.component"].create({
+            "bop_id": bop.id, "code": "PC-001", "name": "Moulded Housing",
+            "maturity": "confirmed",
+        })
+        mapping = self.env["hjig.bop.mapping"].create({
+            "bop_id": bop.id, "code": "MAP-001", "bop_line_id": bop.line_ids.id,
+            "topology": "single", "maturity": "tentative", "accountable_designation": "Project Coordinator",
+            "due_date": "2026-08-30", "evidence_reference": "Interface drawing INT-001 R01",
+            "technical_confirmed": True, "customer_signed": True,
+            "customer_reference": "Customer mapping email 2026-08-30",
+            "participant_ids": [(0, 0, {"component_id": component.id, "role": "primary_mount"})],
+        })
+        mapping.maturity = "confirmed"
+        bop.line_ids.action_lock_item()
+        bop.action_generate_design_release()
+        return bop
 
     def test_bop_freeze_is_segregated_hashed_and_immutable(self):
         bop = self._ready_bop()
@@ -93,25 +134,27 @@ class TestBopRegister(TransactionCase):
         ]).mapped("reason")
         self.assertTrue(any("STAGING TRAINING OVERRIDE" in reason for reason in reasons))
 
-    def test_bop_cannot_submit_with_missing_physical_sample(self):
+    def test_bop_cannot_submit_with_insufficient_verified_quantity(self):
         bop = self._ready_bop()
-        bop.line_ids.sample_status = "pending"
+        bop.line_ids.with_context(hjig_bop_item_workflow=True).write({"lock_status": "draft"})
+        bop.line_ids.verified_usable_quantity = 0
         with self.assertRaises(ValidationError):
             bop.with_user(self.owner).action_submit_review()
 
-    def test_bop_cannot_submit_without_controlled_drawing_reference(self):
+    def test_bop_cannot_submit_without_controlled_2d_revision(self):
         bop = self._ready_bop()
-        bop.line_ids.drawing_revision = False
+        bop.line_ids.with_context(hjig_bop_item_workflow=True).write({"lock_status": "draft"})
+        bop.line_ids.drawing_2d_revision = False
         self.assertFalse(bop.stage_ready)
         with self.assertRaises(ValidationError):
             bop.with_user(self.owner).action_submit_review()
 
-    def test_envelope_only_component_blocks_bop_freeze(self):
+    def test_unlocked_item_blocks_design_release(self):
         bop = self._ready_bop()
-        bop.line_ids.size_status = "envelope"
-        self.assertFalse(bop.stage_ready)
+        bop.line_ids.with_context(hjig_bop_item_workflow=True).write({"lock_status": "draft"})
+        self.assertFalse(bop.design_release_ready)
         with self.assertRaises(ValidationError):
-            bop.with_user(self.owner).action_submit_review()
+            bop.action_generate_design_release()
 
     def test_customer_document_route_requires_source_document(self):
         bop = self._ready_bop()
@@ -124,3 +167,30 @@ class TestBopRegister(TransactionCase):
         bop = self._ready_bop()
         with self.assertRaises(ValidationError):
             bop.write({"state": "review"})
+
+    def test_interface_mapping_requires_two_participants_and_meeting_flag(self):
+        bop = self._ready_bop()
+        second = self.env["hjig.bop.product.component"].create({
+            "bop_id": bop.id, "code": "PC-002", "name": "Adjacent Bonnet",
+            "maturity": "confirmed", "is_meeting_component": True,
+        })
+        mapping = self.env["hjig.bop.mapping"].create({
+            "bop_id": bop.id, "code": "MAP-002", "bop_line_id": bop.line_ids.id,
+            "topology": "interface", "maturity": "tentative",
+        })
+        mapping.write({"participant_ids": [
+            (0, 0, {"component_id": bop.product_component_ids[0].id, "role": "primary_mount"}),
+            (0, 0, {"component_id": second.id, "role": "adjacent_meeting"}),
+        ]})
+        mapping.write({
+            "maturity": "confirmed", "technical_confirmed": True, "customer_signed": True,
+            "customer_reference": "Customer approved", "evidence_reference": "INT-002",
+            "accountable_designation": "Senior Tool Design Engineer", "due_date": "2026-09-01",
+        })
+        self.assertTrue(mapping.is_confirmed_ready)
+
+    def test_mapping_change_invalidates_design_release(self):
+        bop = self._ready_bop()
+        self.assertTrue(bop.design_release_valid)
+        bop.mapping_ids.evidence_reference = "Revised interface evidence"
+        self.assertFalse(bop.design_release_valid)

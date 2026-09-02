@@ -140,6 +140,14 @@
 "access_hjig_bop_user","hjig.bop user","model_hjig_bop","project.group_project_user",1,1,1,0
 "access_hjig_bop_manager","hjig.bop manager","model_hjig_bop","project.group_project_manager",1,1,1,1
 "access_hjig_bop_line_user","hjig.bop.line user","model_hjig_bop_line","project.group_project_user",1,1,1,1
+"access_hjig_bop_alternate_user","hjig.bop.alternate user","model_hjig_bop_alternate","project.group_project_user",1,1,1,1
+"access_hjig_bop_component_user","hjig.bop.product.component user","model_hjig_bop_product_component","project.group_project_user",1,1,1,1
+"access_hjig_bop_mapping_user","hjig.bop.mapping user","model_hjig_bop_mapping","project.group_project_user",1,1,1,1
+"access_hjig_bop_mapping_participant_user","hjig.bop.mapping.participant user","model_hjig_bop_mapping_participant","project.group_project_user",1,1,1,1
+"access_hjig_bop_alternate_manager","hjig.bop.alternate manager","model_hjig_bop_alternate","project.group_project_manager",1,1,1,1
+"access_hjig_bop_component_manager","hjig.bop.product.component manager","model_hjig_bop_product_component","project.group_project_manager",1,1,1,1
+"access_hjig_bop_mapping_manager","hjig.bop.mapping manager","model_hjig_bop_mapping","project.group_project_manager",1,1,1,1
+"access_hjig_bop_mapping_participant_manager","hjig.bop.mapping.participant manager","model_hjig_bop_mapping_participant","project.group_project_manager",1,1,1,1
 "access_hjig_sseries_submission_manager","hjig.sseries.intake.submission manager","model_hjig_sseries_intake_submission","new_hongyijig_custom.group_hjig_sseries_manager",1,0,0,0
 "access_hjig_sseries_project_manager","hjig.sseries.intake.project manager","model_hjig_sseries_intake_project","new_hongyijig_custom.group_hjig_sseries_manager",1,0,0,0
 "access_hjig_sseries_component_manager","hjig.sseries.intake.component manager","model_hjig_sseries_intake_component","new_hongyijig_custom.group_hjig_sseries_manager",1,0,0,0
