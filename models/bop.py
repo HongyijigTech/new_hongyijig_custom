@@ -1283,7 +1283,7 @@ class HjigBopMapping(models.Model):
     code = fields.Char(required=True)
     bop_line_id = fields.Many2one("hjig.bop.line", string="BOP Item", required=True, ondelete="cascade",
                                  domain="[('bop_id', '=', bop_id)]")
-    is_exception = fields.Boolean(string="Approved Mapping-Pending Exception")
+    is_exception = fields.Boolean(string="Controlled Mapping Exception")
     exception_reason = fields.Text()
     exception_evidence = fields.Char()
     exception_accountable_designation = fields.Char()
