@@ -843,6 +843,7 @@
                     </group>
                     <group string="Risk Register Gate Review" invisible="artifact_code != 'FRM-006'">
                         <field name="risk_count" readonly="1"/>
+                        <field name="incomplete_risk_count" readonly="1"/>
                         <field name="unresolved_escalated_risk_count" readonly="1"/>
                         <field name="risk_review_note" readonly="risk_reviewed"/>
                         <field name="risk_reviewed"/>

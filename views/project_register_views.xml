@@ -43,12 +43,14 @@
 
     <record id="view_hjig_project_risk_list" model="ir.ui.view">
         <field name="name">hjig.project.risk.list</field><field name="model">hjig.project.risk</field>
-        <field name="arch" type="xml"><list string="Risk Register" decoration-danger="escalation_required" decoration-muted="status == 'resolved'">
-            <field name="risk_id"/><field name="project_id"/><field name="description"/><field name="category"/>
-            <field name="probability"/><field name="impact"/><field name="risk_score"/>
+        <field name="arch" type="xml"><list string="Risk Register" decoration-danger="gate_blocker" decoration-muted="status == 'resolved'">
+            <field name="risk_id"/><field name="project_id"/><field name="source_type"/><field name="description"/>
+            <field name="category"/><field name="risk_score"/><field name="risk_level" widget="badge"/>
+            <field name="residual_score"/><field name="residual_level" widget="badge"/>
             <field name="owner_designation_id"/><field name="target_date"/><field name="status" widget="badge"/>
-            <field name="escalation_required" widget="boolean_toggle" readonly="1"/>
-            <field name="next_review_date"/>
+            <field name="gate_blocker" widget="boolean_toggle" readonly="1"/>
+            <field name="readiness_percent" widget="progressbar"/>
+            <field name="next_review_date" optional="show"/>
         </list></field>
     </record>
     <record id="view_hjig_project_risk_form" model="ir.ui.view">
@@ -59,12 +61,76 @@
                 <button name="action_resolve" type="object" string="Resolve Risk" class="btn-primary" invisible="status == 'resolved'"/>
                 <field name="status" widget="statusbar" statusbar_visible="open,mitigating,accepted,resolved" readonly="1"/></header>
             <sheet><div class="oe_title"><h1><field name="risk_id"/></h1></div>
-                <group><group string="Risk Definition"><field name="project_id"/><field name="description"/><field name="category"/>
-                    <field name="probability"/><field name="impact"/><field name="risk_score" readonly="1"/>
-                    <field name="escalation_required" readonly="1"/></group>
-                <group string="Ownership and Review"><field name="owner_designation_id"/><field name="approver_designation_id"/>
-                    <field name="target_date"/><field name="next_review_date"/><field name="resolved_by_id"/><field name="resolved_date"/></group></group>
-                <group string="Mitigation and Resolution"><field name="mitigation_plan"/><field name="resolution_notes"/></group>
+                <group>
+                    <group string="Employee Control Card">
+                        <field name="project_id"/><field name="origin_stage_id"/><field name="source_type"/>
+                        <field name="source_reference" placeholder="Example: SOR R00, clause 4.2 / BOP-2026-00006, Motor-01"/>
+                    </group>
+                    <group string="Live Readiness">
+                        <field name="readiness_percent" widget="progressbar"/>
+                        <field name="risk_level" widget="badge" readonly="1"/>
+                        <field name="residual_level" widget="badge" readonly="1"/>
+                        <field name="gate_blocker" readonly="1"/>
+                        <field name="escalation_required" readonly="1"/>
+                    </group>
+                </group>
+                <notebook>
+                    <page string="1. Identify">
+                        <group>
+                            <group string="Cause - Event - Impact">
+                                <field name="cause" placeholder="Because..."/>
+                                <field name="description" string="Risk Event" placeholder="There is a risk that..."/>
+                                <field name="impact_statement" placeholder="This may affect cost, timing, quality, fitment or launch..."/>
+                                <field name="category"/>
+                            </group>
+                            <group string="Source Evidence">
+                                <field name="source_evidence_url" widget="url"/>
+                                <field name="source_attachment_ids" widget="many2many_binary"/>
+                                <field name="origin_requirement_id"/>
+                            </group>
+                        </group>
+                    </page>
+                    <page string="2. Assess">
+                        <group>
+                            <group string="Initial Exposure">
+                                <field name="probability"/><field name="impact"/>
+                                <field name="risk_score" readonly="1"/><field name="risk_level" widget="badge" readonly="1"/>
+                            </group>
+                            <group string="Residual Exposure After Controls">
+                                <field name="residual_probability"/><field name="residual_impact"/>
+                                <field name="residual_score" readonly="1"/><field name="residual_level" widget="badge" readonly="1"/>
+                            </group>
+                        </group>
+                    </page>
+                    <page string="3. Control">
+                        <group>
+                            <group string="Action Plan">
+                                <field name="mitigation_plan" string="Immediate Mitigation"/>
+                                <field name="preventive_action"/>
+                                <field name="contingency_plan"/>
+                                <field name="trigger_indicator"/>
+                            </group>
+                            <group string="Owner and Review">
+                                <field name="owner_designation_id"/><field name="approver_designation_id"/>
+                                <field name="target_date"/><field name="next_review_date"/>
+                            </group>
+                        </group>
+                    </page>
+                    <page string="4. Accept / Close">
+                        <group>
+                            <group string="Controlled Decision Evidence">
+                                <field name="acceptance_basis" placeholder="Why the residual risk is acceptable, or what proves closure"/>
+                                <field name="acceptance_evidence_url" widget="url"/>
+                                <field name="acceptance_attachment_ids" widget="many2many_binary"/>
+                                <field name="resolution_notes"/>
+                            </group>
+                            <group string="Authenticated Decision">
+                                <field name="accepted_by_id"/><field name="accepted_date"/>
+                                <field name="resolved_by_id"/><field name="resolved_date"/>
+                            </group>
+                        </group>
+                    </page>
+                </notebook>
             </sheet><chatter/></form></field>
     </record>
     <record id="action_hjig_project_risk" model="ir.actions.act_window">

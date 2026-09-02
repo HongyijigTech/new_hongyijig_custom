@@ -1795,6 +1795,7 @@ class HjigProgrammeRunArtifact(models.Model):
     bop_id = fields.Many2one("hjig.bop", string="Native BOP Register", ondelete="restrict")
     mould_plan_id = fields.Many2one("x_mould", string="Native Mould Planning Record", ondelete="restrict")
     risk_count = fields.Integer(compute="_compute_risk_checkpoint")
+    incomplete_risk_count = fields.Integer(compute="_compute_risk_checkpoint")
     unresolved_escalated_risk_count = fields.Integer(compute="_compute_risk_checkpoint")
     risk_reviewed = fields.Boolean(default=False, readonly=True)
     risk_review_note = fields.Text()
@@ -1914,8 +1915,11 @@ class HjigProgrammeRunArtifact(models.Model):
         for requirement in self:
             domain = [("project_id", "=", requirement.project_id.id)]
             requirement.risk_count = Risk.search_count(domain) if requirement.project_id else 0
+            requirement.incomplete_risk_count = Risk.search_count(
+                domain + [("readiness_percent", "<", 100)]
+            ) if requirement.project_id else 0
             requirement.unresolved_escalated_risk_count = Risk.search_count(
-                domain + [("status", "!=", "resolved"), ("risk_score", ">=", 16)]
+                domain + [("gate_blocker", "=", True)]
             ) if requirement.project_id else 0
 
     @api.constrains("project_document_id", "sor_id", "bop_id", "mould_plan_id")
@@ -2011,6 +2015,8 @@ class HjigProgrammeRunArtifact(models.Model):
                 raise UserError(_("Risk review confirmation is available only for FRM-006."))
             if not requirement.risk_count:
                 raise ValidationError(_("Create at least one project risk before confirming the review."))
+            if requirement.incomplete_risk_count:
+                raise ValidationError(_("Complete every Risk Control Card to 100% before confirming the gate review."))
             if requirement.unresolved_escalated_risk_count:
                 raise ValidationError(_("Resolve or formally control every risk scoring 16 or higher first."))
             if not (requirement.risk_review_note or "").strip():

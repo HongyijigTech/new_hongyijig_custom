@@ -311,7 +311,31 @@ class HjigProjectRisk(models.Model):
 
     risk_id = fields.Char(required=True, readonly=True, copy=False, default=lambda self: _("New"), index=True)
     project_id = fields.Many2one("project.project", required=True, ondelete="restrict", index=True, tracking=True)
+    origin_requirement_id = fields.Many2one(
+        "hjig.programme.run.artifact", string="Raised From Gate Requirement",
+        readonly=True, copy=False, ondelete="set null", index=True,
+    )
+    origin_stage_id = fields.Many2one(
+        "hjig.launchguard.stage", string="First Identified At", readonly=True, copy=False, index=True,
+    )
+    source_type = fields.Selection(
+        [("sor", "SOR Review"), ("bop", "BOP Review"), ("mould_plan", "Mould Planning"),
+         ("design", "Design Challenge / Assumption"), ("customer", "Customer Input"),
+         ("supplier", "Supplier Input"), ("gate_review", "Gate Review"), ("other", "Other")],
+        required=True, default="gate_review", tracking=True,
+    )
+    source_reference = fields.Char(
+        required=True, default="Manual gate review", tracking=True,
+        help="Exact clause, document revision, part/BOP, email, meeting note, or gate checkpoint that exposed this risk.",
+    )
+    source_evidence_url = fields.Char(string="Source Evidence Link", tracking=True)
+    source_attachment_ids = fields.Many2many(
+        "ir.attachment", "hjig_project_risk_source_attachment_rel", "risk_id", "attachment_id",
+        string="Source Evidence Attachments",
+    )
+    cause = fields.Text(tracking=True)
     description = fields.Text(required=True, tracking=True)
+    impact_statement = fields.Text(tracking=True)
     category = fields.Selection(
         [("technical", "Technical"), ("quality", "Quality"), ("resource", "Resource"),
          ("schedule", "Schedule"), ("commercial", "Commercial"), ("supplier", "Supplier"),
@@ -327,8 +351,31 @@ class HjigProjectRisk(models.Model):
          ("5", "5 - Severe / Launch impact")], required=True, tracking=True,
     )
     risk_score = fields.Integer(compute="_compute_risk_score", store=True, index=True)
+    risk_level = fields.Selection(
+        [("low", "Low"), ("medium", "Medium"), ("high", "High"), ("critical", "Critical")],
+        compute="_compute_risk_score", store=True, index=True,
+    )
     escalation_required = fields.Boolean(compute="_compute_risk_score", store=True, index=True)
     mitigation_plan = fields.Text(required=True, tracking=True)
+    preventive_action = fields.Text(tracking=True)
+    contingency_plan = fields.Text(tracking=True)
+    trigger_indicator = fields.Text(string="Early Warning / Trigger", tracking=True)
+    residual_probability = fields.Selection(
+        [("1", "1 - Rare (<10%)"), ("2", "2 - Unlikely (10-30%)"),
+         ("3", "3 - Possible (30-50%)"), ("4", "4 - Likely (50-70%)"),
+         ("5", "5 - Almost Certain (>70%)")], tracking=True,
+    )
+    residual_impact = fields.Selection(
+        [("1", "1 - Insignificant"), ("2", "2 - Minor"), ("3", "3 - Moderate"),
+         ("4", "4 - Major"), ("5", "5 - Severe / Launch impact")], tracking=True,
+    )
+    residual_score = fields.Integer(compute="_compute_risk_score", store=True, index=True)
+    residual_level = fields.Selection(
+        [("low", "Low"), ("medium", "Medium"), ("high", "High"), ("critical", "Critical")],
+        compute="_compute_risk_score", store=True, index=True,
+    )
+    gate_blocker = fields.Boolean(compute="_compute_risk_score", store=True, index=True)
+    readiness_percent = fields.Integer(compute="_compute_readiness", store=True, index=True)
     owner_designation_id = fields.Many2one("hjig.governance.designation", required=True, ondelete="restrict", tracking=True)
     approver_designation_id = fields.Many2one("hjig.governance.designation", required=True, ondelete="restrict", tracking=True)
     target_date = fields.Date(required=True, tracking=True)
@@ -338,22 +385,68 @@ class HjigProjectRisk(models.Model):
         required=True, default="open", tracking=True,
     )
     resolution_notes = fields.Text(tracking=True)
+    acceptance_basis = fields.Text(tracking=True)
+    acceptance_evidence_url = fields.Char(tracking=True)
+    acceptance_attachment_ids = fields.Many2many(
+        "ir.attachment", "hjig_project_risk_acceptance_attachment_rel", "risk_id", "attachment_id",
+        string="Acceptance / Closure Evidence",
+    )
+    accepted_by_id = fields.Many2one("res.users", readonly=True, copy=False, tracking=True)
+    accepted_date = fields.Date(readonly=True, copy=False, tracking=True)
     resolved_by_id = fields.Many2one("res.users", readonly=True, copy=False, tracking=True)
     resolved_date = fields.Date(readonly=True, copy=False, tracking=True)
 
     _project_risk_id_unique = models.Constraint("UNIQUE(project_id, risk_id)", "Risk ID must be unique within the project.")
 
-    @api.depends("probability", "impact")
+    @staticmethod
+    def _score_level(score):
+        if score >= 20:
+            return "critical"
+        if score >= 12:
+            return "high"
+        if score >= 6:
+            return "medium"
+        return "low" if score else False
+
+    @api.depends("probability", "impact", "residual_probability", "residual_impact", "status")
     def _compute_risk_score(self):
         for risk in self:
             risk.risk_score = int(risk.probability or 0) * int(risk.impact or 0)
+            risk.risk_level = self._score_level(risk.risk_score)
+            risk.residual_score = int(risk.residual_probability or 0) * int(risk.residual_impact or 0)
+            risk.residual_level = self._score_level(risk.residual_score)
             risk.escalation_required = risk.risk_score >= 16
+            risk.gate_blocker = risk.status not in ("accepted", "resolved") and (
+                risk.risk_score >= 16 or risk.residual_score >= 16
+            )
+
+    @api.depends(
+        "source_reference", "cause", "description", "impact_statement", "mitigation_plan",
+        "preventive_action", "contingency_plan", "trigger_indicator", "residual_probability",
+        "residual_impact", "owner_designation_id", "target_date", "next_review_date",
+    )
+    def _compute_readiness(self):
+        for risk in self:
+            checks = [
+                bool(risk.source_reference), bool(risk.cause), bool(risk.description),
+                bool(risk.impact_statement), bool(risk.mitigation_plan or risk.preventive_action),
+                bool(risk.contingency_plan), bool(risk.trigger_indicator),
+                bool(risk.residual_probability and risk.residual_impact),
+                bool(risk.owner_designation_id), bool(risk.target_date and risk.next_review_date),
+            ]
+            risk.readiness_percent = round(sum(checks) * 100 / len(checks))
 
     @api.model_create_multi
     def create(self, vals_list):
         authority = _artifact_authority(self.env, "new_hongyijig_custom.artifact_frm_006")
+        requirement = self.env["hjig.programme.run.artifact"].browse(
+            self.env.context.get("hjig_programme_artifact_requirement_id")
+        ).exists()
         for vals in vals_list:
             vals.update({key: vals.get(key) or value for key, value in authority.items()})
+            if requirement and requirement.artifact_code == "FRM-006":
+                vals.setdefault("origin_requirement_id", requirement.id)
+                vals.setdefault("origin_stage_id", requirement.stage_id.id)
             if vals.get("risk_id", _("New")) == _("New"):
                 vals["risk_id"] = self.env["ir.sequence"].next_by_code("hjig.project.risk") or _("New")
         records = super().create(vals_list)
@@ -366,8 +459,45 @@ class HjigProjectRisk(models.Model):
             ("artifact_code", "=", "FRM-006"),
         ])
         if requirements:
+            open_requirements = requirements.filtered(lambda item: item.run_gate_id.state != "approved")
+            if open_requirements.filtered("risk_reviewed"):
+                open_requirements.with_context(hjig_risk_review_workflow=True).write({
+                    "risk_reviewed": False,
+                    "risk_reviewed_by_id": False,
+                    "risk_reviewed_on": False,
+                })
             requirements._compute_risk_checkpoint()
             requirements._compute_status()
+
+    def _check_operational_readiness(self):
+        for risk in self:
+            missing = []
+            for field_name, label in (
+                ("source_reference", _("source reference")), ("cause", _("cause")),
+                ("impact_statement", _("impact statement")), ("contingency_plan", _("contingency plan")),
+                ("trigger_indicator", _("early-warning trigger")),
+                ("residual_probability", _("residual probability")),
+                ("residual_impact", _("residual impact")),
+            ):
+                if not risk[field_name]:
+                    missing.append(label)
+            if missing:
+                raise ValidationError(_("Complete the risk control card before workflow action: %s.") % ", ".join(missing))
+            if risk.source_evidence_url and not _valid_evidence_url(risk.source_evidence_url):
+                raise ValidationError(_("Source evidence link must be a valid HTTP or HTTPS URL."))
+            if not _attachments_belong_to(risk, risk.source_attachment_ids):
+                raise ValidationError(_("Every source attachment must belong to this Risk record."))
+
+    def _check_acceptance_evidence(self):
+        for risk in self:
+            if not risk.acceptance_basis:
+                raise ValidationError(_("Acceptance / closure basis is required."))
+            if not risk.acceptance_attachment_ids and not risk.acceptance_evidence_url:
+                raise ValidationError(_("Add at least one acceptance / closure evidence attachment or link."))
+            if risk.acceptance_evidence_url and not _valid_evidence_url(risk.acceptance_evidence_url):
+                raise ValidationError(_("Acceptance evidence link must be a valid HTTP or HTTPS URL."))
+            if not _attachments_belong_to(risk, risk.acceptance_attachment_ids):
+                raise ValidationError(_("Every acceptance attachment must belong to this Risk record."))
 
     def write(self, vals):
         controlled = set(self._fields) - CHATTER_FIELDS
@@ -381,9 +511,14 @@ class HjigProjectRisk(models.Model):
                 if risk.status == "open" and target == "mitigating":
                     if set(vals) != {"status"} or not risk.owner_designation_id._user_holds_for_project(self.env.user, risk.project_id):
                         raise UserError(_("Only the Owner Designation holder may start mitigation."))
+                    risk._check_operational_readiness()
                 elif risk.status in ("open", "mitigating") and target == "accepted":
-                    if set(vals) != {"status"} or not risk.approver_designation_id._user_holds_for_project(self.env.user, risk.project_id):
+                    if set(vals) - {"status", "accepted_by_id", "accepted_date"} or not risk.approver_designation_id._user_holds_for_project(self.env.user, risk.project_id):
                         raise UserError(_("Only the Approver Designation holder may accept a risk."))
+                    risk._check_operational_readiness()
+                    risk._check_acceptance_evidence()
+                    if vals.get("accepted_by_id") != self.env.user.id or not vals.get("accepted_date"):
+                        raise ValidationError(_("Authenticated risk-acceptance metadata is required."))
                 elif target == "resolved":
                     if set(vals) - {"status", "resolved_by_id", "resolved_date"}:
                         raise ValidationError(_("Save risk changes before using the controlled resolution transition."))
@@ -392,6 +527,8 @@ class HjigProjectRisk(models.Model):
                     notes = vals.get("resolution_notes", risk.resolution_notes)
                     if not notes or vals.get("resolved_by_id") != self.env.user.id or not vals.get("resolved_date"):
                         raise ValidationError(_("Resolution notes and authenticated resolution metadata are required."))
+                    risk._check_operational_readiness()
+                    risk._check_acceptance_evidence()
                 else:
                     raise ValidationError(_("Invalid Risk workflow transition."))
         result = super().write(vals)
@@ -402,7 +539,11 @@ class HjigProjectRisk(models.Model):
         self.write({"status": "mitigating"})
 
     def action_accept(self):
-        self.write({"status": "accepted"})
+        for risk in self:
+            risk.write({
+                "status": "accepted", "accepted_by_id": self.env.user.id,
+                "accepted_date": fields.Date.context_today(risk),
+            })
 
     def action_resolve(self):
         for risk in self:

@@ -68,6 +68,35 @@ class TestProjectRegisters(TransactionCase):
         mould.with_user(self.approver).action_approve()
         return mould, part
 
+    def _risk_vals(self, **overrides):
+        vals = {
+            "project_id": self.project.id,
+            "source_type": "sor", "source_reference": "SOR R00 - cooling requirement",
+            "cause": "Cooling input is not confirmed", "description": "Trial temperature may exceed the limit",
+            "impact_statement": "Trial delay and possible part rejection",
+            "category": "technical", "probability": "4", "impact": "5",
+            "mitigation_plan": "Obtain the validated cooling input before design freeze",
+            "preventive_action": "Review the signed SOR and machine data",
+            "contingency_plan": "Hold gate and run a controlled cooling study",
+            "trigger_indicator": "Cooling input remains open seven days before freeze",
+            "residual_probability": "2", "residual_impact": "3",
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+            "target_date": "2026-09-10", "next_review_date": "2026-08-30",
+            "acceptance_basis": "Controls and residual exposure independently reviewed",
+            "resolution_notes": "Recovery plan completed",
+        }
+        vals.update(overrides)
+        return vals
+
+    def _attach_risk_evidence(self, risk):
+        attachment = self.env["ir.attachment"].create({
+            "name": "risk-evidence.txt", "datas": base64.b64encode(b"verified risk evidence"),
+            "res_model": "hjig.project.risk", "res_id": risk.id,
+        })
+        risk.acceptance_attachment_ids = [(6, 0, [attachment.id])]
+        return attachment
+
     def test_final_mould_plan_generation_and_lock(self):
         mould, part = self._approved_mould()
         plan = self.env["hjig.final.mould.plan"].create({
@@ -119,35 +148,46 @@ class TestProjectRegisters(TransactionCase):
             })
 
     def test_risk_score_and_resolution_lock(self):
-        risk = self.env["hjig.project.risk"].create({
-            "project_id": self.project.id, "description": "Trial date may slip",
-            "category": "schedule", "probability": "4", "impact": "5",
-            "mitigation_plan": "Daily recovery review",
-            "owner_designation_id": self.owner_designation.id,
-            "approver_designation_id": self.approver_designation.id,
-            "target_date": "2026-09-10", "next_review_date": "2026-08-30",
-            "resolution_notes": "Recovery plan completed",
-        })
+        risk = self.env["hjig.project.risk"].create(self._risk_vals(
+            description="Trial date may slip", category="schedule",
+        ))
+        self._attach_risk_evidence(risk)
         self.assertEqual(risk.risk_score, 20)
+        self.assertEqual(risk.residual_score, 6)
         self.assertTrue(risk.escalation_required)
+        self.assertTrue(risk.gate_blocker)
+        self.assertEqual(risk.readiness_percent, 100)
         risk.with_user(self.approver).action_resolve()
+        self.assertFalse(risk.gate_blocker)
         with self.assertRaises(ValidationError):
             risk.description = "Rewritten"
 
     def test_risk_intermediate_workflow_is_designation_controlled(self):
-        risk = self.env["hjig.project.risk"].create({
-            "project_id": self.project.id, "description": "Controlled workflow risk",
-            "category": "technical", "probability": "3", "impact": "3",
-            "mitigation_plan": "Execute countermeasure",
-            "owner_designation_id": self.owner_designation.id,
-            "approver_designation_id": self.approver_designation.id,
-            "target_date": "2026-09-10", "next_review_date": "2026-08-30",
-        })
+        risk = self.env["hjig.project.risk"].create(self._risk_vals(
+            description="Controlled workflow risk", probability="3", impact="3",
+        ))
+        self._attach_risk_evidence(risk)
         with self.assertRaises(UserError):
             risk.with_user(self.outsider).action_start_mitigation()
         risk.with_user(self.owner).action_start_mitigation()
         risk.with_user(self.approver).action_accept()
         self.assertEqual(risk.status, "accepted")
+        self.assertEqual(risk.accepted_by_id, self.approver)
+
+    def test_risk_workflow_rejects_incomplete_control_card_and_fake_evidence(self):
+        risk = self.env["hjig.project.risk"].create(self._risk_vals(
+            cause=False, impact_statement=False, residual_probability=False,
+            residual_impact=False, acceptance_basis=False,
+        ))
+        with self.assertRaises(ValidationError):
+            risk.with_user(self.owner).action_start_mitigation()
+        risk.write({
+            "cause": "Input missing", "impact_statement": "Launch delay",
+            "residual_probability": "2", "residual_impact": "3",
+            "acceptance_basis": "Reviewed", "acceptance_evidence_url": "not-a-link",
+        })
+        with self.assertRaises(ValidationError):
+            risk.with_user(self.approver).action_accept()
 
     def test_issue_needs_evidence_to_close(self):
         issue = self.env["hjig.project.issue"].create({
@@ -268,3 +308,107 @@ class TestProjectRegisters(TransactionCase):
         with self.assertRaises(AccessError):
             risk.with_user(self.owner).read(["description"])
         self.assertEqual(self.env["hjig.project.risk"].with_user(self.approver).search([("id", "=", risk.id)]), risk)
+
+
+@tagged("post_install", "-at_install", "risk_register")
+class TestRiskRegister(TransactionCase):
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.owner = cls.env["res.users"].create({
+            "name": "Risk Owner", "login": "risk.owner@test.invalid",
+            "group_ids": [(6, 0, [cls.env.ref("project.group_project_user").id])],
+        })
+        cls.approver = cls.env["res.users"].create({
+            "name": "Risk Approver", "login": "risk.approver@test.invalid",
+            "group_ids": [(6, 0, [cls.env.ref("project.group_project_manager").id])],
+        })
+        cls.outsider = cls.env["res.users"].create({
+            "name": "Risk Outsider", "login": "risk.outsider@test.invalid",
+            "group_ids": [(6, 0, [cls.env.ref("project.group_project_user").id])],
+        })
+        cls.owner_designation = cls.env["hjig.governance.designation"].create({
+            "code": "RISK-TEST-OWNER", "name": "Risk Test Owner", "category": "engineering",
+            "holder_ids": [(6, 0, [cls.owner.id])],
+        })
+        cls.approver_designation = cls.env["hjig.governance.designation"].create({
+            "code": "RISK-TEST-APPROVER", "name": "Risk Test Approver", "category": "project",
+            "holder_ids": [(6, 0, [cls.approver.id])],
+        })
+        cls.project = cls.env["project.project"].create({
+            "name": "Risk Register Test Project", "hjig_project_record_type": "customer",
+            "x_project_code": "HJ-RISK-2026-0001",
+            "hjig_authorized_user_ids": [(6, 0, [cls.owner.id, cls.approver.id])],
+        })
+        for designation, holder in (
+            (cls.owner_designation, cls.owner), (cls.approver_designation, cls.approver),
+        ):
+            cls.env["hjig.project.designation.assignment"].create({
+                "project_id": cls.project.id, "designation_id": designation.id,
+                "holder_ids": [(6, 0, [holder.id])],
+            })
+
+    def _risk_vals(self, **overrides):
+        vals = {
+            "project_id": self.project.id, "source_type": "sor",
+            "source_reference": "SOR R00 - cooling requirement",
+            "cause": "Cooling input is not confirmed",
+            "description": "Trial temperature may exceed the limit",
+            "impact_statement": "Trial delay and possible part rejection",
+            "category": "technical", "probability": "4", "impact": "5",
+            "mitigation_plan": "Obtain the validated cooling input before design freeze",
+            "preventive_action": "Review the signed SOR and machine data",
+            "contingency_plan": "Hold gate and run a controlled cooling study",
+            "trigger_indicator": "Cooling input remains open seven days before freeze",
+            "residual_probability": "2", "residual_impact": "3",
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+            "target_date": "2026-09-10", "next_review_date": "2026-08-30",
+            "acceptance_basis": "Controls and residual exposure independently reviewed",
+            "resolution_notes": "Recovery plan completed",
+        }
+        vals.update(overrides)
+        return vals
+
+    def _attach_evidence(self, risk):
+        attachment = self.env["ir.attachment"].create({
+            "name": "risk-evidence.txt", "datas": base64.b64encode(b"verified risk evidence"),
+            "res_model": "hjig.project.risk", "res_id": risk.id,
+        })
+        risk.acceptance_attachment_ids = [(6, 0, [attachment.id])]
+
+    def test_risk_card_scoring_evidence_and_resolution_lock(self):
+        risk = self.env["hjig.project.risk"].create(self._risk_vals())
+        self._attach_evidence(risk)
+        self.assertEqual((risk.risk_score, risk.residual_score, risk.readiness_percent), (20, 6, 100))
+        self.assertTrue(risk.gate_blocker)
+        risk.with_user(self.approver).action_resolve()
+        self.assertFalse(risk.gate_blocker)
+        with self.assertRaises(ValidationError):
+            risk.description = "Rewritten after closure"
+
+    def test_risk_card_maker_checker_flow(self):
+        risk = self.env["hjig.project.risk"].create(self._risk_vals(probability="3", impact="3"))
+        self._attach_evidence(risk)
+        with self.assertRaises(UserError):
+            risk.with_user(self.outsider).action_start_mitigation()
+        risk.with_user(self.owner).action_start_mitigation()
+        risk.with_user(self.approver).action_accept()
+        self.assertEqual(risk.status, "accepted")
+        self.assertEqual(risk.accepted_by_id, self.approver)
+
+    def test_risk_card_blocks_incomplete_or_fake_evidence(self):
+        risk = self.env["hjig.project.risk"].create(self._risk_vals(
+            cause=False, impact_statement=False, residual_probability=False,
+            residual_impact=False, acceptance_basis=False,
+        ))
+        with self.assertRaises(ValidationError):
+            risk.with_user(self.owner).action_start_mitigation()
+        risk.write({
+            "cause": "Input missing", "impact_statement": "Launch delay",
+            "residual_probability": "2", "residual_impact": "3",
+            "acceptance_basis": "Reviewed", "acceptance_evidence_url": "not-a-link",
+        })
+        with self.assertRaises(ValidationError):
+            risk.with_user(self.approver).action_accept()
