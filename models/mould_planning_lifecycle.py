@@ -639,6 +639,7 @@ class HjigMouldPartLifecycle(models.Model):
         "x_visual_inspection_applicability", "x_dimensional_inspection_applicability",
         "x_mould_base_steel_id", "x_mould_base_steel_grade", "x_runner_type", "x_gate_type_id",
         "x_gate_type", "x_component_gate_style", "x_component_gate_style_other",
+        "x_part_picture", "x_dimension_x_mm", "x_dimension_y_mm", "x_dimension_z_mm",
     )
     def _compute_completeness(self):
         super()._compute_completeness()
@@ -650,6 +651,14 @@ class HjigMouldPartLifecycle(models.Model):
                 extra_missing.append(_("Custom Component Gate"))
             if not part.x_customer_shrinkage_min and not part.x_customer_shrinkage_max and not part.x_customer_shrinkage:
                 extra_missing.append(_("Customer Shrinkage Range"))
+            if not part.x_part_picture:
+                extra_missing.append(_("Part Picture"))
+            if not part.x_dimension_x_mm:
+                extra_missing.append(_("Part X Dimension"))
+            if not part.x_dimension_y_mm:
+                extra_missing.append(_("Part Y Dimension"))
+            if not part.x_dimension_z_mm:
+                extra_missing.append(_("Part Z Dimension"))
             if extra_missing:
                 current = [item for item in (part.x_missing_fields or "").split(", ") if item]
                 part.x_missing_fields = ", ".join(current + extra_missing)

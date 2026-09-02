@@ -116,6 +116,11 @@ class TestNativeProjectForms(TransactionCase):
                 "x_mould_base_steel_grade": "P20",
                 "x_runner_type": "cold",
                 "x_gate_type": "Edge Gate",
+                "x_component_gate_style": "edge",
+                "x_part_picture": base64.b64encode(b"part-photo"),
+                "x_dimension_x_mm": 120.0,
+                "x_dimension_y_mm": 80.0,
+                "x_dimension_z_mm": 35.0,
             })
         part = self.env["x_mould_part"].create(part_values)
         return mould, part
@@ -388,6 +393,11 @@ class TestNativeProjectForms(TransactionCase):
             "x_mould_base_steel_id": steel.id,
             "x_runner_type": "cold",
             "x_gate_type_id": gate.id,
+            "x_component_gate_style": "edge",
+            "x_part_picture": base64.b64encode(b"part-photo"),
+            "x_dimension_x_mm": 120.0,
+            "x_dimension_y_mm": 80.0,
+            "x_dimension_z_mm": 35.0,
         })
         self.assertEqual(part.x_part_material, material.name)
         self.assertEqual(part.x_standard_shrinkage, material.shrinkage_range)
@@ -396,6 +406,23 @@ class TestNativeProjectForms(TransactionCase):
         self.assertEqual(part.x_completion_percent, 100.0)
         with self.assertRaises(ValidationError):
             material.name = "Rewritten approved baseline"
+
+    def test_ig01_part_cannot_show_complete_without_photo_dimensions_and_component_gate(self):
+        mould, part = self._create_mould()
+        part.write({
+            "x_component_gate_style": False,
+            "x_part_picture": False,
+            "x_dimension_x_mm": 0.0,
+            "x_dimension_y_mm": 0.0,
+            "x_dimension_z_mm": 0.0,
+        })
+        self.assertLess(part.x_completion_percent, 100.0)
+        for label in (
+            "Gate Towards Component", "Part Picture", "Part X Dimension",
+            "Part Y Dimension", "Part Z Dimension",
+        ):
+            self.assertIn(label, part.x_missing_fields)
+        self.assertLess(mould.x_completion_percent, 100.0)
 
     def test_surface_finish_type_change_clears_stale_snapshot(self):
         finish = self.env.ref("new_hongyijig_custom.surface_finish_spi_004")
