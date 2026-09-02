@@ -37,12 +37,26 @@ class TestBopRegister(TransactionCase):
             "project_id": self.project.id,
             "revision": "R00",
             "effective_date": "2026-08-30",
+            "source_route": "hongyi_guided",
+            "assembly_environment_reference": "ASM-CAD-001 / R02",
+            "assembly_reference_confirmed": True,
+            "responsibility_boundary_ack": True,
+            "change_control_ack": True,
             "customer_signoff_name": "Customer Project Authority",
+            "customer_signoff_organization": "Customer Organisation",
             "customer_signoff_designation": "Project Head",
+            "customer_signoff_reference": "Approved email dated 2026-08-30",
             "customer_signoff_date": "2026-08-30",
             "line_ids": [(0, 0, {
                 "component_code": "BOP-001", "component_name": "Purchased Insert",
+                "component_category": "insert_fastener",
                 "quantity": 2, "weight_grams": 25,
+                "source_ownership": "customer",
+                "drawing_reference": "BOP-DWG-001",
+                "drawing_revision": "R03",
+                "assembly_impact": "yes",
+                "impact_scope": "fitment",
+                "cad_assembly_match": "confirmed",
                 "datasheet_status": "received", "cad_status": "received",
                 "size_status": "frozen", "sample_status": "received",
             })],
@@ -84,6 +98,27 @@ class TestBopRegister(TransactionCase):
         bop.line_ids.sample_status = "pending"
         with self.assertRaises(ValidationError):
             bop.with_user(self.owner).action_submit_review()
+
+    def test_bop_cannot_submit_without_controlled_drawing_reference(self):
+        bop = self._ready_bop()
+        bop.line_ids.drawing_revision = False
+        self.assertFalse(bop.stage_ready)
+        with self.assertRaises(ValidationError):
+            bop.with_user(self.owner).action_submit_review()
+
+    def test_envelope_only_component_blocks_bop_freeze(self):
+        bop = self._ready_bop()
+        bop.line_ids.size_status = "envelope"
+        self.assertFalse(bop.stage_ready)
+        with self.assertRaises(ValidationError):
+            bop.with_user(self.owner).action_submit_review()
+
+    def test_customer_document_route_requires_source_document(self):
+        bop = self._ready_bop()
+        bop.source_route = "customer_document"
+        self.assertFalse(bop.stage_ready)
+        bop.source_document_url = "https://drive.google.com/file/d/test-bop-source"
+        self.assertTrue(bop.stage_ready)
 
     def test_bop_state_cannot_be_bypassed_by_direct_write(self):
         bop = self._ready_bop()

@@ -32,11 +32,39 @@ class HjigBop(models.Model):
     company_id = fields.Many2one(related="project_id.company_id", store=True, readonly=True, index=True)
     title = fields.Char(required=True, default="Bought Out Parts Register", tracking=True)
     revision = fields.Char(required=True, default="R00", tracking=True)
+    source_route = fields.Selection(
+        [
+            ("customer_document", "Customer-Controlled BOP Document"),
+            ("hongyi_guided", "Hongyi Guided BOP Capture"),
+        ],
+        required=True,
+        default="hongyi_guided",
+        tracking=True,
+    )
+    source_document_url = fields.Char(string="Source BOP Document URL", tracking=True)
+    source_document_attachment = fields.Binary(
+        string="Source BOP Document", attachment=True, copy=False
+    )
+    source_document_filename = fields.Char(copy=False)
+    assembly_environment_reference = fields.Char(
+        string="Assembly CAD / Environment Reference", tracking=True
+    )
+    assembly_reference_confirmed = fields.Boolean(
+        string="BOP Data Matches Assembly Environment", tracking=True
+    )
+    responsibility_boundary_ack = fields.Boolean(
+        string="Responsibility Boundary Acknowledged", tracking=True
+    )
+    change_control_ack = fields.Boolean(
+        string="Post-Freeze Changes Require ECN", tracking=True
+    )
     line_ids = fields.One2many("hjig.bop.line", "bop_id", string="Bought Out Parts")
     line_count = fields.Integer(compute="_compute_readiness")
     ready_line_count = fields.Integer(compute="_compute_readiness")
     completion_percent = fields.Float(compute="_compute_readiness")
     all_physical_samples_received = fields.Boolean(compute="_compute_readiness")
+    stage_ready = fields.Boolean(compute="_compute_readiness")
+    freeze_blockers = fields.Text(compute="_compute_readiness")
     owner_designation_id = fields.Many2one(
         "hjig.governance.designation", required=True, ondelete="restrict", tracking=True
     )
@@ -47,7 +75,11 @@ class HjigBop(models.Model):
     frozen_by_id = fields.Many2one("res.users", readonly=True, copy=False, tracking=True)
     effective_date = fields.Date(tracking=True)
     customer_signoff_name = fields.Char(tracking=True)
+    customer_signoff_organization = fields.Char(string="Customer Organisation", tracking=True)
     customer_signoff_designation = fields.Char(tracking=True)
+    customer_signoff_reference = fields.Char(
+        string="Customer Signature / Approval Reference", tracking=True
+    )
     customer_signoff_date = fields.Date(tracking=True)
     state = fields.Selection(
         [
@@ -78,6 +110,24 @@ class HjigBop(models.Model):
         "line_ids.cad_status",
         "line_ids.size_status",
         "line_ids.sample_status",
+        "line_ids.source_ownership",
+        "line_ids.drawing_reference",
+        "line_ids.drawing_revision",
+        "line_ids.impact_scope",
+        "line_ids.assembly_impact",
+        "line_ids.cad_assembly_match",
+        "source_route",
+        "source_document_url",
+        "source_document_attachment",
+        "assembly_environment_reference",
+        "assembly_reference_confirmed",
+        "responsibility_boundary_ack",
+        "change_control_ack",
+        "effective_date",
+        "customer_signoff_name",
+        "customer_signoff_organization",
+        "customer_signoff_reference",
+        "customer_signoff_date",
     )
     def _compute_readiness(self):
         for bop in self:
@@ -90,6 +140,35 @@ class HjigBop(models.Model):
             bop.all_physical_samples_received = bool(bop.line_ids) and all(
                 line.sample_status == "received" for line in bop.line_ids
             )
+            blockers = []
+            if not bop.line_ids:
+                blockers.append(_("Add at least one Bought Out Part."))
+            elif bop.line_ids.filtered(lambda line: not line.is_ready):
+                blockers.append(_("Complete every component reference and readiness check."))
+            if (
+                bop.source_route == "customer_document"
+                and not (bop.source_document_url or bop.source_document_attachment)
+            ):
+                blockers.append(_("Link or attach the customer-controlled BOP document."))
+            if not bop.assembly_environment_reference:
+                blockers.append(_("Enter the assembly CAD / environment reference."))
+            if not bop.assembly_reference_confirmed:
+                blockers.append(_("Confirm that BOP data matches the assembly environment."))
+            if not bop.responsibility_boundary_ack:
+                blockers.append(_("Acknowledge the Hongyi JIG responsibility boundary."))
+            if not bop.change_control_ack:
+                blockers.append(_("Acknowledge that post-freeze changes require an ECN."))
+            if not bop.effective_date:
+                blockers.append(_("Enter the effective date."))
+            if not (
+                bop.customer_signoff_name
+                and bop.customer_signoff_organization
+                and bop.customer_signoff_reference
+                and bop.customer_signoff_date
+            ):
+                blockers.append(_("Complete customer acknowledgement and approval reference."))
+            bop.stage_ready = not blockers
+            bop.freeze_blockers = "\n".join("- %s" % blocker for blocker in blockers)
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -119,16 +198,44 @@ class HjigBop(models.Model):
 
     def _snapshot_payload(self):
         self.ensure_one()
+        source_document_data = self.source_document_attachment or b""
+        if isinstance(source_document_data, str):
+            source_document_data = source_document_data.encode("utf-8")
         return {
             "project_id": self.project_id.id,
             "revision": self.revision,
             "effective_date": fields.Date.to_string(self.effective_date),
+            "source_route": self.source_route,
+            "source_document_url": self.source_document_url,
+            "source_document_filename": self.source_document_filename,
+            "source_document_sha256": (
+                hashlib.sha256(source_document_data).hexdigest()
+                if source_document_data else False
+            ),
+            "assembly_environment_reference": self.assembly_environment_reference,
+            "assembly_reference_confirmed": self.assembly_reference_confirmed,
+            "responsibility_boundary_ack": self.responsibility_boundary_ack,
+            "change_control_ack": self.change_control_ack,
+            "customer_signoff_name": self.customer_signoff_name,
+            "customer_signoff_organization": self.customer_signoff_organization,
+            "customer_signoff_designation": self.customer_signoff_designation,
+            "customer_signoff_reference": self.customer_signoff_reference,
+            "customer_signoff_date": fields.Date.to_string(self.customer_signoff_date),
             "lines": [
                 {
                     "component_code": line.component_code,
                     "component_name": line.component_name,
+                    "component_category": line.component_category,
                     "quantity": line.quantity,
                     "weight_grams": line.weight_grams,
+                    "source_ownership": line.source_ownership,
+                    "drawing_reference": line.drawing_reference,
+                    "drawing_revision": line.drawing_revision,
+                    "assembly_impact": line.assembly_impact,
+                    "impact_scope": line.impact_scope,
+                    "cad_assembly_match": line.cad_assembly_match,
+                    "material_specification": line.material_specification,
+                    "critical_tolerance": line.critical_tolerance,
                     "datasheet_status": line.datasheet_status,
                     "cad_status": line.cad_status,
                     "size_status": line.size_status,
@@ -141,18 +248,11 @@ class HjigBop(models.Model):
 
     def _assert_freeze_ready(self):
         self.ensure_one()
-        if not self.line_ids:
-            raise ValidationError(_("Add at least one Bought Out Part before submission."))
-        incomplete = self.line_ids.filtered(lambda line: not line.is_ready)
-        if incomplete:
+        if not self.stage_ready:
             raise ValidationError(
-                _("Complete quantity, datasheet, CAD, size/envelope and physical-sample status for: %s")
-                % ", ".join(incomplete.mapped("component_name"))
+                _("BOP cannot be submitted or frozen until these items are complete:\n%s")
+                % self.freeze_blockers
             )
-        if not self.effective_date:
-            raise ValidationError(_("Effective Date is required before the BOP is frozen."))
-        if not (self.customer_signoff_name and self.customer_signoff_date):
-            raise ValidationError(_("Customer sign-off name and date are required before BOP freeze."))
 
     def action_submit_review(self):
         for bop in self:
@@ -229,14 +329,74 @@ class HjigBopLine(models.Model):
     _order = "bop_id, sequence, id"
 
     bop_id = fields.Many2one("hjig.bop", required=True, ondelete="cascade", index=True)
+    bop_state = fields.Selection(related="bop_id.state", store=True, readonly=True)
     project_id = fields.Many2one(related="bop_id.project_id", store=True, readonly=True, index=True)
     company_id = fields.Many2one(related="project_id.company_id", store=True, readonly=True, index=True)
     sequence = fields.Integer(default=10)
+    component_image = fields.Image(string="Component Photo", max_width=1600, max_height=1600)
+    sourcebridge_component_id = fields.Many2one(
+        "hjig.sourcebridge.component",
+        string="Linked SourceBridge Component",
+        ondelete="restrict",
+        domain="[('engagement_id.project_id', '=', project_id)]",
+    )
     component_code = fields.Char(required=True)
     component_name = fields.Char(required=True)
+    component_category = fields.Selection(
+        [
+            ("customer_supplied", "Customer-Supplied Component"),
+            ("customer_nominated", "Customer-Nominated Outsourced Component"),
+            ("catalogue", "Standard / Catalogue Component"),
+            ("electromechanical", "Electro-Mechanical Item"),
+            ("insert_fastener", "Insert / Fastener / Seal / Connector"),
+            ("other", "Other Bought-Out Part"),
+        ],
+        required=True,
+        default="customer_supplied",
+    )
     quantity = fields.Float(required=True, default=1.0)
     weight_grams = fields.Float()
     supplier_reference = fields.Char()
+    source_ownership = fields.Selection(
+        [
+            ("customer", "Customer"),
+            ("customer_nominated", "Customer-Nominated Third Party"),
+            ("third_party", "Third Party"),
+            ("open_market", "Open Market"),
+        ],
+        required=True,
+        default="customer",
+    )
+    drawing_reference = fields.Char(string="CAD / Drawing Reference")
+    drawing_revision = fields.Char(string="CAD / Drawing Revision")
+    assembly_impact = fields.Selection(
+        [("yes", "Yes"), ("no", "No")],
+        required=True,
+        default="yes",
+    )
+    impact_scope = fields.Selection(
+        [
+            ("assembly", "Assembly"),
+            ("fitment", "Fitment"),
+            ("function", "Function"),
+            ("validation", "Validation"),
+            ("multiple", "Multiple / Combined"),
+        ],
+        required=True,
+        default="assembly",
+    )
+    impact_description = fields.Text(string="Interface / Impact Notes")
+    cad_assembly_match = fields.Selection(
+        [
+            ("pending", "Pending Verification"),
+            ("confirmed", "Confirmed Match"),
+            ("exception", "Exception / Risk Raised"),
+        ],
+        required=True,
+        default="pending",
+    )
+    material_specification = fields.Char(string="Material / Specification")
+    critical_tolerance = fields.Char(string="Critical Tolerance / Interface")
     datasheet_status = fields.Selection(
         [("pending", "Pending"), ("received", "Received"), ("not_applicable", "N/A")],
         required=True, default="pending",
@@ -260,14 +420,38 @@ class HjigBopLine(models.Model):
         "UNIQUE(bop_id, component_code)", "Component code must be unique within one BOP revision."
     )
 
-    @api.depends("quantity", "datasheet_status", "cad_status", "size_status", "sample_status")
+    @api.onchange("sourcebridge_component_id")
+    def _onchange_sourcebridge_component_id(self):
+        for line in self.filtered("sourcebridge_component_id"):
+            component = line.sourcebridge_component_id
+            line.component_code = component.code
+            line.component_name = component.name
+            line.quantity = component.quantity
+            line.material_specification = component.specification
+            line.component_category = (
+                "catalogue" if component.category == "bought_out" else "other"
+            )
+
+    @api.depends(
+        "component_code", "component_name", "quantity", "source_ownership",
+        "drawing_reference", "drawing_revision", "impact_scope", "assembly_impact",
+        "cad_assembly_match", "datasheet_status", "cad_status", "size_status", "sample_status",
+    )
     def _compute_is_ready(self):
         for line in self:
             line.is_ready = bool(
-                line.quantity > 0
+                line.component_code
+                and line.component_name
+                and line.quantity > 0
+                and line.source_ownership
+                and line.drawing_reference
+                and line.drawing_revision
+                and line.impact_scope
+                and line.assembly_impact
+                and line.cad_assembly_match == "confirmed"
                 and line.datasheet_status != "pending"
                 and line.cad_status != "pending"
-                and line.size_status != "pending"
+                and line.size_status == "frozen"
                 and line.sample_status == "received"
             )
 
@@ -276,6 +460,18 @@ class HjigBopLine(models.Model):
         for line in self:
             if line.quantity <= 0 or line.weight_grams < 0:
                 raise ValidationError(_("BOP quantity must be positive and weight cannot be negative."))
+
+    def action_open_employee_detail(self):
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Bought Out Part Detail"),
+            "res_model": "hjig.bop.line",
+            "res_id": self.id,
+            "view_mode": "form",
+            "views": [(self.env.ref("new_hongyijig_custom.view_hjig_bop_line_form").id, "form")],
+            "target": "new",
+        }
 
     def write(self, vals):
         if self.filtered(lambda line: line.bop_id.state not in ("draft", "rejected")):

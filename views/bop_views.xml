@@ -8,7 +8,8 @@
                   decoration-muted="state == 'superseded'">
                 <field name="code"/><field name="project_id"/><field name="revision"/>
                 <field name="line_count"/><field name="completion_percent" widget="percentage"/>
-                <field name="all_physical_samples_received"/><field name="state" widget="badge"/>
+                <field name="stage_ready"/><field name="all_physical_samples_received"/>
+                <field name="state" widget="badge"/>
             </list>
         </field>
     </record>
@@ -25,19 +26,31 @@
                     <field name="state" widget="statusbar" statusbar_visible="draft,review,frozen,rejected,superseded"/>
                 </header>
                 <sheet>
-                    <div class="oe_title"><h1><field name="code" readonly="1"/></h1></div>
+                    <div class="oe_title">
+                        <h1><field name="code" readonly="1"/></h1>
+                        <h2><field name="title" placeholder="Bought Out Parts Register"
+                                   readonly="state not in ['draft', 'rejected']"/></h2>
+                    </div>
+                    <group string="IG-01 BOP Reference Lock Readiness">
+                        <group>
+                            <field name="stage_ready" widget="boolean_toggle" readonly="1"/>
+                            <field name="completion_percent" widget="progressbar" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="freeze_blockers" readonly="1" nolabel="1"
+                                   placeholder="All BOP reference-lock checks are complete."/>
+                        </group>
+                    </group>
                     <group>
                         <group string="Controlled Identity">
                             <field name="project_id" readonly="state not in ['draft', 'rejected']"/>
                             <field name="project_code" readonly="1"/>
-                            <field name="title" readonly="state not in ['draft', 'rejected']"/>
                             <field name="revision" readonly="state not in ['draft', 'rejected']"/>
                             <field name="effective_date" readonly="state in ['frozen', 'superseded']"/>
                         </group>
                         <group string="Readiness">
                             <field name="line_count" readonly="1"/>
                             <field name="ready_line_count" readonly="1"/>
-                            <field name="completion_percent" widget="percentage" readonly="1"/>
                             <field name="all_physical_samples_received" readonly="1"/>
                             <field name="snapshot_hash" readonly="1" invisible="not snapshot_hash"/>
                         </group>
@@ -49,30 +62,168 @@
                         <field name="frozen_by_id" readonly="1"/>
                     </group>
                     <notebook>
-                        <page string="Bought Out Parts">
-                            <field name="line_ids" readonly="state not in ['draft', 'rejected']">
-                                <list editable="bottom" decoration-success="is_ready" decoration-danger="not is_ready">
+                        <page string="1. Source &amp; Assembly Baseline">
+                            <div class="alert alert-info" role="alert">
+                                Use one authoritative BOP register. Link the customer-controlled document when supplied;
+                                otherwise capture the same reference data through the guided component register.
+                            </div>
+                            <group>
+                                <group string="Source Control">
+                                    <field name="source_route" readonly="state not in ['draft', 'rejected']"/>
+                                    <field name="source_document_url" widget="url"
+                                           invisible="source_route != 'customer_document'"
+                                           readonly="state in ['frozen', 'superseded']"/>
+                                    <field name="source_document_attachment" filename="source_document_filename"
+                                           invisible="source_route != 'customer_document'"
+                                           readonly="state in ['frozen', 'superseded']"/>
+                                    <field name="source_document_filename" invisible="1"/>
+                                </group>
+                                <group string="Assembly Reference">
+                                    <field name="assembly_environment_reference"
+                                           placeholder="Assembly CAD / product environment / drawing reference"
+                                           readonly="state in ['frozen', 'superseded']"/>
+                                    <field name="assembly_reference_confirmed" widget="boolean_toggle"
+                                           readonly="state in ['frozen', 'superseded']"/>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="2. BOP Component Register">
+                            <div class="alert alert-warning" role="alert">
+                                Add only parts that influence assembly, fitment, function or validation. Open each row
+                                to complete its photo, drawing revision, source ownership and interface checks.
+                            </div>
+                            <field name="line_ids" readonly="state not in ['draft', 'rejected']"
+                                   class="o_hjig_bop_grid">
+                                <list decoration-success="is_ready" decoration-danger="not is_ready">
+                                    <control><create string="Add Bought Out Part &amp; Open Details"/></control>
                                     <field name="sequence" widget="handle"/>
+                                    <field name="component_image" widget="image" options="{'size': [64, 64]}"/>
+                                    <button name="action_open_employee_detail" type="object"
+                                            string="Open Full Details" icon="fa-external-link"/>
                                     <field name="component_code"/><field name="component_name"/>
-                                    <field name="quantity"/><field name="weight_grams"/>
-                                    <field name="datasheet_status"/><field name="cad_status"/>
-                                    <field name="size_status"/><field name="sample_status"/>
-                                    <field name="supplier_reference" optional="show"/>
+                                    <field name="component_category" optional="show"/>
+                                    <field name="source_ownership" optional="show"/>
+                                    <field name="drawing_reference" optional="show"/>
+                                    <field name="drawing_revision" optional="show"/>
+                                    <field name="impact_scope" optional="show"/>
+                                    <field name="cad_assembly_match" optional="show"/>
+                                    <field name="sample_status" optional="show"/>
                                     <field name="is_ready" readonly="1"/>
                                 </list>
                             </field>
                         </page>
-                        <page string="Customer Sign-Off">
+                        <page string="3. Responsibility &amp; Sign-Off">
+                            <div class="alert alert-danger" role="alert">
+                                Hongyi JIG validates the moulded part against the frozen BOP reference. BOP quality,
+                                performance, dimensional variation and post-freeze source/design changes remain outside
+                                Hongyi JIG responsibility unless separately contracted. Any post-freeze change requires ECN review.
+                            </div>
                             <group>
-                                <field name="customer_signoff_name" readonly="state in ['frozen', 'superseded']"/>
-                                <field name="customer_signoff_designation" readonly="state in ['frozen', 'superseded']"/>
-                                <field name="customer_signoff_date" readonly="state in ['frozen', 'superseded']"/>
+                                <group string="Governance Acknowledgements">
+                                    <field name="responsibility_boundary_ack" widget="boolean_toggle"
+                                           readonly="state in ['frozen', 'superseded']"/>
+                                    <field name="change_control_ack" widget="boolean_toggle"
+                                           readonly="state in ['frozen', 'superseded']"/>
+                                </group>
+                                <group string="Customer Acknowledgement">
+                                    <field name="customer_signoff_name" readonly="state in ['frozen', 'superseded']"/>
+                                    <field name="customer_signoff_organization" readonly="state in ['frozen', 'superseded']"/>
+                                    <field name="customer_signoff_designation" readonly="state in ['frozen', 'superseded']"/>
+                                    <field name="customer_signoff_reference" readonly="state in ['frozen', 'superseded']"
+                                           placeholder="Signed declaration, approved email or customer portal reference"/>
+                                    <field name="customer_signoff_date" readonly="state in ['frozen', 'superseded']"/>
+                                </group>
                             </group>
                         </page>
-                        <page string="Notes"><field name="notes" readonly="state in ['frozen', 'superseded']"/></page>
+                        <page string="4. Notes &amp; Freeze Audit">
+                            <field name="notes" readonly="state in ['frozen', 'superseded']"/>
+                            <group string="Immutable Freeze Evidence" invisible="not snapshot_hash">
+                                <field name="snapshot_hash" readonly="1"/>
+                                <field name="submitted_by_id" readonly="1"/>
+                                <field name="frozen_by_id" readonly="1"/>
+                            </group>
+                        </page>
                     </notebook>
                 </sheet>
                 <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_hjig_bop_line_form" model="ir.ui.view">
+        <field name="name">hjig.bop.line.employee.form</field>
+        <field name="model">hjig.bop.line</field>
+        <field name="arch" type="xml">
+            <form string="Bought Out Part Detail">
+                <sheet>
+                    <div class="oe_title">
+                        <label for="component_name"/>
+                        <h1><field name="component_name" placeholder="Component name"/></h1>
+                    </div>
+                    <group>
+                        <group string="Part Identity">
+                            <field name="bop_id" readonly="1"/>
+                            <field name="bop_state" invisible="1"/>
+                            <field name="project_id" readonly="1"/>
+                            <field name="sourcebridge_component_id"
+                                   options="{'no_create': True, 'no_create_edit': True}"
+                                   readonly="bop_state not in ['draft', 'rejected']"/>
+                            <field name="component_code" readonly="bop_state not in ['draft', 'rejected']"/>
+                            <field name="component_category" readonly="bop_state not in ['draft', 'rejected']"/>
+                            <field name="quantity" readonly="bop_state not in ['draft', 'rejected']"/>
+                            <field name="weight_grams" readonly="bop_state not in ['draft', 'rejected']"/>
+                        </group>
+                        <group string="Component Photo">
+                            <field name="component_image" widget="image" class="oe_avatar"
+                                   options="{'preview_image': 'component_image'}"
+                                   readonly="bop_state not in ['draft', 'rejected']"/>
+                            <field name="is_ready" widget="boolean_toggle" readonly="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="1. Source &amp; Drawing">
+                            <group>
+                                <group string="Source Ownership">
+                                    <field name="source_ownership" readonly="bop_state not in ['draft', 'rejected']"/>
+                                    <field name="supplier_reference" readonly="bop_state not in ['draft', 'rejected']"/>
+                                    <field name="material_specification" readonly="bop_state not in ['draft', 'rejected']"/>
+                                    <field name="critical_tolerance" readonly="bop_state not in ['draft', 'rejected']"/>
+                                </group>
+                                <group string="Controlled Drawing Reference">
+                                    <field name="drawing_reference" readonly="bop_state not in ['draft', 'rejected']"/>
+                                    <field name="drawing_revision" readonly="bop_state not in ['draft', 'rejected']"/>
+                                    <field name="datasheet_status" readonly="bop_state not in ['draft', 'rejected']"/>
+                                    <field name="cad_status" readonly="bop_state not in ['draft', 'rejected']"/>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="2. Assembly / Function Impact">
+                            <group>
+                                <group>
+                                    <field name="assembly_impact" readonly="bop_state not in ['draft', 'rejected']"/>
+                                    <field name="impact_scope" readonly="bop_state not in ['draft', 'rejected']"/>
+                                    <field name="cad_assembly_match" readonly="bop_state not in ['draft', 'rejected']"/>
+                                </group>
+                                <group>
+                                    <field name="impact_description" nolabel="1"
+                                           placeholder="Explain mating interface, fitment, function or validation impact"
+                                           readonly="bop_state not in ['draft', 'rejected']"/>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="3. Physical Readiness">
+                            <div class="alert alert-info" role="alert">
+                                IG-01 can proceed only when the reference data and physical sample are verified.
+                                Envelope-only or pending dimensions remain a gate blocker.
+                            </div>
+                            <group>
+                                <field name="size_status" readonly="bop_state not in ['draft', 'rejected']"/>
+                                <field name="sample_status" readonly="bop_state not in ['draft', 'rejected']"/>
+                                <field name="notes" readonly="bop_state not in ['draft', 'rejected']"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
             </form>
         </field>
     </record>

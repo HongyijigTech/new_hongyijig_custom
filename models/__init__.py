@@ -16,6 +16,7 @@ from . import programme_checklist
 from . import project_registers
 from . import project_document
 from . import foundation
+from . import mould_planning_lifecycle
 from . import project_planning
 from . import sor
 from . import bop

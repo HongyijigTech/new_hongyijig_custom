@@ -1,3 +1,5 @@
+import base64
+
 from odoo.exceptions import UserError, ValidationError
 from odoo.tests import TransactionCase, tagged
 
@@ -127,12 +129,25 @@ class TestNativeProjectForms(TransactionCase):
         self.assertEqual(mould.x_mould_planning_status, "final_locked")
         with self.assertRaises(ValidationError):
             mould.x_name = "Rewritten after approval"
+        mould.x_planning_assumption = "IG-01 planning complete before architecture control."
+        mould.action_advance_lifecycle()
         with self.assertRaises(ValidationError):
             self.env["x_mould_part"].create({
                 "x_mould_id": mould.id,
                 "x_name": "Late Part",
                 "x_part_number": "P-LATE",
             })
+
+    def test_approved_legacy_record_allows_lifecycle_work_but_not_identity_rewrite(self):
+        mould, part = self._create_mould()
+        mould.with_user(self.owner).action_submit_review()
+        mould.with_user(self.approver).action_approve()
+        mould.x_planning_assumption = "Lifecycle data remains editable at IG-01."
+        part.x_colour = "Black"
+        self.assertEqual(mould.x_planning_assumption, "Lifecycle data remains editable at IG-01.")
+        self.assertEqual(part.x_colour, "Black")
+        with self.assertRaises(ValidationError):
+            mould.x_name = "Identity rewrite is still prohibited"
 
     def test_database_locked_staging_demo_allows_audited_same_user_mould_approval(self):
         parameters = self.env["ir.config_parameter"].sudo()
@@ -164,6 +179,102 @@ class TestNativeProjectForms(TransactionCase):
         self.assertLess(mould.x_completion_percent, 100.0)
         with self.assertRaises(ValidationError):
             mould.with_user(self.owner).action_submit_review()
+
+    def test_complete_mould_lifecycle_baseline_and_controlled_change(self):
+        mould, _part = self._create_mould()
+        mould.write({
+            "x_planning_assumption": "Known part list and annual demand basis reviewed.",
+            "x_cavitation_confirmed": True,
+        })
+        self.assertTrue(mould.x_stage_ready)
+        mould.action_advance_lifecycle()
+        self.assertEqual(mould.x_lifecycle_stage, "tg01")
+        self.assertFalse(mould.x_stage_ready)
+        mould.action_confirm_architecture_baseline()
+        self.assertTrue(mould.x_stage_ready)
+        with self.assertRaises(ValidationError):
+            mould.x_mould_length_mm = 500
+        mould.write({
+            "x_change_reason": "Machine selection required a larger mould base.",
+            "x_mould_length_mm": 500,
+        })
+        change = mould.x_change_log_ids.filtered(lambda item: item.field_name == "x_mould_length_mm")
+        self.assertEqual(len(change), 1)
+        self.assertEqual(change.reason, "Machine selection required a larger mould base.")
+
+    def test_mould_machine_compatibility_and_image_evidence(self):
+        mould, _part = self._create_mould()
+        mould.write({
+            "x_planning_assumption": "Machine and mould envelope confirmed for the test.",
+            "x_cavitation_confirmed": True,
+            "x_mould_length_mm": 400,
+            "x_mould_width_mm": 350,
+            "x_mould_height_mm": 300,
+            "x_estimated_weight_kg": 800,
+            "x_projected_area_cm2": 100,
+            "x_planner_tonnage": 120,
+            "x_machine_tonnage": 180,
+            "x_machine_shot_capacity_g": 500,
+            "x_tie_bar_x_mm": 600,
+            "x_tie_bar_y_mm": 600,
+            "x_platen_x_mm": 800,
+            "x_platen_y_mm": 800,
+            "x_machine_min_thickness_mm": 200,
+            "x_machine_max_thickness_mm": 500,
+            "x_machine_daylight_mm": 600,
+            "x_handling_capacity_kg": 1200,
+        })
+        self.assertEqual(mould.x_machine_verdict, "pass")
+        one_pixel_png = base64.b64encode(
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+            b"\x00\x00\x00\rIDAT\x08\xd7c\xf8\xcf\xc0\xf0\x1f\x00\x05\x00\x01\xff\x89\x99=\x1d\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        evidence = self.env["hjig.evidence.link"].create({
+            "project_id": self.project.id,
+            "target_ref": "x_mould,%s" % mould.id,
+            "evidence_type": "Mould concept image",
+            "source_party": "hongyi",
+            "image_1920": one_pixel_png,
+            "image_caption": "Controlled mould concept image",
+            "image_stage": "ig01",
+        })
+        self.assertTrue(evidence.image_1920)
+        self.assertEqual(evidence.verification_state, "unverified")
+
+    def test_family_mould_uses_one_controlled_cavity_quantity_per_geometry(self):
+        mould, first_part = self._create_mould()
+        mould.x_mould_configuration = "family"
+        second_part = self.env["x_mould_part"].create({
+            "x_mould_id": mould.id,
+            "x_name": "Button B",
+            "x_part_number": "P-002",
+            "x_part_category": "appearance",
+            "x_surface_finish_type": "spi",
+            "x_surface_grade_code": "SPI-B1",
+            "x_part_material": "ABS",
+            "x_colour": "Black",
+            "x_customer_shrinkage": 0.5,
+            "x_part_weight_grams": 20,
+            "x_qps": 2,
+            "x_visual_inspection_applicability": "required_critical",
+            "x_dimensional_inspection_applicability": "required",
+            "x_mould_base_steel_grade": "P20",
+            "x_runner_type": "cold",
+            "x_gate_type": "Edge Gate",
+        })
+        first_part.write({"x_colour": "Black"})
+        geometry_a = self.env["hjig.mould.geometry"].create({
+            "mould_id": mould.id, "code": "G1", "name": "Button A", "cavity_quantity": 1,
+        })
+        geometry_b = self.env["hjig.mould.geometry"].create({
+            "mould_id": mould.id, "code": "G2", "name": "Button B", "cavity_quantity": 2,
+        })
+        first_part.x_geometry_id = geometry_a
+        second_part.x_geometry_id = geometry_b
+        mould.invalidate_recordset()
+        self.assertEqual(mould.x_total_cavities, 3)
+        self.assertEqual(geometry_a.krt_label, "1x1")
+        self.assertEqual(geometry_b.krt_label, "1x2")
 
     def test_visual_report_auto_generates_approved_checkpoint_baseline(self):
         mould, part = self._create_mould()
@@ -285,6 +396,26 @@ class TestNativeProjectForms(TransactionCase):
         self.assertEqual(part.x_completion_percent, 100.0)
         with self.assertRaises(ValidationError):
             material.name = "Rewritten approved baseline"
+
+    def test_surface_finish_type_change_clears_stale_snapshot(self):
+        finish = self.env.ref("new_hongyijig_custom.surface_finish_spi_004")
+        _mould, part = self._create_mould(complete=False)
+        part.write({"x_surface_finish_id": finish.id})
+        self.assertEqual(part.x_surface_finish_type, "spi")
+        self.assertEqual(part.x_surface_grade_code, finish.code)
+
+        part.write({"x_surface_finish_type": "vdi"})
+        self.assertFalse(part.x_surface_finish_id)
+        self.assertFalse(part.x_surface_grade_code)
+        self.assertFalse(part.x_surface_details)
+
+    def test_normal_polish_is_a_saveable_separate_finish(self):
+        normal = self.env.ref("new_hongyijig_custom.surface_finish_normal_polish")
+        _mould, part = self._create_mould(complete=False)
+        part.write({"x_surface_finish_id": normal.id})
+        self.assertEqual(part.x_surface_finish_type, "normal")
+        self.assertEqual(part.x_surface_grade_code, "NORMAL")
+        self.assertEqual(normal.finish_system, "normal")
 
     def test_dimensional_method_dropdown_keeps_legacy_snapshot(self):
         mould, part = self._create_mould()

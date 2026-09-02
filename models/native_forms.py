@@ -317,7 +317,7 @@ class HjigMould(models.Model):
     def write(self, vals):
         locked_fields = set(self._fields) - {"message_follower_ids", "message_ids", "activity_ids"}
         if locked_fields.intersection(vals) and self.filtered(lambda item: item.x_workflow_state in ("approved", "superseded")):
-            if not self.env.context.get("allow_native_form_workflow"):
+            if not self.env.context.get("allow_native_form_workflow") and not self.env.context.get("allow_mould_lifecycle_control"):
                 raise ValidationError(_("Approved or superseded mould plans are read-only."))
         if "x_workflow_state" in vals and not self.env.context.get("allow_native_form_workflow"):
             if any(item.x_workflow_state != vals["x_workflow_state"] for item in self):
@@ -408,10 +408,12 @@ class HjigMouldPart(models.Model):
             ("safety", "Safety Part"),
             ("other", "Other"),
         ],
+        string="Part Category",
         tracking=True,
     )
     x_surface_finish_type = fields.Selection(
         [("spi", "SPI Grade"), ("vdi", "VDI Code"), ("special", "Special Texture")],
+        string="Surface Finish Type",
         tracking=True,
     )
     x_surface_finish_id = fields.Many2one(
@@ -457,6 +459,7 @@ class HjigMouldPart(models.Model):
     )
     x_mould_base_steel_grade = fields.Selection(
         [(value, value) for value in ("P20", "718H", "NAK80", "S136", "H13", "8407", "Customer Specified")],
+        string="Mould Base Steel Grade",
         tracking=True,
     )
     x_mould_base_steel_id = fields.Many2one(
@@ -473,12 +476,12 @@ class HjigMouldPart(models.Model):
         ondelete="restrict",
         tracking=True,
     )
-    x_core_steel_brand = fields.Char(tracking=True)
-    x_core_steel_grade = fields.Char(tracking=True)
-    x_core_steel_usage = fields.Text()
-    x_cavity_steel_brand = fields.Char(tracking=True)
-    x_cavity_steel_grade = fields.Char(tracking=True)
-    x_cavity_steel_usage = fields.Text()
+    x_core_steel_brand = fields.Char(string="Core Steel Brand", tracking=True)
+    x_core_steel_grade = fields.Char(string="Core Steel Grade", tracking=True)
+    x_core_steel_usage = fields.Text(string="Core Steel Usage / Notes")
+    x_cavity_steel_brand = fields.Char(string="Cavity Steel Brand", tracking=True)
+    x_cavity_steel_grade = fields.Char(string="Cavity Steel Grade", tracking=True)
+    x_cavity_steel_usage = fields.Text(string="Cavity Steel Usage / Notes")
     x_cavity_steel_id = fields.Many2one(
         "hjig.tool.steel.master",
         string="Cavity Steel",
@@ -486,7 +489,11 @@ class HjigMouldPart(models.Model):
         ondelete="restrict",
         tracking=True,
     )
-    x_runner_type = fields.Selection([("hot", "Hot Runner"), ("cold", "Cold Runner"), ("hybrid", "Hybrid")], tracking=True)
+    x_runner_type = fields.Selection(
+        [("hot", "Hot Runner"), ("cold", "Cold Runner"), ("hybrid", "Hybrid")],
+        string="Runner Type",
+        tracking=True,
+    )
     x_gate_type_id = fields.Many2one(
         "hjig.gate.type.master",
         string="Gate Type",
@@ -494,16 +501,17 @@ class HjigMouldPart(models.Model):
         ondelete="restrict",
         tracking=True,
     )
-    x_gate_type = fields.Char(tracking=True)
-    x_gate_specifications = fields.Text(readonly=True)
+    x_gate_type = fields.Char(string="Gate Type Snapshot", tracking=True)
+    x_gate_specifications = fields.Text(string="Gate Specifications", readonly=True)
     x_assumption_status = fields.Selection(
         [("assumed", "Assumed"), ("validated", "Validated"), ("tbd", "TBD / Risk")],
         default="assumed",
         required=True,
+        string="Assumption Status",
         tracking=True,
     )
-    x_completion_percent = fields.Float(compute="_compute_completeness", store=True)
-    x_missing_fields = fields.Char(compute="_compute_completeness", store=True)
+    x_completion_percent = fields.Float(string="Completion", compute="_compute_completeness", store=True)
+    x_missing_fields = fields.Char(string="Missing Information", compute="_compute_completeness", store=True)
 
     _mould_part_number_unique = models.Constraint(
         "UNIQUE(x_mould_id, x_part_number)",
@@ -513,7 +521,12 @@ class HjigMouldPart(models.Model):
     @api.model
     def _reference_snapshot_values(self, vals):
         vals = dict(vals)
-        if vals.get("x_surface_finish_id"):
+        if "x_surface_finish_id" in vals and not vals.get("x_surface_finish_id"):
+            vals.update({
+                "x_surface_grade_code": False,
+                "x_surface_details": False,
+            })
+        elif vals.get("x_surface_finish_id"):
             finish = self.env["hjig.surface.finish.master"].browse(vals["x_surface_finish_id"]).exists()
             if finish:
                 vals.update({
@@ -667,7 +680,8 @@ class HjigMouldPart(models.Model):
         vals_list = [self._reference_snapshot_values(vals) for vals in vals_list]
         for vals in vals_list:
             mould = self.env["x_mould"].browse(vals.get("x_mould_id")).exists()
-            if mould and mould.x_workflow_state != "draft":
+            lifecycle_intake = mould and "x_lifecycle_stage" in mould._fields and mould.x_lifecycle_stage == "ig01"
+            if mould and mould.x_workflow_state != "draft" and not lifecycle_intake and not self.env.context.get("allow_mould_lifecycle_control"):
                 raise ValidationError(_("Components may only be added while the mould plan is Draft."))
         parts = super().create(vals_list)
         parts.mapped("x_mould_id")._sync_governed_cavitation()
@@ -684,7 +698,29 @@ class HjigMouldPart(models.Model):
                 raise ValidationError(_("Cavity Plan cannot be negative."))
 
     def write(self, vals):
-        if any(part.x_mould_id.x_workflow_state in ("approved", "superseded") for part in self):
+        vals = dict(vals)
+        if "x_surface_finish_type" in vals and "x_surface_finish_id" not in vals:
+            requested_system = vals.get("x_surface_finish_type")
+            has_stale_snapshot = any(
+                (part.x_surface_finish_id and part.x_surface_finish_id.finish_system != requested_system)
+                or (not part.x_surface_finish_id and part.x_surface_grade_code)
+                for part in self
+            )
+            if has_stale_snapshot:
+                vals.update({
+                    "x_surface_finish_id": False,
+                    "x_surface_grade_code": False,
+                    "x_surface_details": False,
+                })
+        lifecycle_intake = all(
+            "x_lifecycle_stage" in part.x_mould_id._fields and part.x_mould_id.x_lifecycle_stage == "ig01"
+            for part in self
+        )
+        if (
+            any(part.x_mould_id.x_workflow_state in ("approved", "superseded") for part in self)
+            and not lifecycle_intake
+            and not self.env.context.get("allow_mould_lifecycle_control")
+        ):
             raise ValidationError(_("Components of an approved or superseded mould plan are read-only."))
         moulds = self.mapped("x_mould_id")
         result = super().write(self._reference_snapshot_values(vals))
@@ -693,7 +729,11 @@ class HjigMouldPart(models.Model):
         return result
 
     def unlink(self):
-        if any(part.x_mould_id.x_workflow_state != "draft" for part in self):
+        lifecycle_intake = all(
+            "x_lifecycle_stage" in part.x_mould_id._fields and part.x_mould_id.x_lifecycle_stage == "ig01"
+            for part in self
+        )
+        if any(part.x_mould_id.x_workflow_state != "draft" for part in self) and not lifecycle_intake:
             raise UserError(_("Components may only be deleted while the mould plan is Draft."))
         moulds = self.mapped("x_mould_id")
         result = super().unlink()

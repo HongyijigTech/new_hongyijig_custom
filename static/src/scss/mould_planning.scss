@@ -1,0 +1,27 @@
+.o_hjig_mould_grid .o_list_table,
+.o_hjig_bop_grid .o_list_table {
+    table-layout: auto;
+}
+
+.o_hjig_mould_grid .o_list_table th,
+.o_hjig_mould_grid .o_list_table td,
+.o_hjig_bop_grid .o_list_table th,
+.o_hjig_bop_grid .o_list_table td {
+    border: 1px solid var(--border-color, #d8dadd) !important;
+    min-width: 8rem;
+    white-space: normal !important;
+    vertical-align: middle;
+}
+
+.o_hjig_mould_grid .o_list_table th,
+.o_hjig_bop_grid .o_list_table th {
+    font-weight: 600;
+    background: rgba(113, 75, 103, 0.08);
+}
+
+.o_hjig_mould_grid .o_field_image img,
+.o_hjig_bop_grid .o_field_image img {
+    max-height: 72px;
+    max-width: 72px;
+    object-fit: contain;
+}
