@@ -41,9 +41,14 @@ def migrate(cr, version):
     )
 
     env = api.Environment(cr, SUPERUSER_ID, {})
-    parts = env["x_mould_part"].with_context(active_test=False).search([])
+    migration_context = {
+        "active_test": False,
+        "allow_mould_lifecycle_control": True,
+        "tracking_disable": True,
+    }
+    parts = env["x_mould_part"].with_context(**migration_context).search([])
     for offset in range(0, len(parts), 500):
         parts[offset:offset + 500]._compute_completeness()
-    moulds = env["x_mould"].with_context(active_test=False).search([])
+    moulds = env["x_mould"].with_context(**migration_context).search([])
     for offset in range(0, len(moulds), 500):
         moulds[offset:offset + 500]._compute_part_summary()
