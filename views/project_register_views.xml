@@ -9,31 +9,40 @@
     </record>
     <record id="view_hjig_final_mould_plan_form" model="ir.ui.view">
         <field name="name">hjig.final.mould.plan.form</field><field name="model">hjig.final.mould.plan</field>
-        <field name="arch" type="xml"><form string="Final Mould Plan">
+        <field name="arch" type="xml"><form string="Final Mould Plan" class="o_hjig_employee_final_plan_form">
             <header>
                 <button name="action_generate_lines" type="object" string="Generate from Approved Mould Plans" class="btn-secondary" invisible="workflow_state != 'draft'"/>
                 <button name="action_submit_review" type="object" string="Submit for Review" class="btn-primary" invisible="workflow_state != 'draft'"/>
                 <button name="action_approve" type="object" string="Approve &amp; Lock" class="btn-primary" invisible="workflow_state != 'review'"/>
                 <field name="workflow_state" widget="statusbar" statusbar_visible="draft,review,approved,superseded" readonly="1"/>
             </header>
-            <sheet><div class="oe_title"><h1><field name="plan_number"/></h1></div>
-                <group><group string="Plan Identity"><field name="project_id"/><field name="project_code"/><field name="revision"/>
-                    <field name="source_mould_ids" widget="many2many_tags" domain="[('x_project_id','=',project_id)]"/>
+            <sheet>
+                <div class="alert alert-info" role="alert">
+                    <strong>Employee flow:</strong>
+                    <span> 1) Select only Approved and Final-Locked Mould Plans. 2) Click Generate. 3) Review photos and frozen engineering values. 4) Submit for independent approval.</span>
+                </div>
+                <div class="oe_title"><h1><field name="plan_number"/></h1></div>
+                <group><group string="1. Select Approved Sources"><field name="project_id"/><field name="project_code"/><field name="revision"/>
+                    <field name="source_mould_ids" widget="many2many_tags" domain="[('x_project_id','=',project_id),('x_workflow_state','=','approved'),('x_mould_planning_status','=','final_locked')]" options="{'no_create': True}"/>
                     <field name="effective_date"/></group>
-                <group string="Designation Authority"><field name="owner_designation_id"/><field name="approver_designation_id"/>
+                <group string="Live Readiness"><field name="readiness_percent" widget="progressbar"/>
+                    <field name="missing_requirements" readonly="1" placeholder="Ready to submit"/>
+                    <field name="owner_designation_id"/><field name="approver_designation_id"/>
                     <field name="submitted_by_id"/><field name="approved_by_id"/><field name="line_count"/></group></group>
-                <notebook><page string="Final Mould Plan Lines">
+                <notebook><page string="2. Review Frozen Component Snapshot">
                     <field name="line_ids" readonly="workflow_state != 'draft'">
                         <list create="false" delete="false">
+                            <field name="part_picture" widget="image" options="{'size': [56, 56]}"/>
                             <field name="mould_number"/><field name="part_name"/><field name="part_number"/>
                             <field name="part_category"/><field name="surface_finish"/><field name="part_material"/>
+                            <field name="dimension_x_mm"/><field name="dimension_y_mm"/><field name="dimension_z_mm"/>
                             <field name="standard_shrinkage"/><field name="customer_shrinkage"/><field name="part_weight_grams"/>
                             <field name="qps"/><field name="mould_configuration"/><field name="cavitation"/>
                             <field name="mould_base_steel" optional="show"/><field name="core_steel" optional="show"/>
                             <field name="cavity_steel" optional="show"/><field name="runner_type"/><field name="gate_type"/>
                         </list>
                     </field>
-                </page><page string="Notes"><field name="notes"/></page></notebook>
+                </page><page string="3. Review Notes"><field name="notes" placeholder="Record exceptions, assumptions, or review comments before submission."/></page></notebook>
             </sheet><chatter/>
         </form></field>
     </record>

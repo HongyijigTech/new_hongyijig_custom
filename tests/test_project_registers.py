@@ -4,7 +4,7 @@ from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests import TransactionCase, tagged
 
 
-@tagged("post_install", "-at_install")
+@tagged("post_install", "-at_install", "project_registers")
 class TestProjectRegisters(TransactionCase):
 
     @classmethod
@@ -49,6 +49,7 @@ class TestProjectRegisters(TransactionCase):
         mould = self.env["x_mould"].create({
             "x_name": "Register Test Mould", "x_project_id": self.project.id,
             "x_mould_number": "REG-M-001",
+            "x_mould_configuration": "single", "x_cavitation": "1",
             "x_template_id": self.env.ref("new_hongyijig_custom.native_template_mould_plan").id,
             "x_owner_designation_id": self.owner_designation.id,
             "x_approver_designation_id": self.approver_designation.id,
@@ -59,10 +60,15 @@ class TestProjectRegisters(TransactionCase):
             "x_part_category": "appearance", "x_surface_finish_type": "spi",
             "x_surface_grade_code": "A2", "x_part_material": "ABS",
             "x_customer_shrinkage": 0.5, "x_part_weight_grams": 120.0, "x_qps": 1,
-            "x_mould_configuration": "single", "x_cavitation": "1*1",
             "x_visual_inspection_applicability": "required_critical",
             "x_dimensional_inspection_applicability": "required",
             "x_mould_base_steel_grade": "P20", "x_runner_type": "cold", "x_gate_type": "Edge Gate",
+            "x_component_gate_style": "edge",
+            "x_part_picture": base64.b64encode(
+                b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+                b"\x00\x00\x00\rIDAT\x08\xd7c\xf8\xcf\xc0\xf0\x1f\x00\x05\x00\x01\xff\x89\x99=\x1d\x00\x00\x00\x00IEND\xaeB`\x82"
+            ),
+            "x_dimension_x_mm": 120.0, "x_dimension_y_mm": 80.0, "x_dimension_z_mm": 35.0,
         })
         mould.with_user(self.owner).action_submit_review()
         mould.with_user(self.approver).action_approve()
@@ -109,10 +115,31 @@ class TestProjectRegisters(TransactionCase):
         plan.action_generate_lines()
         self.assertEqual(plan.line_count, 1)
         self.assertEqual(plan.line_ids.source_part_id, part)
+        self.assertEqual(plan.readiness_percent, 100.0)
+        self.assertEqual(plan.line_ids.part_picture, part.x_part_picture)
+        self.assertEqual(plan.line_ids.dimension_x_mm, part.x_dimension_x_mm)
+        self.assertEqual(plan.line_ids.mould_configuration, "Single Cavity")
+        self.assertEqual(plan.line_ids.cavitation, "1")
         plan.with_user(self.owner).action_submit_review()
         plan.with_user(self.approver).action_approve()
         with self.assertRaises(ValidationError):
             plan.revision = "R01"
+
+    def test_final_mould_plan_only_accepts_final_locked_sources(self):
+        mould, _part = self._approved_mould()
+        mould.with_context(allow_native_form_workflow=True).write({
+            "x_mould_planning_status": "tentative",
+        })
+        plan = self.env["hjig.final.mould.plan"].create({
+            "project_id": self.project.id, "revision": "R-FINAL-LOCK",
+            "source_mould_ids": [(6, 0, [mould.id])],
+            "owner_designation_id": self.owner_designation.id,
+            "approver_designation_id": self.approver_designation.id,
+            "effective_date": "2026-08-27",
+        })
+        self.assertIn("Final-Locked", plan.missing_requirements)
+        with self.assertRaises(ValidationError):
+            plan.action_generate_lines()
 
     def test_final_mould_plan_rejects_fabricated_or_incomplete_snapshot(self):
         mould, part = self._approved_mould()

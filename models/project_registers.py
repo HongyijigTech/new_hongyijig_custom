@@ -49,7 +49,8 @@ class HjigFinalMouldPlan(models.Model):
         "part_category", "surface_finish", "surface_details", "part_material",
         "standard_shrinkage", "customer_shrinkage", "part_weight_grams", "qps",
         "mould_configuration", "cavitation", "mould_base_steel", "core_steel",
-        "cavity_steel", "runner_type", "gate_type",
+        "cavity_steel", "runner_type", "gate_type", "part_picture",
+        "dimension_x_mm", "dimension_y_mm", "dimension_z_mm",
     )
 
     plan_number = fields.Char(required=True, readonly=True, copy=False, default=lambda self: _("New"), index=True)
@@ -62,6 +63,8 @@ class HjigFinalMouldPlan(models.Model):
     )
     line_ids = fields.One2many("hjig.final.mould.plan.line", "plan_id", string="Final Plan Lines")
     line_count = fields.Integer(compute="_compute_line_count")
+    readiness_percent = fields.Float(compute="_compute_readiness")
+    missing_requirements = fields.Text(compute="_compute_readiness")
     owner_designation_id = fields.Many2one("hjig.governance.designation", required=True, ondelete="restrict", tracking=True)
     approver_designation_id = fields.Many2one("hjig.governance.designation", required=True, ondelete="restrict", tracking=True)
     submitted_by_id = fields.Many2one("res.users", readonly=True, copy=False, tracking=True)
@@ -81,6 +84,29 @@ class HjigFinalMouldPlan(models.Model):
     def _compute_line_count(self):
         for plan in self:
             plan.line_count = len(plan.line_ids)
+
+    @api.depends("project_id", "revision", "source_mould_ids", "line_ids", "effective_date")
+    def _compute_readiness(self):
+        for plan in self:
+            missing = []
+            if not plan.project_id:
+                missing.append(_("Project"))
+            if not plan.revision:
+                missing.append(_("Revision"))
+            if not plan.source_mould_ids:
+                missing.append(_("At least one Approved and Final-Locked Mould Plan"))
+            elif plan.source_mould_ids.filtered(
+                lambda mould: mould.x_workflow_state != "approved"
+                or mould.x_mould_planning_status != "final_locked"
+            ):
+                missing.append(_("Every source Mould Plan must be Approved and Final-Locked"))
+            expected_lines = sum(len(mould.x_part_ids) for mould in plan.source_mould_ids)
+            if not plan.line_ids or len(plan.line_ids) != expected_lines:
+                missing.append(_("Generate the frozen component snapshot"))
+            if not plan.effective_date:
+                missing.append(_("Effective Date"))
+            plan.missing_requirements = "\n".join(missing)
+            plan.readiness_percent = 100.0 * (5 - len(missing)) / 5
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -106,35 +132,59 @@ class HjigFinalMouldPlan(models.Model):
             "customer_shrinkage": part.x_customer_shrinkage,
             "part_weight_grams": part.x_part_weight_grams,
             "qps": part.x_qps,
-            "mould_configuration": dict(part._fields["x_mould_configuration"].selection).get(part.x_mould_configuration),
-            "cavitation": part.x_cavitation,
+            # Configuration and total cavitation are mould-level governed
+            # decisions.  The former part-level columns are legacy inputs and
+            # may be blank, so freezing them would produce an incomplete or
+            # misleading Final Mould Plan.
+            "mould_configuration": dict(mould._fields["x_mould_configuration"].selection).get(
+                mould.x_mould_configuration
+            ) or False,
+            "cavitation": mould.x_cavitation or False,
             "mould_base_steel": part.x_mould_base_steel_id.display_name or part.x_mould_base_steel_grade,
             "core_steel": part.x_core_steel_id.display_name or " - ".join(filter(None, [part.x_core_steel_brand, part.x_core_steel_grade])),
             "cavity_steel": part.x_cavity_steel_id.display_name or " - ".join(filter(None, [part.x_cavity_steel_brand, part.x_cavity_steel_grade])),
             "runner_type": dict(part._fields["x_runner_type"].selection).get(part.x_runner_type),
             "gate_type": part.x_gate_type,
+            "part_picture": part.x_part_picture,
+            "dimension_x_mm": part.x_dimension_x_mm,
+            "dimension_y_mm": part.x_dimension_y_mm,
+            "dimension_z_mm": part.x_dimension_z_mm,
         }
 
     def _check_snapshot_integrity(self):
         for plan in self:
             plan._check_source_moulds()
-            if not plan.source_mould_ids or plan.source_mould_ids.filtered(lambda mould: mould.x_workflow_state != "approved"):
-                raise ValidationError(_("Every source Mould Plan must be Approved."))
+            # Snapshot comparison is a server-side governance check.  Read both
+            # sides with the same access context so attachment-backed photos do
+            # not appear different merely because the submitter cannot directly
+            # read an ``ir.attachment`` row belonging to the snapshot line.
+            controlled_plan = plan.sudo()
+            if not controlled_plan.source_mould_ids or controlled_plan.source_mould_ids.filtered(
+                lambda mould: mould.x_workflow_state != "approved"
+                or mould.x_mould_planning_status != "final_locked"
+            ):
+                raise ValidationError(_("Every source Mould Plan must be Approved and Final-Locked."))
             expected = {}
-            for mould in plan.source_mould_ids:
+            for mould in controlled_plan.source_mould_ids:
                 for part in mould.x_part_ids:
-                    expected[(mould.id, part.id)] = plan._snapshot_values(mould, part)
-            actual = {(line.source_mould_id.id, line.source_part_id.id): line for line in plan.line_ids}
-            if len(actual) != len(plan.line_ids) or set(actual) != set(expected):
+                    expected[(mould.id, part.id)] = controlled_plan._snapshot_values(mould, part)
+            actual = {
+                (line.source_mould_id.id, line.source_part_id.id): line
+                for line in controlled_plan.line_ids
+            }
+            if len(actual) != len(controlled_plan.line_ids) or set(actual) != set(expected):
                 raise ValidationError(_("Final Plan lines no longer match the selected approved Mould Plans. Regenerate them."))
             for key, line in actual.items():
                 values = expected[key]
-                changed = any(
-                    (line[field].id if field in ("source_mould_id", "source_part_id") else line[field]) != values[field]
-                    for field in self._snapshot_fields
-                )
+                changed = [
+                    field for field in self._snapshot_fields
+                    if (line[field].id if field in ("source_mould_id", "source_part_id") else line[field]) != values[field]
+                ]
                 if changed:
-                    raise ValidationError(_("Final Plan snapshot data has changed. Regenerate the lines."))
+                    labels = ", ".join(line._fields[field].string for field in changed)
+                    raise ValidationError(
+                        _("Final Plan snapshot data has changed (%s). Regenerate the lines.") % labels
+                    )
 
     def write(self, vals):
         controlled = set(self._fields) - CHATTER_FIELDS
@@ -200,9 +250,12 @@ class HjigFinalMouldPlan(models.Model):
                 raise UserError(_("Final Plan lines can only be generated while Draft."))
             if not plan.source_mould_ids:
                 raise ValidationError(_("Select at least one approved source Mould Plan."))
-            unapproved = plan.source_mould_ids.filtered(lambda mould: mould.x_workflow_state != "approved")
+            unapproved = plan.source_mould_ids.filtered(
+                lambda mould: mould.x_workflow_state != "approved"
+                or mould.x_mould_planning_status != "final_locked"
+            )
             if unapproved:
-                raise ValidationError(_("Every source Mould Plan must be Approved before the Final Plan is generated."))
+                raise ValidationError(_("Every source Mould Plan must be Approved and Final-Locked before the Final Plan is generated."))
             commands = [(5, 0, 0)]
             for mould in plan.source_mould_ids.sorted(lambda item: (item.x_mould_number or "", item.id)):
                 for part in mould.x_part_ids.sorted(lambda item: (item.x_part_number or "", item.id)):
@@ -273,6 +326,10 @@ class HjigFinalMouldPlanLine(models.Model):
     cavity_steel = fields.Char(readonly=True)
     runner_type = fields.Char(readonly=True)
     gate_type = fields.Char(readonly=True)
+    part_picture = fields.Binary(string="Part Photo", readonly=True, attachment=True)
+    dimension_x_mm = fields.Float(string="Part Length X (mm)", readonly=True)
+    dimension_y_mm = fields.Float(string="Part Width Y (mm)", readonly=True)
+    dimension_z_mm = fields.Float(string="Part Height Z (mm)", readonly=True)
 
     @api.model_create_multi
     def create(self, vals_list):
