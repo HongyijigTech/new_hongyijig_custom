@@ -117,6 +117,15 @@ class HjigFinalMouldPlan(models.Model):
                 vals["plan_number"] = self.env["ir.sequence"].next_by_code("hjig.final.mould.plan") or _("New")
         return super().create(vals_list)
 
+    @api.model
+    def default_get(self, fields_list):
+        values = super().default_get(fields_list)
+        authority = _artifact_authority(self.env, "new_hongyijig_custom.artifact_frm_007")
+        for field_name, designation_id in authority.items():
+            if field_name in fields_list and designation_id:
+                values[field_name] = designation_id
+        return values
+
     def _snapshot_values(self, mould, part):
         return {
             "source_mould_id": mould.id,

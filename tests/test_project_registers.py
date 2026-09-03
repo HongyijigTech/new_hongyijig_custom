@@ -104,6 +104,12 @@ class TestProjectRegisters(TransactionCase):
         return attachment
 
     def test_final_mould_plan_generation_and_lock(self):
+        defaults = self.env["hjig.final.mould.plan"].default_get([
+            "owner_designation_id", "approver_designation_id",
+        ])
+        artifact = self.env.ref("new_hongyijig_custom.artifact_frm_007")
+        self.assertEqual(defaults["owner_designation_id"], artifact.owner_designation_id.id)
+        self.assertEqual(defaults["approver_designation_id"], artifact.approver_designation_id.id)
         mould, part = self._approved_mould()
         plan = self.env["hjig.final.mould.plan"].create({
             "project_id": self.project.id, "revision": "R00",

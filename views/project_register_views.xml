@@ -27,7 +27,7 @@
                     <field name="effective_date"/></group>
                 <group string="Live Readiness"><field name="readiness_percent" widget="progressbar"/>
                     <field name="missing_requirements" readonly="1" placeholder="Ready to submit"/>
-                    <field name="owner_designation_id"/><field name="approver_designation_id"/>
+                    <field name="owner_designation_id" readonly="1"/><field name="approver_designation_id" readonly="1"/>
                     <field name="submitted_by_id"/><field name="approved_by_id"/><field name="line_count"/></group></group>
                 <notebook><page string="2. Review Frozen Component Snapshot">
                     <field name="line_ids" readonly="workflow_state != 'draft'">

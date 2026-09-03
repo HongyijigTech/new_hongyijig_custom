@@ -2,7 +2,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 {
     'name': 'HongyiJigTechNew',
-    'version': '19.0.3.41.0',
+    'version': '19.0.3.42.0',
     'summary': 'Hongyijig Tech New',
     'sequence': 10,
     'description': """
